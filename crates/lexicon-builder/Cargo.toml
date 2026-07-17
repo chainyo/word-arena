@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 flate2.workspace = true
+quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -18,6 +19,7 @@ tempfile.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 word-arena-lexicon = { path = "../lexicon" }
+zip.workspace = true
 
 [lints]
 workspace = true
