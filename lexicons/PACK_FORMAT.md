@@ -87,9 +87,34 @@ the same manifest and files produce the same identity on supported platforms.
 
 ## Exact-membership keys
 
-`lexicon.fst` stores normalized keys as non-empty UTF-8 strings. Membership is
-an exact byte comparison; runtime lookup never performs fuzzy matching or uses
-a live dictionary service. Whitespace and control characters are invalid keys.
+`lexicon.fst` is a set encoded by the deterministic `fst` 0.4 format. It stores
+unique normalized keys in unsigned UTF-8 byte order and carries no values. This
+compact representation is directly memory-mappable; the safe V1 reader instead
+owns one verified byte buffer so an in-use game remains independent of later
+filesystem changes without introducing an unsafe mapping boundary. Membership
+is an exact borrowed-byte comparison and allocates nothing per lookup. Runtime
+lookup never performs fuzzy matching or uses a live HTTP dictionary service.
+Whitespace and control characters are invalid keys.
+
+Build an index from the sorted output of the curation stage with:
+
+```bash
+cargo run -p word-arena-lexicon-builder -- \
+  index-compile <curated-keys.txt> <lexicon.fst> <normalization-profile>
+```
+
+Compilation streams its input, rejects invalid, duplicate, or out-of-order
+keys, and atomically publishes without overwriting. Two builds from identical
+keys and profile produce byte-identical FSTs. The manifest records the exact
+index byte length, SHA-256, and fully enumerated key count.
+
+The runtime loader validates the complete pack before returning a queryable
+lexicon, rereads and rechecks the retained FST bytes against their manifest
+descriptor, verifies the embedded FST checksum, enumerates every key through
+the pinned normalization profile, and compares the observed count with
+`word_count`. Corrupt, truncated, non-set, unsupported, non-normalized, or
+mismatched indexes are rejected. Once loaded, the manifest, identity, and
+index bytes are owned by that instance and never hot-swapped.
 
 Normalization algorithm `word-arena-board-key` version 1 has two profiles:
 

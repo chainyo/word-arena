@@ -6,6 +6,7 @@
 
 mod compatibility;
 mod error;
+mod index;
 mod key;
 mod manifest;
 mod pack;
@@ -14,6 +15,7 @@ pub use compatibility::{
     CacheDecision, CompatibilityContext, ensure_exact_pack, plan_cache_install,
 };
 pub use error::{CompatibilityError, NormalizedKeyError, PackError};
+pub use index::{LoadedLexicon, load_lexicon};
 pub use key::{NormalizedKey, normalize_key};
 pub use manifest::{
     BuilderDescriptor, FileDescriptor, NormalizationDescriptor, PackIdentity, PackManifest,
@@ -39,9 +41,12 @@ pub const FRENCH_NORMALIZATION_PROFILE: &str = "fr-basic-latin-fold-v1";
 /// The manifest filename at the root of every pack.
 pub const MANIFEST_FILE: &str = "manifest.toml";
 
+/// The compact exact-membership FST filename in every V1 pack.
+pub const INDEX_FILE: &str = "lexicon.fst";
+
 /// Payload files required by pack format V1.
 pub const REQUIRED_PAYLOAD_FILES: [&str; 6] = [
-    "lexicon.fst",
+    INDEX_FILE,
     "curation/additions.toml",
     "curation/removals.toml",
     "LICENSE",

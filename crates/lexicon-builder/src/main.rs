@@ -2,10 +2,10 @@ use std::{env, path::Path, process::ExitCode};
 
 use word_arena_lexicon_builder::{
     EnglishPolicy, FrenchPolicy, apply_curation, build_english_from_archive,
-    build_english_from_final, build_french_from_archive, build_french_from_xml,
+    build_english_from_final, build_french_from_archive, build_french_from_xml, compile_index,
 };
 
-const USAGE: &str = "usage:\n  word-arena-lexicon-builder english-archive <scowl.tar.gz> <output-dir> <policy.toml>\n  word-arena-lexicon-builder english-final <scowl-final-dir> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-archive <morphalou.zip> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-xml <morphalou.xml> <output-dir> <policy.toml>\n  word-arena-lexicon-builder curation-apply <base-keys.txt> <output-dir> <curation-dir>";
+const USAGE: &str = "usage:\n  word-arena-lexicon-builder english-archive <scowl.tar.gz> <output-dir> <policy.toml>\n  word-arena-lexicon-builder english-final <scowl-final-dir> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-archive <morphalou.zip> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-xml <morphalou.xml> <output-dir> <policy.toml>\n  word-arena-lexicon-builder curation-apply <base-keys.txt> <output-dir> <curation-dir>\n  word-arena-lexicon-builder index-compile <curated-keys.txt> <lexicon.fst> <normalization-profile>";
 
 fn main() -> ExitCode {
     match run() {
@@ -69,6 +69,14 @@ fn run() -> Result<(), String> {
             println!("removed_words={}", summary.report.removed_word_count);
             println!("final_words={}", summary.report.final_word_count);
             println!("keys_sha256={}", summary.report.curated_keys_sha256);
+        }
+        "index-compile" => {
+            let summary = compile_index(Path::new(input), Path::new(output), policy_path)
+                .map_err(|error| error.to_string())?;
+            println!("output={}", summary.output_path.display());
+            println!("word_count={}", summary.word_count);
+            println!("size_bytes={}", summary.size_bytes);
+            println!("sha256={}", summary.sha256);
         }
         _ => return Err(USAGE.to_owned()),
     }

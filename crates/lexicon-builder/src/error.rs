@@ -184,6 +184,43 @@ pub enum BuilderError {
         path: PathBuf,
     },
 
+    /// The requested runtime-index normalization profile is unsupported.
+    #[error("cannot compile runtime index with unsupported normalization profile {profile:?}")]
+    UnsupportedIndexProfile {
+        /// Profile requested by the caller.
+        profile: String,
+    },
+
+    /// One source line is not an exact, strictly ordered runtime key.
+    #[error("invalid runtime-index key at {path}:{line}: {value:?}; {reason}")]
+    InvalidIndexKey {
+        /// Sorted key input.
+        path: PathBuf,
+        /// One-based line number.
+        line: u64,
+        /// Rejected line value.
+        value: String,
+        /// Required input rule.
+        reason: &'static str,
+    },
+
+    /// The FST encoder rejected input or could not finish its output.
+    #[error("failed to compile runtime FST at {path}: {source}")]
+    IndexFst {
+        /// Staging output path.
+        path: PathBuf,
+        /// FST-format or writer failure.
+        #[source]
+        source: fst::Error,
+    },
+
+    /// A portable runtime-index count exceeded its representation.
+    #[error("runtime-index {field} exceeds u64")]
+    IndexCountOverflow {
+        /// Count that overflowed.
+        field: &'static str,
+    },
+
     /// English normalization rejected a candidate.
     #[error(transparent)]
     Normalization(#[from] NormalizedKeyError),

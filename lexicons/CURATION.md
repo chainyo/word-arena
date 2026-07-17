@@ -88,3 +88,14 @@ emits curated `keys.txt`, `curation-changelog.md`, and
 reason, source, license, author, reviewer, and date. The report binds the exact
 base keys, three curation documents, curated keys, and changelog by SHA-256, so
 every released word-set change is attributable and reproducible.
+
+Compile the resulting keys into the runtime pack payload with:
+
+```bash
+cargo run -p word-arena-lexicon-builder -- \
+  index-compile <curation-output/keys.txt> <lexicon.fst> \
+  <normalization-profile>
+```
+
+See [`PACK_FORMAT.md`](PACK_FORMAT.md) for FST integrity, loading, and immutable
+game-lifetime behavior.
