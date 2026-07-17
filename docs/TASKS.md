@@ -111,13 +111,13 @@ Verification:
 
 ### LEX-005: Add transparent curation governance
 
-- [ ] Define typed additions and removals files for each pack.
-- [ ] Require every override to contain a normalized word, action, reason,
+- [x] Define typed additions and removals files for each pack.
+- [x] Require every override to contain a normalized word, action, reason,
   openly usable supporting source, author, reviewer, and date.
-- [ ] Require two-person review for changes to two-letter words, normalization
+- [x] Require two-person review for changes to two-letter words, normalization
   rules, or broad filters because they have disproportionate game impact.
-- [ ] Generate a release changelog showing added and removed playable keys.
-- [ ] Add an issue template for disputed words without accepting copied
+- [x] Generate a release changelog showing added and removed playable keys.
+- [x] Add an issue template for disputed words without accepting copied
   proprietary lists as evidence.
 
 Verification:
