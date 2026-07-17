@@ -8,6 +8,7 @@ mod english;
 mod error;
 mod french;
 mod french_policy;
+mod index;
 mod policy;
 mod scowl;
 mod util;
@@ -27,6 +28,7 @@ pub use french::{
     build_french_from_archive, build_french_from_xml,
 };
 pub use french_policy::FrenchPolicy;
+pub use index::{IndexBuildSummary, compile_index};
 pub use policy::EnglishPolicy;
 pub use scowl::{PreparedScowl, prepare_scowl_archive};
 

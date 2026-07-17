@@ -127,13 +127,13 @@ Verification:
 
 ### LEX-006: Compile and load the offline runtime index
 
-- [ ] Compile sorted normalized keys into a compact deterministic FST or
+- [x] Compile sorted normalized keys into a compact deterministic FST or
   equivalent memory-mappable exact-membership index.
-- [ ] Add a dependency-light runtime reader with `contains`, manifest access,
+- [x] Add a dependency-light runtime reader with `contains`, manifest access,
   and integrity verification; keep source parsing out of the game engine.
-- [ ] Verify a pack before making it available to a new game.
-- [ ] Keep an in-use pack immutable, even if a newer version is installed.
-- [ ] Do not implement a live HTTP dictionary fallback.
+- [x] Verify a pack before making it available to a new game.
+- [x] Keep an in-use pack immutable, even if a newer version is installed.
+- [x] Do not implement a live HTTP dictionary fallback.
 
 Verification:
 

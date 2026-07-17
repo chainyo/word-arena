@@ -173,6 +173,37 @@ pub enum PackError {
         actual: String,
     },
 
+    /// The checksummed runtime index is not a readable FST set.
+    #[error("invalid runtime FST at {path}: {reason}")]
+    InvalidIndex {
+        /// Manifest-listed runtime index path.
+        path: PathBuf,
+        /// FST parser or structural diagnostic.
+        reason: String,
+    },
+
+    /// One FST member is not a valid exact normalized key for this pack.
+    #[error("invalid runtime FST key #{position} at {path}: {reason}")]
+    InvalidIndexKey {
+        /// Manifest-listed runtime index path.
+        path: PathBuf,
+        /// One-based key position in FST order.
+        position: u64,
+        /// UTF-8 or normalization diagnostic.
+        reason: String,
+    },
+
+    /// The manifest count does not match complete FST enumeration.
+    #[error(
+        "runtime FST word-count mismatch: manifest declares {expected} keys but index contains {actual}"
+    )]
+    IndexWordCountMismatch {
+        /// Manifest-declared key count.
+        expected: u64,
+        /// Fully enumerated key count.
+        actual: u64,
+    },
+
     /// A contextual filesystem operation failed.
     #[error("failed to access {path}: {source}")]
     Io {

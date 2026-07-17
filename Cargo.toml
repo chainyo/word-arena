@@ -18,6 +18,7 @@ repository = "https://github.com/chainyo/word-arena"
 [workspace.dependencies]
 axum = "0.8.9"
 flate2 = "1.1.9"
+fst = "0.4.7"
 quick-xml = "0.41.0"
 semver = "1.0.28"
 serde = { version = "1.0.228", features = ["derive"] }
