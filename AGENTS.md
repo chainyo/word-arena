@@ -19,6 +19,9 @@ repeated correction should apply to future work.
 - `crates/engine/`: deterministic domain model, validation, scoring, and events.
   This crate must not depend on HTTP, MCP, databases, model providers, or wall
   clock time.
+- `crates/lexicon/`: versioned pack contracts, normalization, integrity checks,
+  and runtime exact-membership adapters. Keep pack parsing independent from the
+  game engine and transport layers.
 - `apps/server/`: process entry point and application adapters. HTTP, WebSocket,
   MCP, authentication, persistence, and observability belong here or in focused
   crates extracted from it later.

@@ -60,12 +60,12 @@ Verification:
 
 ### LEX-002: Define the versioned lexicon pack contract
 
-- [ ] Define and validate the pack manifest schema.
-- [ ] Define normalized exact-membership keys as UTF-8 strings and version the
+- [x] Define and validate the pack manifest schema.
+- [x] Define normalized exact-membership keys as UTF-8 strings and version the
   normalization algorithm independently from the source and builder.
-- [ ] Define pack compatibility rules for rulesets, replays, cache updates, and
+- [x] Define pack compatibility rules for rulesets, replays, cache updates, and
   active games.
-- [ ] Reject missing files, unknown required fields, unsupported format versions,
+- [x] Reject missing files, unknown required fields, unsupported format versions,
   and checksum mismatches with actionable errors.
 
 Verification:

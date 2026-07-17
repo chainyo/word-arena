@@ -1,0 +1,55 @@
+format_version = 99
+pack_id = "word-arena-en-world-v1"
+pack_version = "1.0.0"
+locale = "en"
+word_count = 0
+content_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[normalization]
+algorithm = "word-arena-board-key"
+version = 1
+profile = "en-basic-latin-v1"
+
+[source]
+id = "scowl-v1-2024-07-22"
+revision = "b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+archive_sha256 = "65e4891913a252659efd9a464b923124940082b5bd4da4878d1e7fbf1b80bc50"
+license_id = "LicenseRef-SCOWL-v1"
+
+[policy]
+id = "en-world-filter"
+version = 1
+
+[builder]
+name = "word-arena-lexicon-builder"
+version = "0.1.0"
+
+[[files]]
+path = "lexicon.fst"
+size_bytes = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[files]]
+path = "curation/additions.toml"
+size_bytes = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[files]]
+path = "curation/removals.toml"
+size_bytes = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[files]]
+path = "LICENSE"
+size_bytes = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[files]]
+path = "SOURCE.md"
+size_bytes = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[files]]
+path = "THIRD_PARTY_NOTICES"
+size_bytes = 0
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"

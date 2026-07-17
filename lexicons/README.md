@@ -5,6 +5,10 @@ packs are separate works governed by their own licenses. The canonical,
 machine-readable source pins are in [`sources.toml`](sources.toml); the exact
 upstream license texts are stored in [`licenses/`](licenses/).
 
+The separately versioned pack manifest, integrity, normalization, and
+compatibility contract is documented in [`PACK_FORMAT.md`](PACK_FORMAT.md) and
+implemented by `crates/lexicon`.
+
 No upstream word archive or generated word list is committed to Git. A later
 builder task will download the pinned archives, reject checksum mismatches, and
 produce separately licensed pack artifacts. NWL, Collins, ODS, and results from

@@ -1,0 +1,55 @@
+format_version = 1
+pack_id = "word-arena-fr-v1"
+pack_version = "1.0.0"
+locale = "fr"
+word_count = 0
+content_sha256 = "c8c3ff09c8822dcb3ad646e1280f9046149c5edaeef9ff22a397965023b6e645"
+
+[normalization]
+algorithm = "word-arena-board-key"
+version = 1
+profile = "fr-basic-latin-fold-v1"
+
+[source]
+id = "morphalou-3.1-lmf"
+revision = "3.1"
+archive_sha256 = "f49903f11eb73e3a8e42249415e9300cac1ea812b5d93443d6ef4aa53135ee59"
+license_id = "LicenseRef-LGPLLR"
+
+[policy]
+id = "fr-standard-filter"
+version = 1
+
+[builder]
+name = "word-arena-lexicon-builder"
+version = "0.1.0"
+
+[[files]]
+path = "lexicon.fst"
+size_bytes = 35
+sha256 = "4a31dc5b920a57af605e24bda05085bd4d5bc267bd410bbbfdb7e33754641298"
+
+[[files]]
+path = "curation/additions.toml"
+size_bytes = 32
+sha256 = "d88191eec2af795f96a328b3d2d231f11281c46258fc440027a17228f6bcc231"
+
+[[files]]
+path = "curation/removals.toml"
+size_bytes = 32
+sha256 = "d88191eec2af795f96a328b3d2d231f11281c46258fc440027a17228f6bcc231"
+
+[[files]]
+path = "LICENSE"
+size_bytes = 73
+sha256 = "8ae0c4edfbe3129c56ee961729294f437c666947c3e209bc6688a41c020e7925"
+
+[[files]]
+path = "SOURCE.md"
+size_bytes = 82
+sha256 = "d2f9688699bf72bdfc74e17a1f8595d5aabd106fa182e2803396acaf63578e82"
+
+[[files]]
+path = "THIRD_PARTY_NOTICES"
+size_bytes = 64
+sha256 = "8ea3853af2907a4acd8ab5be3058e87d9e8d9f11112c069f6bfdd8809207988d"

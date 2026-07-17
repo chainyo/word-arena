@@ -64,6 +64,7 @@ bun run --cwd web check
 ```text
 apps/server/     Axum application and future HTTP, WebSocket, and MCP adapters
 crates/engine/   Deterministic game domain and rules engine
+crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks
 docs/            Architecture decisions and the maintained creation plan
 lexicons/        Pinned source metadata, licenses, and pack documentation
 web/             React application built from shadcn/ui primitives
