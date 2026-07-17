@@ -20,6 +20,7 @@ The repository foundation is in place:
 
 - Rust 2024 workspace with a minimal Axum server and pure engine crate
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
+- A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)

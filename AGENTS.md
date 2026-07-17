@@ -99,6 +99,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 
 ## Web UI conventions
 
+- Treat the web app as a local operator and game workspace, not as a marketing
+  site. The default route should prioritize the active game, seat, or tournament
+  state instead of a product landing page.
 - Build all general-purpose UI and interactive controls from shadcn/ui
   primitives. Do not introduce another component library.
 - Base UI is the sole shadcn primitive layer. Keep every generated component on
