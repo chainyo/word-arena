@@ -77,12 +77,12 @@ Verification:
 
 ### LEX-003: Build `word-arena-en-world-v1`
 
-- [ ] Import only the selected SCOWLv1 normal-word categories through the
+- [x] Import only the selected SCOWLv1 normal-word categories through the
   size-80 boundary for the agreed American/British profile.
-- [ ] Exclude proper names, uppercase/name lists, abbreviations, contractions,
+- [x] Exclude proper names, uppercase/name lists, abbreviations, contractions,
   affixes, special lists, punctuation, digits, spaces, and hyphenated entries.
-- [ ] Restrict playable keys to the configured board alphabet and length range.
-- [ ] Preserve source classification and original form in build audit output,
+- [x] Restrict playable keys to the configured board alphabet and length range.
+- [x] Preserve source classification and original form in build audit output,
   without placing unnecessary source metadata in the runtime index.
 
 Verification:

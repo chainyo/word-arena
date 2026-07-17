@@ -1,0 +1,26 @@
+schema_version = 1
+id = "en-world-filter"
+version = 1
+pack_id = "word-arena-en-world-v1"
+source_id = "scowl-v1-2024-07-22"
+source_revision = "b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+source_archive_sha256 = "65e4891913a252659efd9a464b923124940082b5bd4da4878d1e7fbf1b80bc50"
+source_archive_size_bytes = 10276490
+source_archive_root = "wordlist-b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+source_encoding = "iso-8859-1"
+max_scowl_level = 80
+source_subcategory = "words"
+spelling_categories = [
+  "english",
+  "american",
+  "british",
+  "british_z",
+  "variant_1",
+  "variant_2",
+  "british_variant_1",
+  "british_variant_2",
+]
+normalization_profile = "en-basic-latin-v1"
+alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+min_word_length = 2
+max_word_length = 15

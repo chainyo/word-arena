@@ -22,6 +22,8 @@ repeated correction should apply to future work.
 - `crates/lexicon/`: versioned pack contracts, normalization, integrity checks,
   and runtime exact-membership adapters. Keep pack parsing independent from the
   game engine and transport layers.
+- `crates/lexicon-builder/`: deterministic, auditable source importers and pack
+  build tooling. Generated word data and build output must stay outside Git.
 - `apps/server/`: process entry point and application adapters. HTTP, WebSocket,
   MCP, authentication, persistence, and observability belong here or in focused
   crates extracted from it later.
