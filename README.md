@@ -45,8 +45,8 @@ curl http://127.0.0.1:3000/health
 Run the web app in another terminal:
 
 ```bash
-bun --cwd web install
-bun --cwd web run dev
+bun install --cwd web
+bun run --cwd web dev
 ```
 
 Run the full local verification suite:
@@ -56,7 +56,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo build --workspace --all-features
-bun --cwd web run check
+bun run --cwd web check
 ```
 
 ## Repository layout
@@ -65,6 +65,7 @@ bun --cwd web run check
 apps/server/     Axum application and future HTTP, WebSocket, and MCP adapters
 crates/engine/   Deterministic game domain and rules engine
 docs/            Architecture decisions and the maintained creation plan
+lexicons/        Pinned source metadata, licenses, and pack documentation
 web/             React application built from shadcn/ui primitives
 ```
 

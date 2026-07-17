@@ -22,6 +22,8 @@ repeated correction should apply to future work.
 - `apps/server/`: process entry point and application adapters. HTTP, WebSocket,
   MCP, authentication, persistence, and observability belong here or in focused
   crates extracted from it later.
+- `lexicons/`: source pins, exact third-party notices, and lexicon pack
+  contracts. Never commit downloaded archives, generated packs, or word data.
 - `web/`: Vite/React frontend. Shared UI primitives live in
   `web/src/components/ui`; game-specific compositions belong under
   `web/src/components/game` when introduced.
@@ -46,11 +48,11 @@ cargo run -p word-arena-server
 Frontend:
 
 ```bash
-bun --cwd web install
-bun --cwd web run dev
-bun --cwd web run check
-bun --cwd web run format
-bun --cwd web run fix
+bun install --cwd web
+bun run --cwd web dev
+bun run --cwd web check
+bun run --cwd web format
+bun run --cwd web fix
 ```
 
 Add a shadcn component from `web/` with:

@@ -1,0 +1,60 @@
+schema_version = 1
+
+[[sources]]
+id = "scowl-v1-2024-07-22"
+name = "Spell Checking Oriented Word Lists (SCOWLv1)"
+language = "en"
+version = "2024-07-22"
+revision = "b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+revision_url = "https://github.com/en-wl/wordlist/commit/b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+homepage_url = "https://wordlist.aspell.net/other/"
+canonical_source_url = "https://github.com/en-wl/wordlist/tree/v1"
+archive_url = "https://codeload.github.com/en-wl/wordlist/tar.gz/b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+archive_format = "tar.gz"
+archive_size_bytes = 10276490
+archive_sha256 = "65e4891913a252659efd9a464b923124940082b5bd4da4878d1e7fbf1b80bc50"
+archive_root = "wordlist-b22230cc5250887737fdefe9ca4c9d9d01230eaa"
+license_id = "LicenseRef-SCOWL-v1"
+license_file = "licenses/SCOWL-v1-Copyright.txt"
+license_source_url = "https://raw.githubusercontent.com/en-wl/wordlist/b22230cc5250887737fdefe9ca4c9d9d01230eaa/scowl/Copyright"
+license_sha256 = "283326a422e29c510e2ba6805518c418ce3c35ed1fadc3eec83d2da4f6c5a055"
+attribution = "SCOWLv1 collective work Copyright 2000-2018 by Kevin Atkinson and the contributors named in the source copyright file."
+redistribution_obligations = [
+  "Ship the complete SCOWLv1 copyright and permission text with every derived English pack.",
+  "Preserve the WordNet, UKACD, VarCon, Ispell, and other notices applicable to the selected size-80 source material.",
+  "Display the UKACD copyright and its notice prominently and include that notice verbatim.",
+  "Mark modifications as required by the incorporated Ispell/VarCon terms and do not use contributor names for endorsement.",
+]
+
+[[sources]]
+id = "morphalou-3.1-lmf"
+name = "Morphalou 3.1"
+language = "fr"
+version = "3.1"
+published_year = 2023
+persistent_id = "11403/morphalou/v3.1"
+homepage_url = "https://hdl.handle.net/11403/morphalou/v3.1"
+canonical_source_url = "https://repository.ortolang.fr/api/content/morphalou/v3.1"
+archive_url = "https://repository.ortolang.fr/api/content/morphalou/v3.1/Morphalou3.1_formatLMF_toutEnUn.zip"
+archive_format = "zip"
+archive_size_bytes = 47331436
+archive_sha256 = "f49903f11eb73e3a8e42249415e9300cac1ea812b5d93443d6ef4aa53135ee59"
+archive_data_path = "Morphalou3.1_formatLMF_toutEnUn/Morphalou3.1_LMF.xml"
+license_id = "LicenseRef-LGPLLR"
+license_file = "licenses/LGPLLR.txt"
+license_source_url = "https://repository.ortolang.fr/api/content/morphalou/v3.1/licenceLGPLLR.txt"
+license_sha256 = "301c33ad62b3a431975ecb325c3855b95a7c8bf6f2df9a7a4d479146c904193c"
+readme_source_url = "https://repository.ortolang.fr/api/content/morphalou/v3.1/LISEZ-MOI.html"
+readme_sha256 = "0c06f2a0c4f0fc7e2b9d4e2b0558d8d75735f1a59c315745e7dd46c6213c2853"
+citation_author = "ATILF"
+citation_title = "Morphalou"
+citation_year = 2023
+citation_url = "https://hdl.handle.net/11403/morphalou/v3.1"
+attribution = "ATILF (2023), Morphalou 3.1, ORTOLANG (Open Resources and Tools for Language)."
+redistribution_obligations = [
+  "Distribute the derived French linguistic resource under LGPL-LR at no charge and include the complete license and warranty notices.",
+  "Mark every modified resource file prominently with the change and its date.",
+  "Give prominent notice that Morphalou is used and covered by LGPL-LR.",
+  "Publish the complete corresponding machine-readable legible form and build materials beside the compiled pack, or satisfy another LGPL-LR section 4 mechanism.",
+  "Keep the MIT application separable from the LGPL-LR resource and allow it to load an interface-compatible replacement pack.",
+]
