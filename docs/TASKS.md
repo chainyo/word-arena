@@ -40,15 +40,15 @@ builder version, word count, and compiled-content checksum.
 
 ### LEX-001: Pin sources and record license obligations
 
-- [ ] Resolve and record the full SCOWLv1 commit corresponding to the selected
+- [x] Resolve and record the full SCOWLv1 commit corresponding to the selected
   stable 2024 revision; capture its archive SHA-256 and complete required
   copyright notices.
-- [ ] Pin Morphalou 3.1 from its canonical ATILF/ORTOLANG release; capture its
+- [x] Pin Morphalou 3.1 from its canonical ATILF/ORTOLANG release; capture its
   archive SHA-256, citation, LGPL-LR text, and modification/distribution
   obligations.
-- [ ] Add a machine-readable source registry without vendoring either upstream
+- [x] Add a machine-readable source registry without vendoring either upstream
   archive or any proprietary word list into Git.
-- [ ] Document that SCOWLv1 and Morphalou packs are data artifacts with licenses
+- [x] Document that SCOWLv1 and Morphalou packs are data artifacts with licenses
   separate from the MIT application.
 
 Verification:

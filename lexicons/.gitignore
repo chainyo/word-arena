@@ -1,0 +1,9 @@
+# Upstream archives, generated packs, and local builder state are never vendored.
+/artifacts/
+/build/
+/cache/
+/downloads/
+/packs/
+/*.tar
+/*.tar.gz
+/*.zip
