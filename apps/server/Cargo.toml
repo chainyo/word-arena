@@ -1,0 +1,20 @@
+[package]
+name = "word-arena-server"
+description = "HTTP, WebSocket, and MCP host for Word Arena"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+word-arena-engine = { path = "../../crates/engine" }
+
+[lints]
+workspace = true
