@@ -145,7 +145,7 @@ Verification:
 
 - [ ] Add a workspace `xtask` crate and the canonical `cargo xtask setup`
   command.
-- [ ] Have setup verify required tools, run `bun --cwd web install`, then install
+- [ ] Have setup verify required tools, run `bun install --cwd web`, then install
   the pinned English and French packs when they are not already present.
 - [ ] Read artifact URLs and SHA-256 values from a committed pack registry.
 - [ ] Download into a staging location, verify the complete archive, verify its
