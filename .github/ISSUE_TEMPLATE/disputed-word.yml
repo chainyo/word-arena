@@ -1,0 +1,75 @@
+name: Disputed playable word
+description: Propose a documented correction to a Word Arena lexicon pack.
+title: "lexicon: review "
+labels:
+  - lexicon
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Word Arena accepts only independently reviewable, openly licensed evidence. Do not paste or attach entries, screenshots, exports, or comparisons from NWL, Collins, ODS, OSPD, scrabblewordfinder.org, or another proprietary word list or checker.
+  - type: dropdown
+    id: pack
+    attributes:
+      label: Pack
+      options:
+        - word-arena-en-world-v1
+        - word-arena-fr-v1
+    validations:
+      required: true
+  - type: input
+    id: normalized-word
+    attributes:
+      label: Normalized board key
+      description: Enter the exact uppercase key used on the board.
+      placeholder: EXAMPLE
+    validations:
+      required: true
+  - type: dropdown
+    id: action
+    attributes:
+      label: Proposed action
+      options:
+        - Add the key
+        - Remove the key
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason
+      description: Explain the source-generated behavior and why it should change.
+    validations:
+      required: true
+  - type: input
+    id: source-title
+    attributes:
+      label: Open source title
+      description: Name the linguistic resource supporting this correction.
+    validations:
+      required: true
+  - type: input
+    id: source-url
+    attributes:
+      label: Open source URL
+      description: Provide a stable HTTPS URL for the evidence.
+      placeholder: https://example.org/stable-evidence
+    validations:
+      required: true
+  - type: input
+    id: source-license
+    attributes:
+      label: Evidence license
+      description: Provide an allowed license identifier from lexicons/CURATION.md.
+      placeholder: CC-BY-4.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: attestations
+    attributes:
+      label: Evidence and review attestations
+      options:
+        - label: I did not derive this proposal from a proprietary list, checker result, screenshot, or copied comparison.
+          required: true
+        - label: I understand that a different person must review the resulting override before it can be merged.
+          required: true

@@ -3,6 +3,7 @@
 //! Generated word data is always written outside the repository. This crate
 //! contains build policy and deterministic transformations, not word lists.
 
+mod curation;
 mod english;
 mod error;
 mod french;
@@ -11,6 +12,11 @@ mod policy;
 mod scowl;
 mod util;
 
+pub use curation::{
+    CURATION_CHANGELOG_FILE, CURATION_REPORT_FILE, CurationAction, CurationBundle,
+    CurationDocument, CurationError, CurationGovernance, CurationOverride, CurationReport,
+    CurationSummary, HighImpactApproval, HighImpactKind, apply_curation, load_curation,
+};
 pub use english::{
     AuditDecision, AuditRecord, BuildMetadata, BuildReport, BuildSummary, RejectReason,
     SourceClass, SourceFileReport, build_english_from_archive, build_english_from_final,

@@ -1,11 +1,11 @@
 use std::{env, path::Path, process::ExitCode};
 
 use word_arena_lexicon_builder::{
-    EnglishPolicy, FrenchPolicy, build_english_from_archive, build_english_from_final,
-    build_french_from_archive, build_french_from_xml,
+    EnglishPolicy, FrenchPolicy, apply_curation, build_english_from_archive,
+    build_english_from_final, build_french_from_archive, build_french_from_xml,
 };
 
-const USAGE: &str = "usage:\n  word-arena-lexicon-builder english-archive <scowl.tar.gz> <output-dir> <policy.toml>\n  word-arena-lexicon-builder english-final <scowl-final-dir> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-archive <morphalou.zip> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-xml <morphalou.xml> <output-dir> <policy.toml>";
+const USAGE: &str = "usage:\n  word-arena-lexicon-builder english-archive <scowl.tar.gz> <output-dir> <policy.toml>\n  word-arena-lexicon-builder english-final <scowl-final-dir> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-archive <morphalou.zip> <output-dir> <policy.toml>\n  word-arena-lexicon-builder french-xml <morphalou.xml> <output-dir> <policy.toml>\n  word-arena-lexicon-builder curation-apply <base-keys.txt> <output-dir> <curation-dir>";
 
 fn main() -> ExitCode {
     match run() {
@@ -58,6 +58,17 @@ fn run() -> Result<(), String> {
                 summary.report.unique_keys,
                 &summary.metadata.keys_sha256,
             );
+        }
+        "curation-apply" => {
+            let summary =
+                apply_curation(Path::new(input), Path::new(output), Path::new(policy_path))
+                    .map_err(|error| error.to_string())?;
+            println!("output={}", summary.output_directory.display());
+            println!("base_words={}", summary.report.base_word_count);
+            println!("added_words={}", summary.report.added_word_count);
+            println!("removed_words={}", summary.report.removed_word_count);
+            println!("final_words={}", summary.report.final_word_count);
+            println!("keys_sha256={}", summary.report.curated_keys_sha256);
         }
         _ => return Err(USAGE.to_owned()),
     }

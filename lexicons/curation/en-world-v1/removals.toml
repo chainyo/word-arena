@@ -1,0 +1,5 @@
+schema_version = 1
+pack_id = "word-arena-en-world-v1"
+normalization_profile = "en-basic-latin-v1"
+document_action = "remove"
+overrides = []

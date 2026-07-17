@@ -9,6 +9,10 @@ The separately versioned pack manifest, integrity, normalization, and
 compatibility contract is documented in [`PACK_FORMAT.md`](PACK_FORMAT.md) and
 implemented by `crates/lexicon`.
 
+Reviewed additions, removals, two-person approvals, and their reproducible
+changelog contract are documented in [`CURATION.md`](CURATION.md). The typed V1
+inputs live under [`curation/`](curation/).
+
 No upstream word archive or generated word list is committed to Git. A later
 builder task will download the pinned archives, reject checksum mismatches, and
 produce separately licensed pack artifacts. NWL, Collins, ODS, and results from
