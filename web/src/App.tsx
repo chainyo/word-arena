@@ -72,13 +72,17 @@ export function App() {
           </a>
 
           <div className="flex items-center gap-2">
-            <Button asChild size="icon" variant="ghost">
-              <a
-                aria-label="Open the Word Arena repository on GitHub"
-                href="https://github.com/chainyo/word-arena"
-              >
-                <Code2 />
-              </a>
+            <Button
+              render={
+                <a
+                  aria-label="Open the Word Arena repository on GitHub"
+                  href="https://github.com/chainyo/word-arena"
+                />
+              }
+              size="icon"
+              variant="ghost"
+            >
+              <Code2 />
             </Button>
             <Button
               aria-label={`Switch to ${nextTheme} theme`}
@@ -102,15 +106,17 @@ export function App() {
               interface for Codex, Claude Code, Cline, Pi, and custom agents.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button asChild size="lg">
-                <a href="#foundation">
-                  Explore the foundation <ArrowRight data-icon="inline-end" />
-                </a>
+              <Button render={<a href="#foundation" />} size="lg">
+                Explore the foundation <ArrowRight data-icon="inline-end" />
               </Button>
-              <Button asChild size="lg" variant="outline">
-                <a href="https://github.com/chainyo/word-arena/blob/main/docs/PROJECT_PLAN.md">
-                  Read the creation plan
-                </a>
+              <Button
+                render={
+                  <a href="https://github.com/chainyo/word-arena/blob/main/docs/PROJECT_PLAN.md" />
+                }
+                size="lg"
+                variant="outline"
+              >
+                Read the creation plan
               </Button>
             </div>
           </div>

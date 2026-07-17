@@ -32,7 +32,8 @@ The first complete vertical slice is:
 - Expose REST/WebSocket for the web application and MCP plus a CLI for agents.
 - Use Streamable HTTP as the primary remote MCP transport and provide a stdio
   bridge for local agent clients.
-- Build the React interface from shadcn/ui Radix primitives with Tailwind CSS 4.
+- Build the React interface from shadcn/ui Base UI primitives with Tailwind CSS
+  4.
 - Keep code and data licensing separate; never redistribute a lexicon without a
   verified license.
 
@@ -40,7 +41,7 @@ The first complete vertical slice is:
 
 - [x] Create the Git repository and Rust 2024 workspace.
 - [x] Add a compiling engine crate and Axum server with a health endpoint.
-- [x] Scaffold Vite, React 19, Tailwind CSS 4, and current shadcn/ui with Radix
+- [x] Scaffold Vite, React 19, Tailwind CSS 4, and current shadcn/ui with Base UI
   primitives.
 - [x] Establish Bun as the frontend package manager.
 - [x] Add CI, formatting, linting, test, and build commands.

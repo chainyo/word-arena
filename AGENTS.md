@@ -101,8 +101,10 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 
 - Build all general-purpose UI and interactive controls from shadcn/ui
   primitives. Do not introduce another component library.
+- Base UI is the sole shadcn primitive layer. Keep every generated component on
+  the `base-nova` registry configured in `web/components.json`.
 - Add primitives with the shadcn CLI and commit the generated source. Do not
-  import `radix-ui` directly outside `web/src/components/ui`.
+  import `@base-ui/react` directly outside `web/src/components/ui`.
 - Compose game-specific board, square, rack, and tile components from shadcn
   primitives, semantic HTML, and shared design tokens; do not fork a parallel
   button, card, dialog, menu, input, table, or tooltip system.
