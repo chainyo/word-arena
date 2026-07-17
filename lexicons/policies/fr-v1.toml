@@ -1,0 +1,31 @@
+schema_version = 1
+id = "fr-standard-filter"
+version = 1
+pack_id = "word-arena-fr-v1"
+source_id = "morphalou-3.1-lmf"
+source_revision = "3.1"
+source_archive_sha256 = "f49903f11eb73e3a8e42249415e9300cac1ea812b5d93443d6ef4aa53135ee59"
+source_archive_size_bytes = 47331436
+source_archive_data_path = "Morphalou3.1_formatLMF_toutEnUn/Morphalou3.1_LMF.xml"
+source_data_size_bytes = 482988503
+source_encoding = "utf-8"
+accepted_grammatical_categories = [
+  "adjective",
+  "adverb",
+  "commonNoun",
+  "conjunction",
+  "determiner",
+  "interjection",
+  "numeral",
+  "preposition",
+  "pronoun",
+  "verb",
+]
+proper_name_categories = ["properName", "properNoun"]
+abbreviation_subcategory = "abbreviation"
+locution_value = "oui"
+excluded_variant_only_origins = ["lefff"]
+normalization_profile = "fr-basic-latin-fold-v1"
+alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+min_word_length = 2
+max_word_length = 15

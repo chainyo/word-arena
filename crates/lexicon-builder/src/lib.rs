@@ -5,6 +5,8 @@
 
 mod english;
 mod error;
+mod french;
+mod french_policy;
 mod policy;
 mod scowl;
 mod util;
@@ -14,6 +16,11 @@ pub use english::{
     SourceClass, SourceFileReport, build_english_from_archive, build_english_from_final,
 };
 pub use error::BuilderError;
+pub use french::{
+    FrenchAuditRecord, FrenchBuildReport, FrenchBuildSummary, FrenchFormKind, FrenchRejectReason,
+    build_french_from_archive, build_french_from_xml,
+};
+pub use french_policy::FrenchPolicy;
 pub use policy::EnglishPolicy;
 pub use scowl::{PreparedScowl, prepare_scowl_archive};
 

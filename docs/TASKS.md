@@ -94,12 +94,12 @@ Verification:
 
 ### LEX-004: Build `word-arena-fr-v1`
 
-- [ ] Import standard single-token Morphalou 3.1 lemmas and inflected forms.
-- [ ] Exclude proper names, abbreviations, locutions, explicitly nonstandard
+- [x] Import standard single-token Morphalou 3.1 lemmas and inflected forms.
+- [x] Exclude proper names, abbreviations, locutions, explicitly nonstandard
   spellings, punctuation, digits, spaces, hyphens, and unsupported tokens.
-- [ ] Preserve the original accented source form for audit while producing the
+- [x] Preserve the original accented source form for audit while producing the
   deterministic board key defined by the French ruleset.
-- [ ] Specify and test accent and ligature behavior, including `É`, `Ç`, `Œ`,
+- [x] Specify and test accent and ligature behavior, including `É`, `Ç`, `Œ`,
   and normalization collisions.
 
 Verification:

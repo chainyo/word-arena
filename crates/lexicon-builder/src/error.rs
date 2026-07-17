@@ -7,7 +7,7 @@ use word_arena_lexicon::NormalizedKeyError;
 #[derive(Debug, Error)]
 pub enum BuilderError {
     /// A policy file cannot be read.
-    #[error("failed to read English build policy at {path}: {source}")]
+    #[error("failed to read lexicon build policy at {path}: {source}")]
     PolicyRead {
         /// Policy path.
         path: PathBuf,
@@ -17,7 +17,7 @@ pub enum BuilderError {
     },
 
     /// A policy file is not valid TOML or has an unknown field.
-    #[error("invalid English build policy at {path}: {source}")]
+    #[error("invalid lexicon build policy at {path}: {source}")]
     PolicySyntax {
         /// Policy path.
         path: PathBuf,
@@ -27,7 +27,7 @@ pub enum BuilderError {
     },
 
     /// A typed policy value violates the supported contract.
-    #[error("invalid English build policy field {field}: {value:?}; {reason}")]
+    #[error("invalid lexicon build policy field {field}: {value:?}; {reason}")]
     InvalidPolicy {
         /// Field name.
         field: &'static str,
@@ -61,6 +61,73 @@ pub enum BuilderError {
         expected: String,
         /// Observed digest.
         actual: String,
+    },
+
+    /// The pinned Morphalou source archive has the wrong byte length.
+    #[error(
+        "Morphalou archive size mismatch at {path}: expected {expected} bytes, found {actual} bytes"
+    )]
+    MorphalouArchiveSizeMismatch {
+        /// Archive path.
+        path: PathBuf,
+        /// Policy value.
+        expected: u64,
+        /// Observed size.
+        actual: u64,
+    },
+
+    /// The pinned Morphalou source archive has the wrong digest.
+    #[error(
+        "Morphalou archive checksum mismatch at {path}: expected SHA-256 {expected}, calculated {actual}"
+    )]
+    MorphalouArchiveChecksumMismatch {
+        /// Archive path.
+        path: PathBuf,
+        /// Policy digest.
+        expected: String,
+        /// Observed digest.
+        actual: String,
+    },
+
+    /// The pinned Morphalou ZIP cannot be opened or read.
+    #[error("failed to read Morphalou ZIP archive at {path}: {source}")]
+    MorphalouZip {
+        /// Archive path.
+        path: PathBuf,
+        /// ZIP-format failure.
+        #[source]
+        source: zip::result::ZipError,
+    },
+
+    /// The pinned XML member is absent from the Morphalou ZIP.
+    #[error("Morphalou ZIP at {archive} does not contain required XML member {expected:?}")]
+    MissingMorphalouData {
+        /// Archive path.
+        archive: PathBuf,
+        /// Exact required member path.
+        expected: String,
+    },
+
+    /// The uncompressed XML member does not have the pinned byte length.
+    #[error(
+        "Morphalou XML size mismatch for {member:?}: expected {expected} bytes, found {actual} bytes"
+    )]
+    MorphalouDataSizeMismatch {
+        /// ZIP member path.
+        member: String,
+        /// Policy value.
+        expected: u64,
+        /// Observed uncompressed size.
+        actual: u64,
+    },
+
+    /// The Morphalou LMF stream is malformed or violates the expected schema.
+    #[error("invalid Morphalou LMF XML near byte {position}: {message}")]
+    MorphalouXml {
+        /// Reader byte position.
+        position: u64,
+        /// Parser or schema diagnostic.
+        message: String,
     },
 
     /// Archive extraction did not produce the pinned root.
@@ -142,6 +209,13 @@ pub enum BuilderError {
     /// An internal accounting invariant failed before output publication.
     #[error("English build accounting invariant failed: {message}")]
     AccountingInvariant {
+        /// Invariant details.
+        message: String,
+    },
+
+    /// An internal French row-accounting invariant failed before publication.
+    #[error("French build accounting invariant failed: {message}")]
+    FrenchAccountingInvariant {
         /// Invariant details.
         message: String,
     },
