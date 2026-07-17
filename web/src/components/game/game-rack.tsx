@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card"
 
 type RackTile = {
+  id: string
   letter: string
   value: number
 }
@@ -39,11 +40,11 @@ export function GameRack({ tiles }: GameRackProps) {
           aria-label="Codex rack: A, I, N, R, S, T, blank"
           className="flex items-center justify-center gap-1.5 sm:gap-2"
         >
-          {tiles.map((tile, index) => (
+          {tiles.map((tile) => (
             <li
               aria-label={`${tile.letter === "?" ? "blank" : tile.letter}, ${tile.value} points`}
               className="relative grid size-[clamp(2.25rem,10vw,3rem)] shrink-0 place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_oklch(0_0_0/18%)] sm:text-xl"
-              key={`${tile.letter}-${index}`}
+              key={tile.id}
             >
               <span aria-hidden="true">{tile.letter}</span>
               <span

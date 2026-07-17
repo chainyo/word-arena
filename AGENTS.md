@@ -50,6 +50,7 @@ bun --cwd web install
 bun --cwd web run dev
 bun --cwd web run check
 bun --cwd web run format
+bun --cwd web run fix
 ```
 
 Add a shadcn component from `web/` with:
@@ -118,7 +119,7 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Keep server state in a typed API layer rather than duplicating it across
   components. Treat WebSocket events as invalidation/input to authoritative
   snapshots, not as an alternate source of truth.
-- Run formatter, ESLint, TypeScript, and the production build after UI changes.
+- Run Biome, TypeScript, and the production build after UI changes.
 
 ## MCP and agent conventions
 

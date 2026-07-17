@@ -121,6 +121,10 @@ const squares = Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, index) => ({
   column: index % BOARD_SIZE,
 }))
 
+const columnLabels = Array.from({ length: BOARD_SIZE }, (_, index) =>
+  String.fromCharCode(65 + index)
+)
+
 function squareName(row: number, column: number) {
   return `${String.fromCharCode(65 + column)}${row + 1}`
 }
@@ -129,8 +133,8 @@ export function GameBoard({ tiles }: GameBoardProps) {
   return (
     <div className="mx-auto w-full max-w-[720px]">
       <div className="mb-1.5 grid grid-cols-[repeat(15,minmax(0,1fr))] px-1.5 text-center font-mono text-[9px] text-muted-foreground sm:text-[10px]">
-        {Array.from({ length: BOARD_SIZE }, (_, index) => (
-          <span key={index}>{String.fromCharCode(65 + index)}</span>
+        {columnLabels.map((label) => (
+          <span key={label}>{label}</span>
         ))}
       </div>
       <ol

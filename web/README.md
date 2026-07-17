@@ -13,7 +13,11 @@ bun install
 bun run dev
 bun run check
 bun run format
+bun run fix
 ```
+
+Biome owns frontend formatting, linting, and import organization. Use `format`
+for formatting-only changes and `fix` to apply all safe Biome fixes.
 
 ## Adding components
 
