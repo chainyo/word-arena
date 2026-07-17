@@ -47,8 +47,8 @@ The first complete vertical slice is:
 - [x] Add CI, formatting, linting, test, and build commands.
 - [x] Add root project guidance, README, license, and this creation plan.
 
-Exit criterion: a clean clone can run the server, render the web foundation,
-and pass every command documented in `AGENTS.md`.
+Exit criterion: a clean clone can run the server, render the local game
+workspace foundation, and pass every command documented in `AGENTS.md`.
 
 ## Phase 1: deterministic engine and rulesets
 

@@ -1,8 +1,10 @@
 # Word Arena web
 
-The live game, replay, tournament, and statistics interface for Word Arena. It
-uses Vite, React, Tailwind CSS, and shadcn/ui with Base UI primitives. Bun is
-the only supported TypeScript package manager.
+The local game, replay, tournament, and statistics workspace for Word Arena. It
+opens directly into the game interface; this repository does not maintain a
+separate marketing landing page. The app uses Vite, React, Tailwind CSS, and
+shadcn/ui with Base UI primitives. Bun is the only supported TypeScript package
+manager.
 
 ## Commands
 
