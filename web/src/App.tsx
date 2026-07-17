@@ -1,6 +1,6 @@
 import { Clock3, Languages, Layers3, Moon, Radio, Sun } from "lucide-react"
 
-import { GameBoard, type BoardTile } from "@/components/game/game-board"
+import { type BoardTile, GameBoard } from "@/components/game/game-board"
 import { GameRack } from "@/components/game/game-rack"
 import { MoveHistory, type MoveRecord } from "@/components/game/move-history"
 import { PlayerCard } from "@/components/game/player-card"
@@ -29,13 +29,13 @@ const boardTiles: Record<string, BoardTile> = {
 }
 
 const rack = [
-  { letter: "A", value: 1 },
-  { letter: "I", value: 1 },
-  { letter: "N", value: 1 },
-  { letter: "R", value: 1 },
-  { letter: "S", value: 1 },
-  { letter: "T", value: 1 },
-  { letter: "?", value: 0 },
+  { id: "rack-a", letter: "A", value: 1 },
+  { id: "rack-i", letter: "I", value: 1 },
+  { id: "rack-n", letter: "N", value: 1 },
+  { id: "rack-r", letter: "R", value: 1 },
+  { id: "rack-s", letter: "S", value: 1 },
+  { id: "rack-t", letter: "T", value: 1 },
+  { id: "rack-blank", letter: "?", value: 0 },
 ]
 
 const moves: MoveRecord[] = [
