@@ -211,13 +211,13 @@ Verification:
 
 ### LEX-010: Finish documentation and quality gates
 
-- [ ] Update the README quick start to begin with `cargo xtask setup` and explain
+- [x] Update the README quick start to begin with `cargo xtask setup` and explain
   the first-install download and offline runtime behavior.
-- [ ] Document pack provenance, curation policy, dispute process, data location,
+- [x] Document pack provenance, curation policy, dispute process, data location,
   update/rollback commands, and removal behavior.
-- [ ] Add CI checks for source pins, checksums, manifests, overrides, licenses,
+- [x] Add CI checks for source pins, checksums, manifests, overrides, licenses,
   deterministic builds, offline lookup, and replay compatibility.
-- [ ] State prominently that the default packs are Word Arena lexicons and are
+- [x] State prominently that the default packs are Word Arena lexicons and are
   not official SCRABBLE tournament dictionaries.
 
 Verification:

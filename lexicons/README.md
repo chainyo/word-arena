@@ -29,7 +29,7 @@ protection contract.
 
 ## English source
 
-`word-arena-en-world-v1` will derive from SCOWLv1's `v1` branch at commit
+`word-arena-en-world-v1` derives from SCOWLv1's `v1` branch at commit
 `b22230cc5250887737fdefe9ca4c9d9d01230eaa`, committed on 2024-07-22. The
 selected source archive has SHA-256
 `65e4891913a252659efd9a464b923124940082b5bd4da4878d1e7fbf1b80bc50`.
@@ -44,12 +44,12 @@ and included verbatim, and modified Ispell-derived material must be marked.
 
 ## French source
 
-`word-arena-fr-v1` will derive from the canonical Morphalou 3.1 LMF all-in-one
+`word-arena-fr-v1` derives from the canonical Morphalou 3.1 LMF all-in-one
 archive published by ATILF through ORTOLANG. The selected archive has SHA-256
 `f49903f11eb73e3a8e42249415e9300cac1ea812b5d93443d6ef4aa53135ee59`.
 
 Morphalou is licensed under the Lesser General Public License for Linguistic
-Resources (LGPL-LR). The compiled French pack will be a modified linguistic
+Resources (LGPL-LR). The compiled French pack is a modified linguistic
 resource: it must remain under LGPL-LR at no charge, identify modifications and
 their dates, include the complete license and notices, and provide the
 corresponding machine-readable legible form and build materials beside the

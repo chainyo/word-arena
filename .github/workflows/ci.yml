@@ -27,6 +27,43 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace --all-features
 
+  lexicon-contract:
+    name: Offline lexicon and replay contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+      - name: Audit source pins, licenses, policies, curation, and release metadata
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo xtask lexicon audit
+      - name: Test checksums, manifests, indexes, and offline lookup
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo test -p word-arena-lexicon --all-features
+      - name: Test deterministic source filters and reviewed overrides
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo test -p word-arena-lexicon-builder --all-features
+      - name: Test exact-pack gameplay and replay compatibility
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo test -p word-arena-engine --all-features --test lexicon_games
+      - name: Test atomic setup and compliance failure modes
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: cargo test -p xtask --all-features --test local_setup
+      - name: Reject generated lexicon data in Git
+        run: |
+          test -z "$(git ls-files 'lexicons/*.tar' 'lexicons/*.tar.gz' 'lexicons/*.zip' 'lexicons/**/keys.txt' 'lexicons/**/audit.jsonl')"
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+
   web:
     name: Web
     runs-on: ubuntu-latest

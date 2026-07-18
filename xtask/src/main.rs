@@ -6,11 +6,11 @@ use std::{
 
 use word_arena_lexicon::WordArenaPaths;
 use xtask::{
-    ArtifactBuildSummary, InstallStatus, PackInstaller, PackRegistry, XtaskError,
+    ArtifactBuildSummary, InstallStatus, PackInstaller, PackRegistry, XtaskError, audit_repository,
     build_from_source, package_release, run_setup,
 };
 
-const USAGE: &str = "usage:\n  cargo xtask setup [--offline]\n  cargo xtask lexicon list\n  cargo xtask lexicon inspect <pack-id>\n  cargo xtask lexicon verify [<pack-id>]\n  cargo xtask lexicon install <pack-id> [--offline]\n  cargo xtask lexicon remove <pack-id>\n  cargo xtask lexicon build --from-source [<pack-id>] --output <directory> [--release-materials] [--allow-registry-mismatch]\n  cargo xtask lexicon release-package --input <directory> --output <directory>";
+const USAGE: &str = "usage:\n  cargo xtask setup [--offline]\n  cargo xtask lexicon audit\n  cargo xtask lexicon list\n  cargo xtask lexicon inspect <pack-id>\n  cargo xtask lexicon verify [<pack-id>]\n  cargo xtask lexicon install <pack-id> [--offline]\n  cargo xtask lexicon remove <pack-id>\n  cargo xtask lexicon build --from-source [<pack-id>] --output <directory> [--release-materials] [--allow-registry-mismatch]\n  cargo xtask lexicon release-package --input <directory> --output <directory>";
 
 fn main() -> ExitCode {
     match run() {
@@ -39,6 +39,12 @@ fn run() -> Result<(), XtaskError> {
             print_setup(run_setup(&installer, &workspace_root, true)?);
         }
         [group, command] if group == "lexicon" && command == "list" => list_packs(&installer),
+        [group, command] if group == "lexicon" && command == "audit" => {
+            let summary = audit_repository(&workspace_root, installer.registry())?;
+            println!("source_pins={}", summary.source_count);
+            println!("pack_records={}", summary.pack_count);
+            println!("release_tag={}", summary.release_tag);
+        }
         [group, command, pack_id] if group == "lexicon" && command == "inspect" => {
             inspect_pack(&installer, pack_id)?;
         }

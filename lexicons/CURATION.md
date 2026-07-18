@@ -50,6 +50,28 @@ these identifiers: `CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`, `ODC-BY-1.0`,
 permission to redistribute. Do not submit copied or derived entries from NWL,
 Collins, ODS, OSPD, scrabblewordfinder.org, screenshots, or proprietary lists.
 
+## Dispute process
+
+1. Open the repository's **Disputed playable word** issue form and select the
+   affected pack and action. Do not paste a proprietary list entry, comparison,
+   screenshot, or checker result.
+2. Provide an openly reusable linguistic source, stable HTTPS URL, license, and
+   an explanation of how the generated source policy produced the disputed
+   result.
+3. A maintainer reproduces the current generated result from the pinned source
+   and decides whether the source/filter policy or a narrow override is the
+   appropriate fix.
+4. A pull request adds the typed override or versioned policy change. A second
+   person reviews it; high-impact changes also require the matching governance
+   approval.
+5. CI validates the evidence fields, normalization, non-conflict/no-op rules,
+   checksums, and deterministic changelog. The change becomes playable only in
+   a new independently versioned immutable pack release.
+
+Closing an issue as unsupported does not assert that a word is linguistically
+right or wrong; it means the proposal did not meet the open, reproducible, and
+redistributable evidence contract for a Word Arena pack.
+
 ## High-impact changes
 
 The initial filter and normalization contracts are the reviewed V1 baseline.

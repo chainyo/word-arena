@@ -141,6 +141,48 @@ pub fn package_release(
     })
 }
 
+pub(crate) fn audit_release_config(
+    workspace_root: &Path,
+    registry: &PackRegistry,
+) -> Result<String, XtaskError> {
+    let release = load_toml::<ReleaseConfig>(&workspace_root.join("lexicons/release.toml"))?;
+    verify_release_config(&release)?;
+    for pack in &release.packs {
+        let record = registry.require(&pack.pack_id)?;
+        if record.pack_version != pack.pack_version {
+            return release_error(format!(
+                "release version for {} differs from the pack registry",
+                pack.pack_id
+            ));
+        }
+    }
+    for relative in [
+        "lexicons/RELEASE_NOTES.md",
+        "lexicons/RELEASING.md",
+        "lexicons/THIRD_PARTY_NOTICES.md",
+        "lexicons/CURATION.md",
+        "lexicons/ENGLISH_BUILD.md",
+        "lexicons/FRENCH_BUILD.md",
+        "lexicons/PACK_FORMAT.md",
+    ] {
+        let path = workspace_root.join(relative);
+        if !path.is_file()
+            || fs::metadata(&path)
+                .map_err(|source| XtaskError::Io {
+                    path: path.clone(),
+                    source,
+                })?
+                .len()
+                == 0
+        {
+            return release_error(format!(
+                "required release document {relative} is missing or empty"
+            ));
+        }
+    }
+    Ok(release.tag)
+}
+
 fn verify_and_copy_pack(
     pack: &ReleasePack,
     registry: &PackRegistry,

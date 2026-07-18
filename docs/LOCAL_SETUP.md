@@ -27,6 +27,7 @@ cargo xtask setup --offline
 
 # Inspect and manage the pinned immutable identities.
 cargo xtask lexicon list
+cargo xtask lexicon audit
 cargo xtask lexicon inspect word-arena-fr-v1
 cargo xtask lexicon verify
 cargo xtask lexicon verify word-arena-en-world-v1
@@ -79,6 +80,38 @@ Downloaded archives use content-addressed cache names. Upstream archives,
 compiled packs, caches, and build outputs are ignored by Git and must never be
 committed.
 
+## Updates and rollback
+
+Pack releases and application rulesets are immutable pins. Updating the
+repository may change the registry/ruleset to a newer pack version, but setup
+installs that identity beside existing versions rather than replacing bytes in
+place:
+
+```bash
+git pull --ff-only
+cargo xtask setup
+cargo xtask lexicon verify
+```
+
+Active games and replays continue to require the exact identity they recorded.
+Keep every referenced version installed or available from its immutable release.
+Never rename a different checksum into an old version directory.
+
+To roll the application and default ruleset back, check out the prior reviewed
+commit or release that contains the older registry, then run setup again. The
+old immutable pack is reused when still installed/cached or downloaded from its
+unchangeable release URL:
+
+```bash
+git switch --detach <prior-application-tag-or-commit>
+cargo xtask setup
+cargo xtask lexicon verify
+```
+
+Return to normal development with `git switch main`. Rollback does not mutate
+an in-use pack or replay. Do not remove an older identity until no active game
+or published replay references it and the release retention policy permits it.
+
 ## Reproducing artifacts from source
 
 Release maintainers can rebuild one or both artifacts directly from the pinned
@@ -116,5 +149,7 @@ Review and commit registry changes separately.
 - An offline-cache error identifies the exact missing cache path. Run setup once
   with network access.
 - An ambiguous installed-pack error means multiple immutable identities are
-  present. The server refuses to choose silently; retain the identity required
-  by the game and move the other version out of the active lexicon tree.
+  present for a caller that did not supply an exact pin. Game creation, resume,
+  replay, and production server startup load exact ruleset identities and never
+  choose a substitute. Inspect the installed versions and retain each identity
+  required by a game or replay.

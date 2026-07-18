@@ -45,6 +45,7 @@ Backend:
 ```bash
 cargo xtask setup
 cargo xtask setup --offline
+cargo xtask lexicon audit
 cargo xtask lexicon list
 cargo xtask lexicon verify
 cargo xtask lexicon inspect word-arena-en-world-v1
@@ -172,5 +173,7 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   web files change.
 - Public behavior and architecture changes are reflected in `README.md`, the
   project plan, or a focused document.
+- Lexicon supply-chain changes pass `cargo xtask lexicon audit` and the focused
+  offline commands in `docs/QUALITY_GATES.md`.
 - The diff contains no credentials, proprietary lexicons, generated build
   output, unrelated formatting, or accidental lockfiles.

@@ -14,6 +14,11 @@ versioned configuration.
 > Hasbro, Mattel, or the owners of the SCRABBLE trademark. Lexicon packs will be
 > distributed only when their licenses permit it.
 
+> [!IMPORTANT]
+> The default packs are **Word Arena lexicons**. They are not official SCRABBLE
+> tournament dictionaries and do not claim compatibility with NWL, Collins,
+> ODS, or another proprietary tournament list.
+
 ## Status
 
 The repository foundation is in place:
@@ -67,6 +72,7 @@ Run the full local verification suite:
 
 ```bash
 cargo fmt --all --check
+cargo xtask lexicon audit
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo build --workspace --all-features
@@ -95,6 +101,9 @@ reproducible publication contract is in
 [`lexicons/RELEASING.md`](lexicons/RELEASING.md).
 The current data release is
 [`lexicons-v1.0.0`](https://github.com/chainyo/word-arena/releases/tag/lexicons-v1.0.0).
+The curation/dispute process is documented in
+[`lexicons/CURATION.md`](lexicons/CURATION.md), and the explicit CI/local gate
+matrix is in [`docs/QUALITY_GATES.md`](docs/QUALITY_GATES.md).
 
 ## License
 
