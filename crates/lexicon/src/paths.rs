@@ -97,13 +97,11 @@ fn platform_paths() -> Result<WordArenaPaths, DataPathError> {
     let home = required_var("data", "HOME")?;
     let data = env::var_os("XDG_DATA_HOME")
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(&home).join(".local/share"))
+        .map_or_else(|| PathBuf::from(&home).join(".local/share"), PathBuf::from)
         .join("word-arena");
     let cache = env::var_os("XDG_CACHE_HOME")
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(home).join(".cache"))
+        .map_or_else(|| PathBuf::from(home).join(".cache"), PathBuf::from)
         .join("word-arena");
     Ok(WordArenaPaths { data, cache })
 }
