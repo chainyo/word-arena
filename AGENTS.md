@@ -47,6 +47,7 @@ cargo xtask setup
 cargo xtask setup --offline
 cargo xtask lexicon list
 cargo xtask lexicon verify
+cargo xtask lexicon inspect word-arena-en-world-v1
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
@@ -96,6 +97,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   version, locale, license, normalization, and checksum metadata.
 - Keep downloaded source archives, compiled pack artifacts, caches, and
   installed pack data outside Git. Use `cargo xtask` for pack lifecycle work.
+- Lexicon releases use independent `lexicons-v*` tags and immutable GitHub
+  releases. Follow `lexicons/RELEASING.md`; publish a draft with every source,
+  license, notice, legible, audit, checksum, and build asset before finalizing.
 
 ## Rust conventions
 

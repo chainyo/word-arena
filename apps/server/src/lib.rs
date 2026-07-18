@@ -105,6 +105,9 @@ struct LexiconHealth {
     pack_version: String,
     content_sha256: String,
     word_count: u64,
+    source_id: String,
+    source_revision: String,
+    license_id: String,
 }
 
 async fn health(State(lexicons): State<Arc<RuntimeLexicons>>) -> Json<HealthResponse> {
@@ -127,5 +130,8 @@ fn health_pack(lexicon: &LoadedLexicon) -> LexiconHealth {
         pack_version: identity.pack_version.clone(),
         content_sha256: identity.content_sha256.clone(),
         word_count: lexicon.word_count(),
+        source_id: lexicon.manifest().source.id.clone(),
+        source_revision: lexicon.manifest().source.revision.clone(),
+        license_id: lexicon.manifest().source.license_id.clone(),
     }
 }

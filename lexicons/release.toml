@@ -1,0 +1,22 @@
+schema_version = 1
+release_version = "1.0.0"
+tag = "lexicons-v1.0.0"
+immutable_releases_required = true
+
+[[packs]]
+pack_id = "word-arena-en-world-v1"
+pack_version = "1.0.0"
+source_id = "scowl-v1-2024-07-22"
+compiled_asset = "word-arena-en-world-v1-1.0.0.tar.gz"
+source_asset = "word-arena-en-world-v1-1.0.0-source.tar.gz"
+keys_asset = "word-arena-en-world-v1-1.0.0-keys.txt.gz"
+audit_asset = "word-arena-en-world-v1-1.0.0-audit.jsonl.gz"
+
+[[packs]]
+pack_id = "word-arena-fr-v1"
+pack_version = "1.0.0"
+source_id = "morphalou-3.1-lmf"
+compiled_asset = "word-arena-fr-v1-1.0.0.tar.gz"
+source_asset = "word-arena-fr-v1-1.0.0-source.zip"
+keys_asset = "word-arena-fr-v1-1.0.0-keys.txt.gz"
+audit_asset = "word-arena-fr-v1-1.0.0-audit.jsonl.gz"

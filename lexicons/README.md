@@ -22,6 +22,11 @@ documented in [`docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md). NWL, Collins,
 ODS, and results from online dictionary checkers are not inputs to either V1
 pack.
 
+Release packs are independently versioned immutable GitHub data releases. See
+[`RELEASING.md`](RELEASING.md) for the two-build byte comparison, compliant
+asset set, draft-first publication, checksum verification, and deletion
+protection contract.
+
 ## English source
 
 `word-arena-en-world-v1` will derive from SCOWLv1's `v1` branch at commit

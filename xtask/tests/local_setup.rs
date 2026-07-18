@@ -57,6 +57,15 @@ async fn clean_setup_is_idempotent_and_server_starts_offline() {
         .output()
         .expect("verify installed packs");
     assert!(verify.status.success(), "{}", stderr(&verify));
+    let inspect = context
+        .command()
+        .args(["lexicon", "inspect", "word-arena-fr-v1"])
+        .output()
+        .expect("inspect installed pack");
+    assert!(inspect.status.success(), "{}", stderr(&inspect));
+    let metadata = String::from_utf8(inspect.stdout).expect("inspect UTF-8");
+    assert!(metadata.contains("license_id=LicenseRef-LGPLLR"));
+    assert!(metadata.contains("third_party_notices="));
 
     let lexicons = Arc::new(
         RuntimeLexicons::load_exact(

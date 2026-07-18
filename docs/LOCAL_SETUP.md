@@ -27,6 +27,7 @@ cargo xtask setup --offline
 
 # Inspect and manage the pinned immutable identities.
 cargo xtask lexicon list
+cargo xtask lexicon inspect word-arena-fr-v1
 cargo xtask lexicon verify
 cargo xtask lexicon verify word-arena-en-world-v1
 cargo xtask lexicon install word-arena-fr-v1
@@ -88,6 +89,11 @@ cargo xtask lexicon build --from-source --output /absolute/output/directory
 cargo xtask lexicon build --from-source word-arena-en-world-v1 \
   --output /absolute/output/directory
 ```
+
+Add `--release-materials` to also retain the exact upstream source archive,
+deterministically compressed legible `keys.txt`, and row-level `audit.jsonl` for
+each selected pack. The complete publishing procedure is documented in
+[`lexicons/RELEASING.md`](../lexicons/RELEASING.md).
 
 The command downloads the exact source archives recorded in
 [`lexicons/sources.toml`](../lexicons/sources.toml), enforces their checksums and

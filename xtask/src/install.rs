@@ -112,6 +112,30 @@ impl PackInstaller {
         Self::verify_at(record, &path)
     }
 
+    /// Loads one exact installed pack after compliance and identity checks.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`XtaskError::NotInstalled`] when absent or another validation
+    /// error when bytes, identity, license, or required notices are invalid.
+    pub fn load_installed(
+        &self,
+        pack_id: &str,
+    ) -> Result<word_arena_lexicon::LoadedLexicon, XtaskError> {
+        let record = self.registry.require(pack_id)?;
+        let path = self.pack_path(record);
+        if !path.exists() {
+            return Err(XtaskError::NotInstalled {
+                pack_id: pack_id.to_owned(),
+                path,
+            });
+        }
+        verify_compliance_files(record, &path)?;
+        let loaded = load_lexicon(&path)?;
+        Self::verify_loaded_identity(record, &loaded)?;
+        Ok(loaded)
+    }
+
     /// Moves one exact installed identity to a recoverable local trash path.
     ///
     /// # Errors
@@ -163,6 +187,13 @@ impl PackInstaller {
     fn verify_at(record: &PackRecord, path: &Path) -> Result<(), XtaskError> {
         verify_compliance_files(record, path)?;
         let loaded = load_lexicon(path)?;
+        Self::verify_loaded_identity(record, &loaded)
+    }
+
+    fn verify_loaded_identity(
+        record: &PackRecord,
+        loaded: &word_arena_lexicon::LoadedLexicon,
+    ) -> Result<(), XtaskError> {
         let expected = record.identity();
         if loaded.identity() != &expected {
             return Err(XtaskError::ArtifactIdentityMismatch {

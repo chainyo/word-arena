@@ -90,6 +90,9 @@ from transport, persistence, UI, and model vendors. See
 [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for delivery phases and decisions.
 Local data paths, offline operation, pack management, recovery, and source
 rebuilds are documented in [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md).
+Lexicon release artifacts use independent immutable `lexicons-v*` tags; their
+reproducible publication contract is in
+[`lexicons/RELEASING.md`](lexicons/RELEASING.md).
 
 ## License
 

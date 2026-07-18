@@ -1,0 +1,89 @@
+name: Lexicon release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "lexicons-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lexicon-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Rebuild, compare, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify source-build tools
+        run: |
+          make --version
+          grep --version
+          find --version
+          curl --version
+      - name: Build release materials twice
+        run: |
+          cargo xtask lexicon build --from-source --release-materials --output "$RUNNER_TEMP/release-a"
+          cargo xtask lexicon build --from-source --release-materials --output "$RUNNER_TEMP/release-b"
+      - name: Require byte-identical rebuilds
+        run: |
+          find "$RUNNER_TEMP/release-a" -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/release-a.files"
+          find "$RUNNER_TEMP/release-b" -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/release-b.files"
+          diff -u "$RUNNER_TEMP/release-a.files" "$RUNNER_TEMP/release-b.files"
+          while IFS= read -r relative; do
+            cmp "$RUNNER_TEMP/release-a/$relative" "$RUNNER_TEMP/release-b/$relative"
+          done < "$RUNNER_TEMP/release-a.files"
+      - name: Assemble compliant release attachments
+        run: |
+          cargo xtask lexicon release-package \
+            --input "$RUNNER_TEMP/release-a" \
+            --output "$RUNNER_TEMP/release-assets"
+          (cd "$RUNNER_TEMP/release-assets" && sha256sum --check SHA256SUMS)
+      - name: Upload verified workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-arena-lexicon-release-${{ github.sha }}
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Require independent configured tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          configured_tag=$(sed -n 's/^tag = "\([^"]*\)"$/\1/p' lexicons/release.toml)
+          test "$RELEASE_TAG" = "$configured_tag"
+      - name: Publish immutable lexicon release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          release_version=${RELEASE_TAG#lexicons-v}
+          notes="$RUNNER_TEMP/release-assets/word-arena-lexicons-$release_version-release-notes.md"
+          if gh release view "$RELEASE_TAG" --json isDraft >/dev/null 2>&1; then
+            test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --draft \
+              --title "Word Arena lexicons v$release_version" \
+              --notes-file "$notes"
+          fi
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP"/release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" \
+            --title "Word Arena lexicons v$release_version" \
+            --notes-file "$notes" \
+            --draft=false
+          gh release verify "$RELEASE_TAG"

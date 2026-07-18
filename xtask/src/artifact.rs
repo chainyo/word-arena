@@ -52,6 +52,8 @@ pub struct ArtifactBuildSummary {
     pub archive_sha256: String,
     /// Fully enumerated runtime word count.
     pub word_count: u64,
+    /// Optional corresponding source/legible/audit release assets.
+    pub release_materials: Vec<PathBuf>,
 }
 
 pub(crate) fn assemble_artifact(
@@ -133,6 +135,7 @@ pub(crate) fn assemble_artifact(
         archive_size_bytes,
         archive_sha256: sha256_file(output_path)?,
         word_count: index.word_count,
+        release_materials: Vec::new(),
     })
 }
 
@@ -254,7 +257,10 @@ fn describe_payloads(root: &Path) -> Result<Vec<FileDescriptor>, XtaskError> {
         .collect()
 }
 
-fn create_deterministic_archive(root: &Path, output_path: &Path) -> Result<(), XtaskError> {
+pub(crate) fn create_deterministic_archive(
+    root: &Path,
+    output_path: &Path,
+) -> Result<(), XtaskError> {
     let parent = output_path
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
@@ -332,6 +338,113 @@ fn create_deterministic_archive(root: &Path, output_path: &Path) -> Result<(), X
             path: staging.path().to_path_buf(),
             source,
         })?;
+    staging.persist_noclobber(output_path).map_err(|error| {
+        if error.error.kind() == std::io::ErrorKind::AlreadyExists {
+            XtaskError::ArtifactOutputExists {
+                path: output_path.to_path_buf(),
+            }
+        } else {
+            XtaskError::Io {
+                path: output_path.to_path_buf(),
+                source: error.error,
+            }
+        }
+    })?;
+    Ok(())
+}
+
+pub(crate) fn create_deterministic_gzip(
+    input_path: &Path,
+    output_path: &Path,
+) -> Result<(), XtaskError> {
+    if output_path.exists() {
+        return Err(XtaskError::ArtifactOutputExists {
+            path: output_path.to_path_buf(),
+        });
+    }
+    let parent = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|source| XtaskError::Io {
+        path: parent.to_path_buf(),
+        source,
+    })?;
+    let input = File::open(input_path).map_err(|source| XtaskError::Io {
+        path: input_path.to_path_buf(),
+        source,
+    })?;
+    let mut reader = BufReader::new(input);
+    let mut staging = tempfile::Builder::new()
+        .prefix(".gzip-")
+        .tempfile_in(parent)
+        .map_err(|source| XtaskError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    {
+        let writer = BufWriter::new(staging.as_file_mut());
+        let mut encoder = GzBuilder::new()
+            .mtime(0)
+            .operating_system(255)
+            .write(writer, Compression::best());
+        std::io::copy(&mut reader, &mut encoder).map_err(|source| XtaskError::Io {
+            path: output_path.to_path_buf(),
+            source,
+        })?;
+        let mut writer = encoder.finish().map_err(|source| XtaskError::Io {
+            path: output_path.to_path_buf(),
+            source,
+        })?;
+        writer.flush().map_err(|source| XtaskError::Io {
+            path: output_path.to_path_buf(),
+            source,
+        })?;
+    }
+    staging.persist_noclobber(output_path).map_err(|error| {
+        if error.error.kind() == std::io::ErrorKind::AlreadyExists {
+            XtaskError::ArtifactOutputExists {
+                path: output_path.to_path_buf(),
+            }
+        } else {
+            XtaskError::Io {
+                path: output_path.to_path_buf(),
+                source: error.error,
+            }
+        }
+    })?;
+    Ok(())
+}
+
+pub(crate) fn copy_noclobber(source_path: &Path, output_path: &Path) -> Result<(), XtaskError> {
+    if output_path.exists() {
+        return Err(XtaskError::ArtifactOutputExists {
+            path: output_path.to_path_buf(),
+        });
+    }
+    let parent = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|source| XtaskError::Io {
+        path: parent.to_path_buf(),
+        source,
+    })?;
+    let mut input = File::open(source_path).map_err(|source| XtaskError::Io {
+        path: source_path.to_path_buf(),
+        source,
+    })?;
+    let mut staging = tempfile::Builder::new()
+        .prefix(".copy-")
+        .tempfile_in(parent)
+        .map_err(|source| XtaskError::Io {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    std::io::copy(&mut input, staging.as_file_mut()).map_err(|source| XtaskError::Io {
+        path: output_path.to_path_buf(),
+        source,
+    })?;
     staging.persist_noclobber(output_path).map_err(|error| {
         if error.error.kind() == std::io::ErrorKind::AlreadyExists {
             XtaskError::ArtifactOutputExists {

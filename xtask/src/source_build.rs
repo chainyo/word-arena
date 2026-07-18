@@ -3,13 +3,13 @@ use std::{fs, path::Path};
 use serde::Deserialize;
 use tempfile::TempDir;
 use word_arena_lexicon_builder::{
-    EnglishPolicy, FrenchPolicy, KEYS_FILE, apply_curation, build_english_from_archive,
+    AUDIT_FILE, EnglishPolicy, FrenchPolicy, KEYS_FILE, apply_curation, build_english_from_archive,
     build_french_from_archive,
 };
 
 use crate::{
     ArtifactBuildSummary, PackRecord, PackRegistry, XtaskError,
-    artifact::{AssemblySpec, assemble_artifact},
+    artifact::{AssemblySpec, assemble_artifact, copy_noclobber, create_deterministic_gzip},
     install::{download_with_curl, verify_tool},
 };
 
@@ -33,6 +33,7 @@ struct SourceRecord {
     archive_sha256: String,
     license_id: String,
     license_file: String,
+    archive_format: String,
 }
 
 /// Rebuilds one or all release packs from the pinned upstream archives.
@@ -52,6 +53,7 @@ pub fn build_from_source(
     selected_pack: Option<&str>,
     output_directory: &Path,
     allow_registry_mismatch: bool,
+    release_materials: bool,
 ) -> Result<Vec<ArtifactBuildSummary>, XtaskError> {
     verify_tool(
         "curl",
@@ -66,7 +68,13 @@ pub fn build_from_source(
 
     let mut summaries = Vec::with_capacity(records.len());
     for record in records {
-        let summary = build_one(workspace_root, &sources, record, output_directory)?;
+        let summary = build_one(
+            workspace_root,
+            &sources,
+            record,
+            output_directory,
+            release_materials,
+        )?;
         if !allow_registry_mismatch {
             verify_release_identity(record, &summary)?;
         }
@@ -110,6 +118,7 @@ fn build_one(
     sources: &SourceRegistry,
     record: &PackRecord,
     output_directory: &Path,
+    release_materials: bool,
 ) -> Result<ArtifactBuildSummary, XtaskError> {
     let workspace = TempDir::new().map_err(|source| XtaskError::Io {
         path: std::env::temp_dir(),
@@ -165,7 +174,7 @@ fn build_one(
         .join(&inputs.source.license_file);
     let output_path =
         output_directory.join(format!("{}-{}.tar.gz", record.pack_id, record.pack_version));
-    assemble_artifact(
+    let mut summary = assemble_artifact(
         &AssemblySpec {
             record,
             source_id: &inputs.source.id,
@@ -181,7 +190,45 @@ fn build_one(
             license_path: &license_path,
         },
         &output_path,
-    )
+    )?;
+    if release_materials {
+        summary.release_materials = publish_release_materials(
+            record,
+            inputs.source,
+            &source_archive,
+            &source_build,
+            &curated,
+            output_directory,
+        )?;
+    }
+    Ok(summary)
+}
+
+fn publish_release_materials(
+    record: &PackRecord,
+    source: &SourceRecord,
+    source_archive: &Path,
+    source_build: &Path,
+    curated: &Path,
+    output_directory: &Path,
+) -> Result<Vec<std::path::PathBuf>, XtaskError> {
+    let source_extension = match source.archive_format.as_str() {
+        "tar.gz" => "tar.gz",
+        "zip" => "zip",
+        other => {
+            return Err(XtaskError::BuildContract {
+                message: format!("unsupported release source archive format {other:?}"),
+            });
+        }
+    };
+    let stem = format!("{}-{}", record.pack_id, record.pack_version);
+    let source_output = output_directory.join(format!("{stem}-source.{source_extension}"));
+    let keys_output = output_directory.join(format!("{stem}-keys.txt.gz"));
+    let audit_output = output_directory.join(format!("{stem}-audit.jsonl.gz"));
+    copy_noclobber(source_archive, &source_output)?;
+    create_deterministic_gzip(&curated.join(KEYS_FILE), &keys_output)?;
+    create_deterministic_gzip(&source_build.join(AUDIT_FILE), &audit_output)?;
+    Ok(vec![source_output, keys_output, audit_output])
 }
 
 struct BuildInputs<'a> {
