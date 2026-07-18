@@ -86,4 +86,13 @@ jobs:
             --title "Word Arena lexicons v$release_version" \
             --notes-file "$notes" \
             --draft=false
-          gh release verify "$RELEASE_TAG"
+          verified=false
+          for attempt in {1..12}; do
+            if gh release verify "$RELEASE_TAG"; then
+              verified=true
+              break
+            fi
+            echo "release attestation is not available yet (attempt $attempt/12)"
+            sleep 10
+          done
+          test "$verified" = true

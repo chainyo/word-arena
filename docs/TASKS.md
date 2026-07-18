@@ -193,13 +193,13 @@ Verification:
 
 ### LEX-009: Publish compliant, reproducible pack releases
 
-- [ ] Build English and French artifacts in CI from pinned upstream archives.
-- [ ] Rebuild each pack twice and compare bytes before publishing.
-- [ ] Publish compiled packs, committed checksums, license/notices, curation
+- [x] Build English and French artifacts in CI from pinned upstream archives.
+- [x] Rebuild each pack twice and compare bytes before publishing.
+- [x] Publish compiled packs, committed checksums, license/notices, curation
   files, build instructions, and the corresponding legible/source form required
   by each license.
-- [ ] Keep pack releases versioned independently from application releases.
-- [ ] Prevent deleting a pack version referenced by a published replay without
+- [x] Keep pack releases versioned independently from application releases.
+- [x] Prevent deleting a pack version referenced by a published replay without
   an archival replacement.
 
 Verification:

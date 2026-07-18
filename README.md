@@ -93,6 +93,8 @@ rebuilds are documented in [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md).
 Lexicon release artifacts use independent immutable `lexicons-v*` tags; their
 reproducible publication contract is in
 [`lexicons/RELEASING.md`](lexicons/RELEASING.md).
+The current data release is
+[`lexicons-v1.0.0`](https://github.com/chainyo/word-arena/releases/tag/lexicons-v1.0.0).
 
 ## License
 
