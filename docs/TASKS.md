@@ -174,14 +174,14 @@ Verification:
 
 ### LEX-008: Integrate packs with rules, games, and replay
 
-- [ ] Bind every language ruleset to an allowed lexicon pack ID, format version,
+- [x] Bind every language ruleset to an allowed lexicon pack ID, format version,
   normalization version, and content checksum.
-- [ ] Inject the loaded exact-membership boundary into deterministic move
+- [x] Inject the loaded exact-membership boundary into deterministic move
   validation.
-- [ ] Validate every main and cross word before scoring or committing a move.
-- [ ] Record the pack identity in game creation, events, snapshots, results, and
+- [x] Validate every main and cross word before scoring or committing a move.
+- [x] Record the pack identity in game creation, events, snapshots, results, and
   replay bundles.
-- [ ] Refuse to create or resume a game if its exact pack is unavailable rather
+- [x] Refuse to create or resume a game if its exact pack is unavailable rather
   than silently selecting another version.
 
 Verification:

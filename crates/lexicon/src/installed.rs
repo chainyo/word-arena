@@ -1,6 +1,43 @@
 use std::{fs, path::PathBuf};
 
-use crate::{InstalledPackError, LoadedLexicon, WordArenaPaths, load_lexicon};
+use crate::{InstalledPackError, LoadedLexicon, PackIdentity, WordArenaPaths, load_lexicon};
+
+/// Loads one exact installed identity from its deterministic immutable path.
+///
+/// Multiple other versions may exist side by side; none is considered. This is
+/// the resume/replay boundary for consumers that already hold a complete pin.
+///
+/// # Errors
+///
+/// Returns [`InstalledPackError`] when the exact path is absent, fails complete
+/// pack/FST validation, or its verified manifest differs from `expected`.
+pub fn load_installed_lexicon_exact(
+    paths: &WordArenaPaths,
+    expected: &PackIdentity,
+) -> Result<LoadedLexicon, InstalledPackError> {
+    let pack_root = paths
+        .lexicons_dir()
+        .join(&expected.pack_id)
+        .join(&expected.pack_version)
+        .join(&expected.content_sha256);
+    if !pack_root.is_dir() {
+        return Err(InstalledPackError::NotInstalled {
+            pack_id: expected.pack_id.clone(),
+            path: pack_root,
+        });
+    }
+    let loaded = load_lexicon(&pack_root).map_err(|source| InstalledPackError::InvalidPack {
+        path: pack_root,
+        source: Box::new(source),
+    })?;
+    if loaded.identity() != expected {
+        return Err(InstalledPackError::ExactIdentityMismatch {
+            expected: Box::new(expected.clone()),
+            actual: Box::new(loaded.identity().clone()),
+        });
+    }
+    Ok(loaded)
+}
 
 /// Discovers and fully loads the sole locally installed identity for a pack ID.
 ///

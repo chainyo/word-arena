@@ -106,9 +106,9 @@ workspace foundation, and pass every command documented in `AGENTS.md`.
 - [ ] Add initial English, French, German, and Spanish tile/board fixtures.
 - [ ] Implement placement, connectivity, word construction, premiums, blanks,
   bingo bonuses, pass, exchange, resignation, and endgame scoring.
-- [ ] Define the deterministic exact-membership lexicon boundary and immutable
+- [x] Define the deterministic exact-membership lexicon boundary and immutable
   pack manifest model.
-- [ ] Add the reproducible English and French pack builders, reviewed curation
+- [x] Add the reproducible English and French pack builders, reviewed curation
   overrides, and compact runtime format.
 - [x] Add `cargo xtask setup` to install Bun dependencies and download, verify,
   and install missing English and French packs during first-time local setup.

@@ -40,6 +40,15 @@ pub enum InstalledPackError {
         identity: Box<PackIdentity>,
     },
 
+    /// An exact persisted/ruleset identity differs from the verified pack.
+    #[error("installed lexicon must be {expected}, but {actual} was loaded")]
+    ExactIdentityMismatch {
+        /// Required identity.
+        expected: Box<PackIdentity>,
+        /// Verified installed identity.
+        actual: Box<PackIdentity>,
+    },
+
     /// The installed tree contains an unsupported entry.
     #[error("invalid installed lexicon layout at {path}: {reason}")]
     InvalidLayout {

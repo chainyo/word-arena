@@ -20,7 +20,7 @@ pub use error::{
     CompatibilityError, DataPathError, InstalledPackError, NormalizedKeyError, PackError,
 };
 pub use index::{LoadedLexicon, load_lexicon};
-pub use installed::load_installed_lexicon;
+pub use installed::{load_installed_lexicon, load_installed_lexicon_exact};
 pub use key::{NormalizedKey, normalize_key};
 pub use manifest::{
     BuilderDescriptor, FileDescriptor, NormalizationDescriptor, PackIdentity, PackManifest,

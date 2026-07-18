@@ -5,13 +5,10 @@ use std::sync::Arc;
 use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tokio::net::TcpListener;
-use word_arena_engine::Language;
+use word_arena_engine::{Language, Ruleset, WordValidator};
 use word_arena_lexicon::{
-    InstalledPackError, LoadedLexicon, WordArenaPaths, load_installed_lexicon,
+    InstalledPackError, LoadedLexicon, PackIdentity, WordArenaPaths, load_installed_lexicon_exact,
 };
-
-const ENGLISH_PACK_ID: &str = "word-arena-en-world-v1";
-const FRENCH_PACK_ID: &str = "word-arena-fr-v1";
 
 /// Fully verified immutable indexes retained for the server lifetime.
 #[derive(Debug)]
@@ -25,12 +22,30 @@ impl RuntimeLexicons {
     ///
     /// # Errors
     ///
-    /// Returns [`InstalledPackError`] if either pack is absent, ambiguous,
-    /// malformed, or fails complete manifest/FST validation.
+    /// Returns [`InstalledPackError`] if either exact production identity is
+    /// absent, malformed, or fails complete manifest/FST validation.
     pub fn load(paths: &WordArenaPaths) -> Result<Self, InstalledPackError> {
+        Self::load_exact(
+            paths,
+            &Ruleset::english_v1().lexicon,
+            &Ruleset::french_v1().lexicon,
+        )
+    }
+
+    /// Loads two explicitly pinned identities, primarily for isolated tests.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InstalledPackError`] if either exact identity is absent or
+    /// fails complete manifest/FST validation.
+    pub fn load_exact(
+        paths: &WordArenaPaths,
+        english: &PackIdentity,
+        french: &PackIdentity,
+    ) -> Result<Self, InstalledPackError> {
         Ok(Self {
-            english: Arc::new(load_installed_lexicon(paths, ENGLISH_PACK_ID)?),
-            french: Arc::new(load_installed_lexicon(paths, FRENCH_PACK_ID)?),
+            english: Arc::new(load_installed_lexicon_exact(paths, english)?),
+            french: Arc::new(load_installed_lexicon_exact(paths, french)?),
         })
     }
 
@@ -44,6 +59,17 @@ impl RuntimeLexicons {
     #[must_use]
     pub fn french(&self) -> &Arc<LoadedLexicon> {
         &self.french
+    }
+
+    /// Returns the immutable query boundary for a curated offline language.
+    #[must_use]
+    pub fn validator(&self, language: Language) -> Option<Arc<dyn WordValidator>> {
+        let lexicon: Arc<LoadedLexicon> = match language {
+            Language::English => Arc::clone(&self.english),
+            Language::French => Arc::clone(&self.french),
+            Language::German | Language::Spanish => return None,
+        };
+        Some(lexicon)
     }
 }
 
@@ -68,7 +94,7 @@ struct HealthResponse {
     status: &'static str,
     service: &'static str,
     version: &'static str,
-    languages: [&'static str; 4],
+    languages: [&'static str; 2],
     lexicons: [LexiconHealth; 2],
 }
 
@@ -88,7 +114,7 @@ async fn health(State(lexicons): State<Arc<RuntimeLexicons>>) -> Json<HealthResp
         status: "ok",
         service: "word-arena-server",
         version: env!("CARGO_PKG_VERSION"),
-        languages: Language::ALL.map(Language::code),
+        languages: Language::OFFLINE_V1.map(Language::code),
         lexicons: [health_pack(english), health_pack(french)],
     })
 }

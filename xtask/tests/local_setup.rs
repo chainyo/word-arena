@@ -59,8 +59,12 @@ async fn clean_setup_is_idempotent_and_server_starts_offline() {
     assert!(verify.status.success(), "{}", stderr(&verify));
 
     let lexicons = Arc::new(
-        RuntimeLexicons::load(&WordArenaPaths::from_base(context.data.clone()))
-            .expect("server validates installed packs offline"),
+        RuntimeLexicons::load_exact(
+            &WordArenaPaths::from_base(context.data.clone()),
+            &registry.packs[0].identity(),
+            &registry.packs[1].identity(),
+        )
+        .expect("server validates installed packs offline"),
     );
     assert_eq!(lexicons.english().word_count(), 2);
     assert_eq!(lexicons.french().word_count(), 2);
@@ -249,8 +253,12 @@ fn concurrent_setup_publishes_one_valid_identity_per_pack() {
     assert!(first.status.success(), "{}", stderr(&first));
     assert!(second.status.success(), "{}", stderr(&second));
 
-    RuntimeLexicons::load(&WordArenaPaths::from_base(context.data.clone()))
-        .expect("concurrently installed packs validate");
+    RuntimeLexicons::load_exact(
+        &WordArenaPaths::from_base(context.data.clone()),
+        &registry.packs[0].identity(),
+        &registry.packs[1].identity(),
+    )
+    .expect("concurrently installed packs validate");
     for record in &registry.packs {
         let checksum_root = context
             .data

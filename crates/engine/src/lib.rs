@@ -1,43 +1,20 @@
 //! Deterministic game domain and rules engine for Word Arena.
 //!
-//! Transport, persistence, authentication, clocks, IDs, and random tile sources
-//! belong outside this crate.
+//! Transport, persistence, authentication, clocks, IDs, random tile sources,
+//! and pack installation belong outside this crate. The engine receives one
+//! already verified immutable lexicon through a query-only boundary.
 
-/// A language supported by the first Word Arena ruleset generation.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Language {
-    /// English.
-    English,
-    /// French.
-    French,
-    /// German.
-    German,
-    /// Spanish.
-    Spanish,
-}
+mod error;
+mod game;
+mod language;
+mod lexicon;
+mod ruleset;
 
-impl Language {
-    /// Every language planned for the first release.
-    pub const ALL: [Self; 4] = [Self::English, Self::French, Self::German, Self::Spanish];
-
-    /// Returns the stable BCP 47-compatible language code.
-    #[must_use]
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::English => "en",
-            Self::French => "fr",
-            Self::German => "de",
-            Self::Spanish => "es",
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Language;
-
-    #[test]
-    fn initial_language_codes_are_stable() {
-        assert_eq!(Language::ALL.map(Language::code), ["en", "fr", "de", "es"]);
-    }
-}
+pub use error::GameError;
+pub use game::{
+    BOARD_SIZE, BoardTile, Coordinate, FormedWord, Game, GameEvent, GameEventKind, GamePhase,
+    GameResult, GameSnapshot, Placement, Player, PublicGameState, ReplayBundle, Tile,
+};
+pub use language::Language;
+pub use lexicon::WordValidator;
+pub use ruleset::{RULESET_SCHEMA_VERSION, Ruleset, RulesetId};
