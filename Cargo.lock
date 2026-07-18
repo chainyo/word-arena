@@ -1011,6 +1011,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "word-arena-engine",
+ "word-arena-lexicon",
 ]
 
 [[package]]
@@ -1021,6 +1022,25 @@ checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
  "rustix",
+]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "fst",
+ "semver",
+ "serde",
+ "sha2",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "word-arena-lexicon",
+ "word-arena-lexicon-builder",
+ "word-arena-server",
 ]
 
 [[package]]

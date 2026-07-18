@@ -110,7 +110,7 @@ workspace foundation, and pass every command documented in `AGENTS.md`.
   pack manifest model.
 - [ ] Add the reproducible English and French pack builders, reviewed curation
   overrides, and compact runtime format.
-- [ ] Add `cargo xtask setup` to install Bun dependencies and download, verify,
+- [x] Add `cargo xtask setup` to install Bun dependencies and download, verify,
   and install missing English and French packs during first-time local setup.
 - [ ] Inject a fixed and versioned RNG algorithm; add seed commitment/reveal.
 - [ ] Add golden games, property tests, and small hand-authored validation

@@ -1,0 +1,29 @@
+schema_version = 1
+
+[[packs]]
+pack_id = "word-arena-en-world-v1"
+pack_version = "1.0.0"
+format_version = 1
+locale = "en"
+normalization_algorithm = "word-arena-board-key"
+normalization_version = 1
+normalization_profile = "en-basic-latin-v1"
+content_sha256 = "27faaa6b78de526d7e7681bf1af45ce952cb0400897190c79eab7c67b278a54b"
+artifact_url = "https://github.com/chainyo/word-arena/releases/download/lexicons-v1.0.0/word-arena-en-world-v1-1.0.0.tar.gz"
+artifact_size_bytes = 552452
+artifact_sha256 = "c3065fbf9850e58158c58c7c6a9cbd448d7656e1477027d1183df4e489bb0839"
+license_id = "LicenseRef-SCOWL-v1"
+
+[[packs]]
+pack_id = "word-arena-fr-v1"
+pack_version = "1.0.0"
+format_version = 1
+locale = "fr"
+normalization_algorithm = "word-arena-board-key"
+normalization_version = 1
+normalization_profile = "fr-basic-latin-fold-v1"
+content_sha256 = "c926a5f1ead63711d041277c9bfb3af23f3a460bb6edf57ff66408552c495193"
+artifact_url = "https://github.com/chainyo/word-arena/releases/download/lexicons-v1.0.0/word-arena-fr-v1-1.0.0.tar.gz"
+artifact_size_bytes = 583693
+artifact_sha256 = "e119c6e8c38af2c96f04b039de5a603b8cbf415e007f864f72db05bb0bed9e31"
+license_id = "LicenseRef-LGPLLR"

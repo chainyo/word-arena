@@ -7,21 +7,27 @@
 mod compatibility;
 mod error;
 mod index;
+mod installed;
 mod key;
 mod manifest;
 mod pack;
+mod paths;
 
 pub use compatibility::{
     CacheDecision, CompatibilityContext, ensure_exact_pack, plan_cache_install,
 };
-pub use error::{CompatibilityError, NormalizedKeyError, PackError};
+pub use error::{
+    CompatibilityError, DataPathError, InstalledPackError, NormalizedKeyError, PackError,
+};
 pub use index::{LoadedLexicon, load_lexicon};
+pub use installed::load_installed_lexicon;
 pub use key::{NormalizedKey, normalize_key};
 pub use manifest::{
     BuilderDescriptor, FileDescriptor, NormalizationDescriptor, PackIdentity, PackManifest,
     PolicyDescriptor, SourceDescriptor,
 };
 pub use pack::{ValidatedPack, calculate_content_sha256, validate_pack};
+pub use paths::WordArenaPaths;
 
 /// The only pack manifest format understood by this crate.
 pub const CURRENT_FORMAT_VERSION: u32 = 1;

@@ -15,6 +15,7 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 word-arena-engine = { path = "../../crates/engine" }
+word-arena-lexicon = { path = "../../crates/lexicon" }
 
 [lints]
 workspace = true

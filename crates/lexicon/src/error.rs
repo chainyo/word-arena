@@ -4,6 +4,91 @@ use thiserror::Error;
 
 use crate::{compatibility::CompatibilityContext, manifest::PackIdentity};
 
+/// Failures while discovering a locally installed immutable pack.
+#[derive(Debug, Error)]
+pub enum InstalledPackError {
+    /// No installed identity exists beneath the selected pack family.
+    #[error(
+        "lexicon pack {pack_id:?} is not installed beneath {path}; run `cargo xtask setup` while online"
+    )]
+    NotInstalled {
+        /// Required pack family.
+        pack_id: String,
+        /// Searched installation root.
+        path: PathBuf,
+    },
+
+    /// More than one immutable identity exists and none may be selected silently.
+    #[error(
+        "lexicon pack {pack_id:?} has multiple installed identities beneath {path}; select an exact identity before starting the game"
+    )]
+    Ambiguous {
+        /// Ambiguous pack family.
+        pack_id: String,
+        /// Pack-family installation root.
+        path: PathBuf,
+    },
+
+    /// Directory segments disagree with the verified internal identity.
+    #[error(
+        "installed lexicon path {path} does not match its verified manifest identity {identity}"
+    )]
+    IdentityPathMismatch {
+        /// Mismatched pack root.
+        path: PathBuf,
+        /// Verified internal identity.
+        identity: Box<PackIdentity>,
+    },
+
+    /// The installed tree contains an unsupported entry.
+    #[error("invalid installed lexicon layout at {path}: {reason}")]
+    InvalidLayout {
+        /// Invalid entry path.
+        path: PathBuf,
+        /// Required invariant.
+        reason: &'static str,
+    },
+
+    /// A directory traversal failed.
+    #[error("failed to inspect installed lexicons at {path}: {source}")]
+    Io {
+        /// Directory being inspected.
+        path: PathBuf,
+        /// Underlying I/O failure.
+        #[source]
+        source: io::Error,
+    },
+
+    /// A discovered pack failed complete integrity validation.
+    #[error("installed lexicon at {path} is invalid: {source}")]
+    InvalidPack {
+        /// Invalid immutable pack root.
+        path: PathBuf,
+        /// Pack validation failure.
+        #[source]
+        source: Box<PackError>,
+    },
+}
+
+/// Failures resolving platform-local Word Arena data and cache directories.
+#[derive(Clone, Debug, Error, Eq, PartialEq)]
+pub enum DataPathError {
+    /// A required platform environment variable is absent or empty.
+    #[error(
+        "cannot determine the Word Arena {kind} directory because {variable} is unset; set WORD_ARENA_DATA_DIR explicitly"
+    )]
+    MissingPlatformDirectory {
+        /// Human-readable directory purpose.
+        kind: &'static str,
+        /// Missing platform variable.
+        variable: &'static str,
+    },
+
+    /// The explicit override was present but empty.
+    #[error("WORD_ARENA_DATA_DIR cannot be empty")]
+    EmptyOverride,
+}
+
 /// Failures raised while parsing or validating an immutable lexicon pack.
 #[derive(Debug, Error)]
 pub enum PackError {

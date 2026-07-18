@@ -13,10 +13,14 @@ Reviewed additions, removals, two-person approvals, and their reproducible
 changelog contract are documented in [`CURATION.md`](CURATION.md). The typed V1
 inputs live under [`curation/`](curation/).
 
-No upstream word archive or generated word list is committed to Git. A later
-builder task will download the pinned archives, reject checksum mismatches, and
-produce separately licensed pack artifacts. NWL, Collins, ODS, and results from
-online dictionary checkers are not inputs to either V1 pack.
+No upstream word archive or generated word list is committed to Git. The
+workspace `cargo xtask` commands download pinned archives, reject checksum
+mismatches, build deterministic separately licensed artifacts, and install the
+released identities listed in [`registry.toml`](registry.toml). Local setup,
+data locations, pack lifecycle commands, recovery, and source rebuilds are
+documented in [`docs/LOCAL_SETUP.md`](../docs/LOCAL_SETUP.md). NWL, Collins,
+ODS, and results from online dictionary checkers are not inputs to either V1
+pack.
 
 ## English source
 

@@ -143,22 +143,22 @@ Verification:
 
 ### LEX-007: Download packs during first-time local setup
 
-- [ ] Add a workspace `xtask` crate and the canonical `cargo xtask setup`
+- [x] Add a workspace `xtask` crate and the canonical `cargo xtask setup`
   command.
-- [ ] Have setup verify required tools, run `bun install --cwd web`, then install
+- [x] Have setup verify required tools, run `bun install --cwd web`, then install
   the pinned English and French packs when they are not already present.
-- [ ] Read artifact URLs and SHA-256 values from a committed pack registry.
-- [ ] Download into a staging location, verify the complete archive, verify its
+- [x] Read artifact URLs and SHA-256 values from a committed pack registry.
+- [x] Download into a staging location, verify the complete archive, verify its
   internal manifest and license files, and atomically move it into the platform
   data directory.
-- [ ] Use an OS-appropriate data/cache directory with a documented
+- [x] Use an OS-appropriate data/cache directory with a documented
   `WORD_ARENA_DATA_DIR` override; do not commit downloaded archives or compiled
   packs.
-- [ ] Make setup idempotent and safe under interruption or concurrent execution.
-- [ ] Add `cargo xtask lexicon list`, `verify`, `install`, and `remove` commands,
+- [x] Make setup idempotent and safe under interruption or concurrent execution.
+- [x] Add `cargo xtask lexicon list`, `verify`, `install`, and `remove` commands,
   plus `setup --offline` for validating an existing installation without any
   network request.
-- [ ] Provide `cargo xtask lexicon build --from-source` to download the pinned
+- [x] Provide `cargo xtask lexicon build --from-source` to download the pinned
   upstream archives and reproduce the release artifacts and checksums.
 
 Verification:

@@ -34,6 +34,18 @@ Requirements:
 
 - Rust 1.95.0, installed automatically through `rust-toolchain.toml`
 - Bun 1.3.10
+- curl
+
+Install locked web dependencies and the pinned English and French Word Arena
+lexicon packs:
+
+```bash
+cargo xtask setup
+```
+
+The first setup downloads separately licensed, checksum-verified pack artifacts.
+Afterward, runtime word validation is fully offline. These default packs are
+Word Arena lexicons, not official SCRABBLE tournament dictionaries.
 
 Run the backend:
 
@@ -45,7 +57,6 @@ curl http://127.0.0.1:3000/health
 Run the web app in another terminal:
 
 ```bash
-bun install --cwd web
 bun run --cwd web dev
 ```
 
@@ -74,6 +85,8 @@ web/             React application built from shadcn/ui primitives
 The intended architecture keeps the game engine deterministic and independent
 from transport, persistence, UI, and model vendors. See
 [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) for delivery phases and decisions.
+Local data paths, offline operation, pack management, recovery, and source
+rebuilds are documented in [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md).
 
 ## License
 

@@ -4,6 +4,7 @@ members = [
   "crates/engine",
   "crates/lexicon",
   "crates/lexicon-builder",
+  "xtask",
 ]
 resolver = "3"
 
