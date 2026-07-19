@@ -33,6 +33,7 @@ language = "fr"
 version = "3.1"
 published_year = 2023
 persistent_id = "11403/morphalou/v3.1"
+revision_url = "https://hdl.handle.net/11403/morphalou/v3.1"
 homepage_url = "https://hdl.handle.net/11403/morphalou/v3.1"
 canonical_source_url = "https://repository.ortolang.fr/api/content/morphalou/v3.1"
 archive_url = "https://repository.ortolang.fr/api/content/morphalou/v3.1/Morphalou3.1_formatLMF_toutEnUn.zip"
@@ -57,4 +58,64 @@ redistribution_obligations = [
   "Give prominent notice that Morphalou is used and covered by LGPL-LR.",
   "Publish the complete corresponding machine-readable legible form and build materials beside the compiled pack, or satisfy another LGPL-LR section 4 mechanism.",
   "Keep the MIT application separable from the LGPL-LR resource and allow it to load an interface-compatible replacement pack.",
+]
+
+[[sources]]
+id = "wooorm-dictionary-de-3.0.0"
+name = "dictionary-de (igerman98 German Hunspell dictionary)"
+language = "de"
+version = "3.0.0"
+revision = "8cfea406b505e4d7df52d5a19bce525df98c54ab"
+revision_url = "https://github.com/wooorm/dictionaries/commit/8cfea406b505e4d7df52d5a19bce525df98c54ab"
+homepage_url = "https://www.j3e.de/ispell/igerman98/index_en.html"
+canonical_source_url = "https://github.com/wooorm/dictionaries/tree/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/de"
+archive_url = "https://codeload.github.com/wooorm/dictionaries/tar.gz/8cfea406b505e4d7df52d5a19bce525df98c54ab"
+archive_format = "tar.gz"
+archive_size_bytes = 54341879
+archive_sha256 = "1ce550ad1d03e03a11b16c81ee5edc31cf5792578dbe5926a403bf0ffba0a443"
+archive_root = "dictionaries-8cfea406b505e4d7df52d5a19bce525df98c54ab"
+archive_dictionary_path = "dictionaries/de/index.dic"
+archive_affix_path = "dictionaries/de/index.aff"
+license_id = "GPL-3.0-only"
+license_file = "licenses/IGERMAN98-NOTICE.txt"
+license_source_url = "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/de/license"
+license_sha256 = "03abf202c6e207d41f054083cafccbb174a30f6b330ea8dba3aeef0a279cb83e"
+license_terms_url = "https://www.gnu.org/licenses/gpl-3.0.html"
+attribution = "igerman98 German dictionaries, Copyright (C) 1999-2016 Björn Jacke."
+compatibility = "Word Arena elects GPL-3.0-only from the source's GPL-2.0-or-GPL-3.0 choice. The generated pack and corresponding source/build materials remain a separable GPL-3.0-only resource; MIT application code is not relicensed."
+redistribution_obligations = [
+  "Ship the exact igerman98 copyright and permission notice with every derived German pack.",
+  "License the modified German pack under GPL-3.0-only and include the complete GPL-3.0 terms.",
+  "Publish corresponding source and deterministic build materials for the distributed pack.",
+  "Identify Word Arena modifications and do not imply upstream endorsement or official tournament-list compatibility.",
+]
+
+[[sources]]
+id = "wooorm-dictionary-es-4.0.0"
+name = "dictionary-es (RLA-ES Spanish Hunspell dictionary)"
+language = "es"
+version = "4.0.0"
+revision = "8cfea406b505e4d7df52d5a19bce525df98c54ab"
+revision_url = "https://github.com/wooorm/dictionaries/commit/8cfea406b505e4d7df52d5a19bce525df98c54ab"
+homepage_url = "https://github.com/sbosio/rla-es"
+canonical_source_url = "https://github.com/wooorm/dictionaries/tree/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es"
+archive_url = "https://codeload.github.com/wooorm/dictionaries/tar.gz/8cfea406b505e4d7df52d5a19bce525df98c54ab"
+archive_format = "tar.gz"
+archive_size_bytes = 54341879
+archive_sha256 = "1ce550ad1d03e03a11b16c81ee5edc31cf5792578dbe5926a403bf0ffba0a443"
+archive_root = "dictionaries-8cfea406b505e4d7df52d5a19bce525df98c54ab"
+archive_dictionary_path = "dictionaries/es/index.dic"
+archive_affix_path = "dictionaries/es/index.aff"
+license_id = "GPL-3.0-or-later"
+license_file = "licenses/RLA-ES-2.8-NOTICE.txt"
+license_source_url = "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es/license"
+license_sha256 = "a21581497f07b5e550e438d26890ea2b1704492357de67740613bd589b1c652a"
+license_terms_url = "https://www.gnu.org/licenses/gpl-3.0.html"
+attribution = "RLA-ES Spanish dictionary, initially developed by Santiago Bosio with the contributors named in the exact source notice."
+compatibility = "Word Arena elects GPL-3.0-or-later from RLA-ES's disjunctive GPL-3.0-or-later/LGPL-3.0-or-later/MPL-1.1-or-later grant. The generated pack and corresponding source/build materials remain a separable GPL resource; MIT application code is not relicensed."
+redistribution_obligations = [
+  "Ship the exact RLA-ES 2.8 attribution and license notice with every derived Spanish pack.",
+  "License the modified Spanish pack under GPL-3.0-or-later and include the complete GPL-3.0 terms.",
+  "Publish corresponding source and deterministic build materials for the distributed pack.",
+  "Identify Word Arena modifications and do not imply upstream endorsement or official tournament-list compatibility.",
 ]

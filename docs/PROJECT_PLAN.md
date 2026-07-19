@@ -204,7 +204,7 @@ concurrency and publish its standings and replay bundle.
 
 ## Phase 7: additional multilingual lexicons and operational hardening
 
-- [ ] Select explicitly redistributable German and Spanish source lexicons and
+- [x] Select explicitly redistributable German and Spanish source lexicons and
   document their license obligations before importing data.
 - [ ] Build German and Spanish packs behind the same exact-membership contract,
   manifest schema, installer, and release process.

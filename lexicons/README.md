@@ -61,6 +61,14 @@ Use this citation for Morphalou:
 > ATILF (2023). *Morphalou*, version 3.1. ORTOLANG (Open Resources and
 > Tools for Language). <https://hdl.handle.net/11403/morphalou/v3.1>
 
+## German and Spanish candidates
+
+The approved, immutable source and license choices for the future German and
+Spanish packs are documented in
+[`MULTILINGUAL_SOURCE_REVIEW.md`](MULTILINGUAL_SOURCE_REVIEW.md). Their linguistic
+imports remain gated by the committed native-speaker review requirements; no
+German or Spanish word data is currently imported or released.
+
 ## Release compliance rule
 
 A lexicon pack must not be released until an automated check confirms that its

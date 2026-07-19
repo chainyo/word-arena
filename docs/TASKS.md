@@ -479,14 +479,14 @@ its public replay bundles reproduce every game using referenced immutable packs.
 
 ### OPS-001: Select German and Spanish lexicon sources
 
-- [ ] Research source candidates from primary license/provenance documents and
+- [x] Research source candidates from primary license/provenance documents and
   select only sources that explicitly permit required modification and
   redistribution of generated word data.
-- [ ] Record immutable revisions, archive checksums, retrieval URLs, SPDX or
+- [x] Record immutable revisions, archive checksums, retrieval URLs, SPDX or
   LicenseRef terms, exact notices, attribution, and compatibility analysis.
-- [ ] Define inclusion/exclusion and inflection policies with native-speaker
+- [x] Define inclusion/exclusion and inflection policies with native-speaker
   review requirements before importing any word data.
-- [ ] Add repository-audit tests that fail on missing/changed license, notice,
+- [x] Add repository-audit tests that fail on missing/changed license, notice,
   pin, policy, or reviewer evidence.
 
 Verification: a clean legal/provenance review proves each selected source may be

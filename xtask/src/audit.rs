@@ -28,6 +28,53 @@ struct SourceRecord {
     license_id: String,
     license_file: String,
     license_sha256: String,
+    revision_url: Option<String>,
+    canonical_source_url: Option<String>,
+    license_source_url: Option<String>,
+    attribution: Option<String>,
+    compatibility: Option<String>,
+    redistribution_obligations: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SelectionPolicy {
+    schema_version: u32,
+    id: String,
+    version: u32,
+    pack_id: String,
+    source_id: String,
+    normalization_profile: String,
+    alphabet: String,
+    min_word_length: usize,
+    max_word_length: usize,
+    review_file: String,
+    included_forms: Vec<String>,
+    excluded_forms: Vec<String>,
+    review_requirement: ReviewRequirement,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewRequirement {
+    status: String,
+    qualification: String,
+    scope: String,
+    evidence_required: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewRecord {
+    schema_version: u32,
+    language: String,
+    policy_id: String,
+    policy_version: u32,
+    status: String,
+    required_qualification: String,
+    gate: Option<String>,
+    reviewer: Option<String>,
+    reviewed_on: Option<String>,
+    decision: Option<String>,
+    rationale: Option<String>,
+    evidence_url: Option<String>,
 }
 
 /// Summary of the committed offline lexicon supply-chain audit.
@@ -82,6 +129,9 @@ pub fn audit_repository(
         &workspace_root.join("lexicons/curation/fr-v1"),
     )?;
 
+    validate_gated_selection(workspace_root, registry, &sources, "de", "de-v1.toml")?;
+    validate_gated_selection(workspace_root, registry, &sources, "es", "es-v1.toml")?;
+
     let release_tag = audit_release_config(workspace_root, registry)?;
     Ok(RepositoryAuditSummary {
         source_count: sources.sources.len(),
@@ -102,21 +152,43 @@ fn load_sources(path: &Path) -> Result<SourceRegistry, XtaskError> {
 }
 
 fn validate_sources(workspace_root: &Path, registry: &SourceRegistry) -> Result<(), XtaskError> {
-    if registry.schema_version != SOURCE_SCHEMA_VERSION || registry.sources.len() != 2 {
-        return audit_error("source registry must use schema 1 and contain exactly two sources");
+    if registry.schema_version != SOURCE_SCHEMA_VERSION || registry.sources.len() != 4 {
+        return audit_error("source registry must use schema 1 and contain exactly four sources");
     }
     let mut ids = BTreeSet::new();
     let mut languages = BTreeSet::new();
     for source in &registry.sources {
         if !ids.insert(source.id.as_str())
             || !languages.insert(source.language.as_str())
-            || !matches!(source.language.as_str(), "en" | "fr")
+            || !matches!(source.language.as_str(), "en" | "fr" | "de" | "es")
             || !source.archive_url.starts_with("https://")
             || source.archive_size_bytes == 0
             || !is_sha256(&source.archive_sha256)
             || !is_sha256(&source.license_sha256)
             || source.license_id.is_empty()
             || !portable_license_path(&source.license_file)
+            || !source
+                .revision_url
+                .as_deref()
+                .is_some_and(|value| value.starts_with("https://"))
+            || !source
+                .canonical_source_url
+                .as_deref()
+                .is_some_and(|value| value.starts_with("https://"))
+            || !source
+                .license_source_url
+                .as_deref()
+                .is_some_and(|value| value.starts_with("https://"))
+            || source
+                .attribution
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            || !source
+                .redistribution_obligations
+                .as_ref()
+                .is_some_and(|values| {
+                    !values.is_empty() && values.iter().all(|value| !value.trim().is_empty())
+                })
         {
             return audit_error(format!("invalid or duplicate source pin {}", source.id));
         }
@@ -128,11 +200,150 @@ fn validate_sources(workspace_root: &Path, registry: &SourceRegistry) -> Result<
                 source.id
             ));
         }
+        if matches!(source.language.as_str(), "de" | "es")
+            && source
+                .compatibility
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            return audit_error(format!(
+                "source {} is missing its license compatibility analysis",
+                source.id
+            ));
+        }
     }
-    if languages != BTreeSet::from(["en", "fr"]) {
-        return audit_error("source registry must contain one English and one French pin");
+    if languages != BTreeSet::from(["de", "en", "es", "fr"]) {
+        return audit_error("source registry must contain one pin for each initial language");
     }
     Ok(())
+}
+
+fn validate_gated_selection(
+    workspace_root: &Path,
+    pack_registry: &PackRegistry,
+    sources: &SourceRegistry,
+    language: &str,
+    policy_name: &str,
+) -> Result<(), XtaskError> {
+    let policy_path = workspace_root.join("lexicons/policies").join(policy_name);
+    let policy: SelectionPolicy = load_toml(&policy_path)?;
+    let source = require_source(sources, &policy.source_id)?;
+    let policy_valid = policy.schema_version == 1
+        && policy.version > 0
+        && policy.pack_id == format!("word-arena-{language}-v1")
+        && source.language == language
+        && policy.normalization_profile == format!("{language}-basic-latin-fold-v1")
+        && policy.alphabet == "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        && policy.min_word_length == 2
+        && policy.max_word_length == 15
+        && !policy.included_forms.is_empty()
+        && !policy.excluded_forms.is_empty()
+        && policy.review_requirement.status == "required-before-import"
+        && !policy.review_requirement.qualification.trim().is_empty()
+        && !policy.review_requirement.scope.trim().is_empty()
+        && policy.review_requirement.evidence_required
+            == [
+                "reviewer identity",
+                "review date",
+                "decision",
+                "rationale",
+                "source-policy linkage",
+            ];
+    if !policy_valid {
+        return audit_error(format!("invalid or incomplete {language} selection policy"));
+    }
+
+    let review_path = workspace_root.join("lexicons").join(&policy.review_file);
+    if !portable_review_path(&policy.review_file) {
+        return audit_error(format!("invalid {language} reviewer evidence path"));
+    }
+    let review: ReviewRecord = load_toml(&review_path)?;
+    if review.schema_version != 1
+        || review.language != language
+        || review.policy_id != policy.id
+        || review.policy_version != policy.version
+        || review.required_qualification != policy.review_requirement.qualification
+    {
+        return audit_error(format!(
+            "{language} reviewer evidence does not match its policy"
+        ));
+    }
+
+    match review.status.as_str() {
+        "pending" => {
+            let has_gate = review
+                .gate
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+            let has_approval = review.reviewer.is_some()
+                || review.reviewed_on.is_some()
+                || review.decision.is_some()
+                || review.rationale.is_some()
+                || review.evidence_url.is_some();
+            if !has_gate
+                || has_approval
+                || pack_registry
+                    .packs
+                    .iter()
+                    .any(|pack| pack.locale == language)
+            {
+                return audit_error(format!(
+                    "pending {language} review must gate every import and release"
+                ));
+            }
+        }
+        "approved" => {
+            let complete = review
+                .reviewer
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+                && review.reviewed_on.as_deref().is_some_and(valid_review_date)
+                && review.decision.as_deref() == Some("approved")
+                && review
+                    .rationale
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty())
+                && review
+                    .evidence_url
+                    .as_deref()
+                    .is_some_and(|value| value.starts_with("https://"));
+            if !complete {
+                return audit_error(format!(
+                    "approved {language} review lacks reviewer evidence"
+                ));
+            }
+        }
+        _ => return audit_error(format!("invalid {language} review status")),
+    }
+    Ok(())
+}
+
+fn load_toml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, XtaskError> {
+    let encoded = fs::read_to_string(path).map_err(|source| XtaskError::RegistryRead {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    toml::from_str(&encoded).map_err(|source| XtaskError::RegistrySyntax {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn portable_review_path(path: &str) -> bool {
+    path.starts_with("reviews/")
+        && path
+            .split('/')
+            .all(|component| !component.is_empty() && component != "." && component != "..")
+}
+
+fn valid_review_date(value: &str) -> bool {
+    value.len() == 10
+        && value.as_bytes()[4] == b'-'
+        && value.as_bytes()[7] == b'-'
+        && value
+            .bytes()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
 }
 
 #[allow(clippy::too_many_arguments)]

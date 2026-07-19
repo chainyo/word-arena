@@ -9,7 +9,7 @@ fn committed_repository_contract_is_self_consistent() {
     let registry = PackRegistry::load(&workspace.join("lexicons/registry.toml")).unwrap();
     let summary = audit_repository(&workspace, &registry).unwrap();
 
-    assert_eq!(summary.source_count, 2);
+    assert_eq!(summary.source_count, 4);
     assert_eq!(summary.pack_count, 2);
     assert_eq!(summary.release_tag, "lexicons-v1.0.0");
 }
@@ -21,6 +21,23 @@ fn changed_license_bytes_are_rejected() {
     let mut bytes = fs::read(&license).unwrap();
     bytes.extend_from_slice(b"tampered\n");
     fs::write(&license, bytes).unwrap();
+    let registry = PackRegistry::load(&fixture.path().join("lexicons/registry.toml")).unwrap();
+
+    assert!(matches!(
+        audit_repository(fixture.path(), &registry),
+        Err(XtaskError::BuildContract { message }) if message.contains("committed license")
+    ));
+}
+
+#[test]
+fn changed_multilingual_notice_bytes_are_rejected() {
+    let fixture = copied_lexicons();
+    let notice = fixture
+        .path()
+        .join("lexicons/licenses/IGERMAN98-NOTICE.txt");
+    let mut bytes = fs::read(&notice).unwrap();
+    bytes.extend_from_slice(b"tampered\n");
+    fs::write(&notice, bytes).unwrap();
     let registry = PackRegistry::load(&fixture.path().join("lexicons/registry.toml")).unwrap();
 
     assert!(matches!(
@@ -43,6 +60,50 @@ fn policy_and_source_pin_drift_is_rejected() {
     assert!(matches!(
         audit_repository(fixture.path(), &registry),
         Err(XtaskError::BuildContract { message }) if message.contains("contract drift")
+    ));
+}
+
+#[test]
+fn multilingual_policy_drift_is_rejected() {
+    let fixture = copied_lexicons();
+    let policy = fixture.path().join("lexicons/policies/es-v1.toml");
+    let encoded = fs::read_to_string(&policy)
+        .unwrap()
+        .replace("max_word_length = 15", "max_word_length = 16");
+    fs::write(policy, encoded).unwrap();
+    let registry = PackRegistry::load(&fixture.path().join("lexicons/registry.toml")).unwrap();
+
+    assert!(matches!(
+        audit_repository(fixture.path(), &registry),
+        Err(XtaskError::BuildContract { message }) if message.contains("selection policy")
+    ));
+}
+
+#[test]
+fn missing_reviewer_record_is_rejected() {
+    let fixture = copied_lexicons();
+    fs::remove_file(fixture.path().join("lexicons/reviews/de-v1.toml")).unwrap();
+    let registry = PackRegistry::load(&fixture.path().join("lexicons/registry.toml")).unwrap();
+
+    assert!(matches!(
+        audit_repository(fixture.path(), &registry),
+        Err(XtaskError::RegistryRead { .. })
+    ));
+}
+
+#[test]
+fn approval_without_reviewer_evidence_is_rejected() {
+    let fixture = copied_lexicons();
+    let review = fixture.path().join("lexicons/reviews/es-v1.toml");
+    let encoded = fs::read_to_string(&review)
+        .unwrap()
+        .replace("status = \"pending\"", "status = \"approved\"");
+    fs::write(review, encoded).unwrap();
+    let registry = PackRegistry::load(&fixture.path().join("lexicons/registry.toml")).unwrap();
+
+    assert!(matches!(
+        audit_repository(fixture.path(), &registry),
+        Err(XtaskError::BuildContract { message }) if message.contains("lacks reviewer evidence")
     ));
 }
 
