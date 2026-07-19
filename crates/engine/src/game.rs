@@ -9,8 +9,8 @@ use word_arena_lexicon::{CompatibilityContext, PackIdentity, normalize_key};
 use crate::random::return_tiles_to_bag;
 use crate::{
     Bag, Coordinate, GameError, GameSeed, PhysicalTile, Player, Premium, Rack, RngAlgorithm,
-    Ruleset, RulesetId, Score, Seat, SeedCommitment, TileFace, TileId, TileToken, WordValidator,
-    prepare_initial_deal, verify_tile_conservation,
+    Ruleset, RulesetId, RulesetIdentity, Score, Seat, SeedCommitment, TileFace, TileId, TileToken,
+    WordValidator, prepare_initial_deal, verify_tile_conservation,
 };
 
 /// Width and height of the V1 board.
@@ -19,6 +19,7 @@ const BOARD_SQUARES: usize = BOARD_SIZE as usize * BOARD_SIZE as usize;
 const CENTER: Coordinate = Coordinate { row: 7, column: 7 };
 const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
 const REPLAY_SCHEMA_VERSION: u32 = 3;
+const PROJECTION_SCHEMA_VERSION: u32 = 1;
 
 /// A tile assignment supplied by a player.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -160,8 +161,12 @@ pub struct PublicGameState {
     pub game_id: String,
     /// Immutable ruleset ID.
     pub ruleset_id: RulesetId,
+    /// Immutable full ruleset content identity.
+    pub ruleset: RulesetIdentity,
     /// Exact pack selected during creation.
     pub lexicon: PackIdentity,
+    /// Versioned random contract used by this game.
+    pub rng_algorithm: RngAlgorithm,
     /// Public seed commitment; the seed remains private during play.
     pub seed_commitment: SeedCommitment,
     /// Row-major 15x15 public board.
@@ -205,6 +210,10 @@ impl PublicGameState {
 pub struct GameSnapshot {
     /// Snapshot schema.
     pub schema_version: u32,
+    /// Full immutable ruleset content identity.
+    pub ruleset: RulesetIdentity,
+    /// Exact random algorithm used for setup and exchanges.
+    pub rng_algorithm: RngAlgorithm,
     /// Complete public state.
     pub state: PublicGameState,
     /// Exact private bag order.
@@ -213,6 +222,10 @@ pub struct GameSnapshot {
     pub racks: [Rack; 2],
     /// Private seed retained for resume and post-game replay reveal.
     pub seed: [u8; 32],
+    /// Complete public event history through this checkpoint.
+    pub events: Vec<GameEvent>,
+    /// Complete deterministic private event history through this checkpoint.
+    pub private_events: Vec<PrivateGameEvent>,
 }
 
 impl std::fmt::Debug for GameSnapshot {
@@ -220,10 +233,14 @@ impl std::fmt::Debug for GameSnapshot {
         formatter
             .debug_struct("GameSnapshot")
             .field("schema_version", &self.schema_version)
+            .field("ruleset", &self.ruleset)
+            .field("rng_algorithm", &self.rng_algorithm)
             .field("state", &self.state)
             .field("bag", &"[REDACTED]")
             .field("racks", &"[REDACTED]")
             .field("seed", &"[REDACTED]")
+            .field("public_event_count", &self.events.len())
+            .field("private_event_count", &self.private_events.len())
             .finish()
     }
 }
@@ -332,11 +349,23 @@ pub enum GameEventKind {
 }
 
 /// Ordered immutable public game event.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "scope", content = "seat", rename_all = "snake_case")]
+pub enum EventVisibility {
+    /// Safe for every game observer.
+    Public,
+    /// Visible only to the named seat or trusted human/operator roles.
+    SeatPrivate(Seat),
+}
+
+/// Ordered immutable public game event.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameEvent {
     /// Zero-based creation event, then state versions for mutations.
     pub sequence: u64,
+    /// Visibility fixed when the event is created.
+    pub visibility: EventVisibility,
     /// Exact lexicon active for this event.
     pub lexicon: PackIdentity,
     /// Event-specific data.
@@ -349,6 +378,8 @@ pub struct GameEvent {
 pub struct PrivateGameEvent {
     /// Matching public event sequence.
     pub sequence: u64,
+    /// Seat-private visibility fixed when the event is created.
+    pub visibility: EventVisibility,
     /// Only this seat may receive the projection during live play.
     pub seat: Seat,
     /// Exact owned physical tiles removed by the move.
@@ -365,16 +396,72 @@ pub struct PrivateGameEvent {
 pub struct ReplayBundle {
     /// Replay schema.
     pub schema_version: u32,
+    /// Full immutable ruleset content identity.
+    pub ruleset_identity: RulesetIdentity,
     /// Full versioned ruleset.
     pub ruleset: Ruleset,
     /// Exact pack required to replay.
     pub lexicon: PackIdentity,
+    /// Exact random algorithm bound by creation and seed commitment.
+    pub rng_algorithm: RngAlgorithm,
     /// Post-game seed reveal.
     pub seed_reveal: [u8; 32],
     /// Complete ordered public event stream.
     pub events: Vec<GameEvent>,
     /// Complete ordered seat-private placement transitions.
     pub private_events: Vec<PrivateGameEvent>,
+}
+
+/// Public role projection with no rack, seed, private draw, or bag-order data.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProjection {
+    /// Projection schema.
+    pub schema_version: u32,
+    /// Current public state.
+    pub state: PublicGameState,
+    /// Complete public event history.
+    pub events: Vec<GameEvent>,
+}
+
+/// One authenticated competitive seat's private projection.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeatProjection {
+    /// Projection schema.
+    pub schema_version: u32,
+    /// Seat this projection belongs to.
+    pub seat: Seat,
+    /// Shared public state and history.
+    pub public: PublicProjection,
+    /// Only the selected seat's current rack.
+    pub rack: Rack,
+    /// Only the selected seat's private transition history.
+    pub private_events: Vec<PrivateGameEvent>,
+}
+
+/// Human-only live spectator projection, deliberately distinct from a seat.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HumanSpectatorProjection {
+    /// Projection schema.
+    pub schema_version: u32,
+    /// Shared public state and history.
+    pub public: PublicProjection,
+    /// Both current racks in stable seat order.
+    pub racks: [Rack; 2],
+    /// Past private transitions for both seats, never the future bag.
+    pub private_events: Vec<PrivateGameEvent>,
+}
+
+/// Trusted operator projection with the complete authoritative checkpoint.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdministratorProjection {
+    /// Projection schema.
+    pub schema_version: u32,
+    /// Complete durable authoritative game data.
+    pub snapshot: GameSnapshot,
 }
 
 /// Active deterministic game and its immutable lookup instance.
@@ -434,7 +521,9 @@ impl Game {
         let state = PublicGameState {
             game_id: game_id.clone(),
             ruleset_id: ruleset.id,
+            ruleset: ruleset.identity(),
             lexicon: identity.clone(),
+            rng_algorithm: algorithm,
             seed_commitment: commitment.clone(),
             board: vec![None; BOARD_SQUARES],
             scores: [Score::ZERO, Score::ZERO],
@@ -448,6 +537,7 @@ impl Game {
         };
         let event = GameEvent {
             sequence: 0,
+            visibility: EventVisibility::Public,
             lexicon: identity,
             kind: GameEventKind::Created {
                 game_id,
@@ -489,7 +579,11 @@ impl Game {
             });
         }
         ruleset.validate()?;
-        if snapshot.state.ruleset_id != ruleset.id {
+        let ruleset_identity = ruleset.identity();
+        if snapshot.state.ruleset_id != ruleset.id
+            || snapshot.state.ruleset != ruleset_identity
+            || snapshot.ruleset != ruleset_identity
+        {
             return Err(GameError::RulesetMismatch {
                 expected: snapshot.state.ruleset_id,
                 actual: ruleset.id,
@@ -501,69 +595,36 @@ impl Game {
                 expected: BOARD_SQUARES,
             });
         }
-        let lexicon = lexicon.ok_or_else(|| GameError::MissingLexicon {
-            ruleset: ruleset.id,
-            required: Box::new(snapshot.state.lexicon.clone()),
-        })?;
-        ruleset.ensure_lexicon(CompatibilityContext::ActiveGame, lexicon.identity())?;
-        word_arena_lexicon::ensure_exact_pack(
-            CompatibilityContext::ActiveGame,
-            &snapshot.state.lexicon,
-            lexicon.identity(),
-        )?;
-        let seed = GameSeed::from_bytes(snapshot.seed);
-        if !snapshot.state.seed_commitment.verify(&seed) {
-            return Err(GameError::SeedCommitmentMismatch);
-        }
-        let board = physical_board(&snapshot.state, &ruleset)?;
-        verify_tile_conservation(&ruleset, &snapshot.bag, &snapshot.racks, &board)
-            .map_err(tile_state_error)?;
-        if snapshot
-            .racks
-            .iter()
-            .any(|rack| rack.len() > usize::from(ruleset.game.rack_capacity))
+        if snapshot.rng_algorithm != snapshot.state.rng_algorithm
+            || snapshot.rng_algorithm != snapshot.state.seed_commitment.algorithm
         {
             return Err(GameError::InvalidTileState {
-                reason: "persisted rack exceeds configured capacity".to_owned(),
+                reason: "snapshot RNG identities differ".to_owned(),
             });
         }
-        if snapshot.state.rack_counts != rack_counts(&snapshot.racks)?
-            || snapshot.state.bag_count != count_u16(snapshot.bag.len())?
-        {
-            return Err(GameError::InvalidTileState {
-                reason: "public ownership counts differ from authoritative locations".to_owned(),
-            });
-        }
-        match (snapshot.state.phase, &snapshot.state.result) {
-            (GamePhase::Active, None) => {}
-            (GamePhase::Finished, Some(result))
-                if result.game_id == snapshot.state.game_id
-                    && result.ruleset_id == snapshot.state.ruleset_id
-                    && result.lexicon == snapshot.state.lexicon
-                    && result.scores == snapshot.state.scores
-                    && result.final_version == snapshot.state.version
-                    && terminal_result_is_consistent(
-                        result,
-                        &snapshot.state,
-                        &snapshot.racks,
-                        ruleset.game.scoreless_turn_limit,
-                    ) => {}
-            _ => {
-                return Err(GameError::InvalidTileState {
-                    reason: "completion data differs from authoritative public state".to_owned(),
-                });
-            }
-        }
-        Ok(Self {
+        let bundle = ReplayBundle {
+            schema_version: REPLAY_SCHEMA_VERSION,
+            ruleset_identity,
             ruleset,
-            lexicon,
-            seed,
-            bag: snapshot.bag,
-            racks: snapshot.racks,
-            state: snapshot.state,
-            events: Vec::new(),
-            private_events: Vec::new(),
-        })
+            lexicon: snapshot.state.lexicon.clone(),
+            rng_algorithm: snapshot.rng_algorithm,
+            seed_reveal: snapshot.seed,
+            events: snapshot.events.clone(),
+            private_events: snapshot.private_events.clone(),
+        };
+        let replayed = Self::replay(&bundle, lexicon)?;
+        if replayed.state != snapshot.state
+            || replayed.bag != snapshot.bag
+            || replayed.racks != snapshot.racks
+            || replayed.events != snapshot.events
+            || replayed.private_events != snapshot.private_events
+        {
+            return Err(GameError::InvalidTileState {
+                reason: "snapshot state differs from deterministic event replay".to_owned(),
+            });
+        }
+        drop(snapshot);
+        Ok(replayed)
     }
 
     /// Validates and commits one complete placement/refill transaction.
@@ -649,6 +710,7 @@ impl Game {
 
         let event = GameEvent {
             sequence: updated_version,
+            visibility: EventVisibility::Public,
             lexicon: next_state.lexicon.clone(),
             kind: GameEventKind::MovePlayed {
                 player,
@@ -667,6 +729,7 @@ impl Game {
         };
         let private_event = PrivateGameEvent {
             sequence: updated_version,
+            visibility: EventVisibility::SeatPrivate(player),
             seat: player,
             removed: prepared.played,
             drawn,
@@ -732,6 +795,7 @@ impl Game {
         };
         let event = GameEvent {
             sequence: updated_version,
+            visibility: EventVisibility::Public,
             lexicon: next_state.lexicon.clone(),
             kind: GameEventKind::Passed {
                 player,
@@ -827,6 +891,7 @@ impl Game {
         };
         let event = GameEvent {
             sequence: updated_version,
+            visibility: EventVisibility::Public,
             lexicon: next_state.lexicon.clone(),
             kind: GameEventKind::Exchanged {
                 player,
@@ -840,6 +905,7 @@ impl Game {
         };
         let private_event = PrivateGameEvent {
             sequence: updated_version,
+            visibility: EventVisibility::SeatPrivate(player),
             seat: player,
             removed: returned,
             drawn,
@@ -878,6 +944,7 @@ impl Game {
         )?;
         let event = GameEvent {
             sequence: updated_version,
+            visibility: EventVisibility::Public,
             lexicon: next_state.lexicon.clone(),
             kind: GameEventKind::Resigned {
                 player,
@@ -907,6 +974,11 @@ impl Game {
             });
         }
         bundle.ruleset.validate()?;
+        if bundle.ruleset_identity != bundle.ruleset.identity() {
+            return Err(GameError::InvalidTileState {
+                reason: "replay ruleset identity differs from embedded ruleset".to_owned(),
+            });
+        }
         let lexicon = lexicon.ok_or_else(|| GameError::MissingLexicon {
             ruleset: bundle.ruleset.id,
             required: Box::new(bundle.lexicon.clone()),
@@ -928,6 +1000,7 @@ impl Game {
         let GameEventKind::Created {
             game_id,
             ruleset,
+            rng_algorithm,
             seed_commitment,
             ..
         } = &created.kind
@@ -937,7 +1010,11 @@ impl Game {
                 reason: "first event must create the game",
             });
         };
-        if created.sequence != 0 || ruleset != &bundle.ruleset || created.lexicon != bundle.lexicon
+        if created.sequence != 0
+            || ruleset != &bundle.ruleset
+            || created.lexicon != bundle.lexicon
+            || *rng_algorithm != bundle.rng_algorithm
+            || seed_commitment.algorithm != bundle.rng_algorithm
         {
             return Err(GameError::ReplayEventMismatch {
                 sequence: created.sequence,
@@ -1049,15 +1126,61 @@ impl Game {
             .filter(move |event| event.seat == seat)
     }
 
+    /// Builds the role-neutral public projection.
+    #[must_use]
+    pub fn public_projection(&self) -> PublicProjection {
+        PublicProjection {
+            schema_version: PROJECTION_SCHEMA_VERSION,
+            state: self.state.clone(),
+            events: self.events.clone(),
+        }
+    }
+
+    /// Builds one competitive seat projection without the opponent rack.
+    #[must_use]
+    pub fn seat_projection(&self, seat: Seat) -> SeatProjection {
+        SeatProjection {
+            schema_version: PROJECTION_SCHEMA_VERSION,
+            seat,
+            public: self.public_projection(),
+            rack: self.racks[seat.index()].clone(),
+            private_events: self.private_events(seat).cloned().collect(),
+        }
+    }
+
+    /// Builds the explicitly human-only full-rack spectator projection.
+    #[must_use]
+    pub fn human_spectator_projection(&self) -> HumanSpectatorProjection {
+        HumanSpectatorProjection {
+            schema_version: PROJECTION_SCHEMA_VERSION,
+            public: self.public_projection(),
+            racks: self.racks.clone(),
+            private_events: self.private_events.clone(),
+        }
+    }
+
+    /// Builds the trusted operator projection with authoritative private data.
+    #[must_use]
+    pub fn administrator_projection(&self) -> AdministratorProjection {
+        AdministratorProjection {
+            schema_version: PROJECTION_SCHEMA_VERSION,
+            snapshot: self.snapshot(),
+        }
+    }
+
     /// Creates an authoritative checkpoint containing private state.
     #[must_use]
     pub fn snapshot(&self) -> GameSnapshot {
         GameSnapshot {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
+            ruleset: self.ruleset.identity(),
+            rng_algorithm: self.state.rng_algorithm,
             state: self.state.clone(),
             bag: self.bag.clone(),
             racks: self.racks.clone(),
             seed: *self.seed.as_bytes(),
+            events: self.events.clone(),
+            private_events: self.private_events.clone(),
         }
     }
 
@@ -1071,8 +1194,10 @@ impl Game {
             ))
         .then(|| ReplayBundle {
             schema_version: REPLAY_SCHEMA_VERSION,
+            ruleset_identity: self.ruleset.identity(),
             ruleset: self.ruleset.clone(),
             lexicon: self.state.lexicon.clone(),
+            rng_algorithm: self.state.rng_algorithm,
             seed_reveal: *self.seed.as_bytes(),
             events: self.events.clone(),
             private_events: self.private_events.clone(),
@@ -1630,32 +1755,6 @@ fn next_scoreless(current: u8, score: u32) -> Result<u8, GameError> {
     } else {
         Ok(0)
     }
-}
-
-fn terminal_result_is_consistent(
-    result: &GameResult,
-    state: &PublicGameState,
-    racks: &[Rack; 2],
-    scoreless_limit: u8,
-) -> bool {
-    let expected_winner = match result.reason {
-        TerminalReason::Resignation { resigned } => Some(resigned.opponent()),
-        TerminalReason::ScorelessTurns | TerminalReason::RackEmptied { .. } => {
-            match result.scores[0].cmp(&result.scores[1]) {
-                std::cmp::Ordering::Greater => Some(Seat::One),
-                std::cmp::Ordering::Less => Some(Seat::Two),
-                std::cmp::Ordering::Equal => None,
-            }
-        }
-    };
-    let reason_is_possible = match result.reason {
-        TerminalReason::Resignation { .. } => true,
-        TerminalReason::ScorelessTurns => state.scoreless_turns >= scoreless_limit,
-        TerminalReason::RackEmptied { outgoing } => {
-            state.bag_count == 0 && racks[outgoing.index()].is_empty()
-        }
-    };
-    result.winner == expected_winner && reason_is_possible
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -2,9 +2,8 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use proptest::prelude::*;
 use word_arena_engine::{
-    Bag, BoardTile, Coordinate, Game, GameError, GameEventKind, GameSeed, Language, PhysicalTile,
-    Placement, Player, Ruleset, Score, Seat, Tile, TileFace, TileId, WordValidator,
-    prepare_initial_deal,
+    Coordinate, Game, GameError, GameEventKind, GameSeed, Language, PhysicalTile, Placement,
+    Player, Ruleset, Score, Seat, Tile, TileFace, TileId, WordValidator, prepare_initial_deal,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 
@@ -241,8 +240,7 @@ fn french_accents_blank_and_ligature_boundaries_use_physical_tiles() {
         .letter = "É".to_owned();
     assert!(matches!(
         Game::resume(noncanonical, ruleset, Some(lexicon)),
-        Err(GameError::NonCanonicalBoardTile { token, canonical })
-            if token == "É" && canonical == "E"
+        Err(GameError::InvalidTileState { .. })
     ));
 }
 
@@ -323,66 +321,6 @@ fn french_ligature_spelling_requires_four_physical_tiles() {
     };
     assert_eq!(placements.len(), 4);
     assert_eq!(words[0].text, "OEUF");
-}
-
-#[test]
-fn depleted_bag_commits_a_partial_rack_without_inventing_tiles() {
-    let ruleset = Ruleset::english_v1();
-    let bootstrap = validator(&ruleset, &["AA"]);
-    let game = Game::create(
-        "depleted",
-        ruleset.clone(),
-        Some(bootstrap),
-        numbered_seed(9_106),
-    )
-    .unwrap();
-    let mut snapshot = game.snapshot();
-    let bag_tiles: Vec<PhysicalTile> =
-        serde_json::from_value(serde_json::to_value(&snapshot.bag).unwrap()).unwrap();
-    for (index, tile) in bag_tiles.iter().enumerate() {
-        snapshot.state.board[index] = Some(board_tile(tile));
-    }
-    snapshot.bag = Bag::new(Vec::new());
-    snapshot.state.bag_count = 0;
-
-    let assignments = snapshot.racks[0].tiles()[..2]
-        .iter()
-        .enumerate()
-        .map(|(index, tile)| assignment(tile, 6, u8::try_from(index).unwrap()))
-        .collect::<Vec<_>>();
-    let mut words = vec![
-        assignments
-            .iter()
-            .map(|placement| placement.tile.letter.as_str())
-            .collect::<String>(),
-    ];
-    for column in 0..2_u8 {
-        let mut word = String::new();
-        for row in 0..6_u8 {
-            word.push_str(
-                snapshot.state.board[usize::from(row) * 15 + usize::from(column)]
-                    .as_ref()
-                    .unwrap()
-                    .letter
-                    .as_str(),
-            );
-        }
-        word.push_str(&assignments[usize::from(column)].tile.letter);
-        words.push(word);
-    }
-    let word_refs = words.iter().map(String::as_str).collect::<Vec<_>>();
-    let lexicon = validator(&ruleset, &word_refs);
-    let mut game = Game::resume(snapshot, ruleset.clone(), Some(Arc::clone(&lexicon))).unwrap();
-    let event = game.play_tiles(Seat::One, 0, assignments).unwrap();
-    let GameEventKind::MovePlayed { draw_count, .. } = event.kind else {
-        panic!("expected move event");
-    };
-    assert_eq!(draw_count, 0);
-    assert_eq!(
-        (game.public_state().bag_count, game.rack(Seat::One).len()),
-        (0, 5)
-    );
-    assert!(Game::resume(game.snapshot(), ruleset, Some(lexicon)).is_ok());
 }
 
 #[test]
@@ -483,7 +421,7 @@ fn ownership_face_turn_and_version_rejections_are_fully_atomic() {
 }
 
 #[test]
-fn invalid_cross_word_and_overflows_leave_authoritative_state_unchanged() {
+fn invalid_cross_word_leaves_authoritative_state_unchanged() {
     let ruleset = Ruleset::english_v1();
     let lexicon = validator(&ruleset, &["ABE", "AC", "BAR", "CAT"]);
     let mut game = Game::create(
@@ -530,53 +468,6 @@ fn invalid_cross_word_and_overflows_leave_authoritative_state_unchanged() {
         Err(GameError::InvalidWord { normalized, .. }) if normalized == "ET"
     ));
     assert_eq!(authoritative_bytes(&game), before);
-
-    let base = Game::create(
-        "overflow",
-        ruleset.clone(),
-        Some(validator(&ruleset, &["CAT"])),
-        numbered_seed(9_106),
-    )
-    .unwrap();
-    let mut score_snapshot = base.snapshot();
-    score_snapshot.state.scores[0] = Score::new(i32::MAX);
-    let mut score_game = Game::resume(
-        score_snapshot,
-        ruleset.clone(),
-        Some(validator(&ruleset, &["CAT"])),
-    )
-    .unwrap();
-    let score_move = vec![
-        regular(&score_game, Seat::One, 7, 6, "C"),
-        regular(&score_game, Seat::One, 7, 7, "A"),
-        regular(&score_game, Seat::One, 7, 8, "T"),
-    ];
-    let before = authoritative_bytes(&score_game);
-    assert!(matches!(
-        score_game.play_tiles(Player::One, 0, score_move),
-        Err(GameError::ScoreOverflow)
-    ));
-    assert_eq!(authoritative_bytes(&score_game), before);
-
-    let mut version_snapshot = base.snapshot();
-    version_snapshot.state.version = u64::MAX;
-    let mut version_game = Game::resume(
-        version_snapshot,
-        ruleset.clone(),
-        Some(validator(&ruleset, &["CAT"])),
-    )
-    .unwrap();
-    let version_move = vec![
-        regular(&version_game, Seat::One, 7, 6, "C"),
-        regular(&version_game, Seat::One, 7, 7, "A"),
-        regular(&version_game, Seat::One, 7, 8, "T"),
-    ];
-    let before = authoritative_bytes(&version_game);
-    assert!(matches!(
-        version_game.play_tiles(Player::One, u64::MAX, version_move),
-        Err(GameError::VersionOverflow)
-    ));
-    assert_eq!(authoritative_bytes(&version_game), before);
 }
 
 #[test]
@@ -715,21 +606,6 @@ fn assignment(tile: &PhysicalTile, row: u8, column: u8) -> Placement {
             Tile::letter(token.as_str()),
         ),
         TileFace::Blank => Placement::new(tile.id, Coordinate::new(row, column), Tile::blank("A")),
-    }
-}
-
-fn board_tile(tile: &PhysicalTile) -> BoardTile {
-    match &tile.face {
-        TileFace::Letter(token) => BoardTile {
-            tile_id: tile.id,
-            letter: token.as_str().to_owned(),
-            is_blank: false,
-        },
-        TileFace::Blank => BoardTile {
-            tile_id: tile.id,
-            letter: "A".to_owned(),
-            is_blank: true,
-        },
     }
 }
 

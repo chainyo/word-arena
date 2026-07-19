@@ -14,9 +14,10 @@ mod ruleset;
 
 pub use error::GameError;
 pub use game::{
-    BOARD_SIZE, BoardTile, FormedWord, Game, GameEvent, GameEventKind, GamePhase, GameResult,
-    GameSnapshot, Move, Placement, PrivateGameEvent, PublicGameState, ReplayBundle, TerminalReason,
-    Tile,
+    AdministratorProjection, BOARD_SIZE, BoardTile, EventVisibility, FormedWord, Game, GameEvent,
+    GameEventKind, GamePhase, GameResult, GameSnapshot, HumanSpectatorProjection, Move, Placement,
+    PrivateGameEvent, PublicGameState, PublicProjection, ReplayBundle, SeatProjection,
+    TerminalReason, Tile,
 };
 pub use language::Language;
 pub use lexicon::WordValidator;

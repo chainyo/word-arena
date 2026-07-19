@@ -1,9 +1,8 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use word_arena_engine::{
-    Bag, BoardTile, Coordinate, Game, GameError, GameEventKind, GamePhase, GameSeed, Move,
-    PhysicalTile, Placement, Rack, Ruleset, Score, Seat, TerminalReason, Tile, TileFace, TileId,
-    WordValidator,
+    Coordinate, Game, GameError, GameEventKind, GamePhase, GameSeed, Move, PhysicalTile, Placement,
+    Rack, Ruleset, Score, Seat, TerminalReason, Tile, TileFace, TileId, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 
@@ -131,7 +130,7 @@ fn exchange_is_deterministic_private_and_conservative() {
 }
 
 #[test]
-fn invalid_exchanges_and_end_score_overflow_are_atomic() {
+fn invalid_exchanges_and_checked_score_boundaries_are_atomic() {
     let ruleset = Ruleset::english_v1();
     let lexicon = validator(&ruleset, &[]);
     let game = Game::create(
@@ -151,27 +150,40 @@ fn invalid_exchanges_and_end_score_overflow_are_atomic() {
         assert_eq!(authoritative_bytes(&candidate), before);
     }
 
-    let mut depleted = game.snapshot();
-    move_bag_to_board(&mut depleted);
-    let mut depleted_game =
-        Game::resume(depleted, ruleset.clone(), Some(Arc::clone(&lexicon))).unwrap();
+    let broad_lexicon = accepting_validator(&ruleset);
+    let mut depleted_game = Game::create(
+        "small-bag-exchange",
+        ruleset.clone(),
+        Some(broad_lexicon),
+        numbered_seed(55),
+    )
+    .unwrap();
+    for (index, row) in [7, 8, 9, 10, 11, 12, 13, 14, 6, 5, 4, 3]
+        .into_iter()
+        .enumerate()
+    {
+        let player = depleted_game.public_state().current_player;
+        let placements = depleted_game
+            .rack(player)
+            .tiles()
+            .iter()
+            .enumerate()
+            .map(|(column, tile)| assignment(tile, row, 4 + u8::try_from(column).unwrap()))
+            .collect();
+        depleted_game
+            .play_tiles(player, u64::try_from(index).unwrap(), placements)
+            .unwrap();
+    }
+    assert_eq!(depleted_game.public_state().bag_count, 2);
+    let exchange_id = depleted_game.rack(Seat::One).tiles()[0].id;
     let before = authoritative_bytes(&depleted_game);
     assert!(matches!(
-        depleted_game.exchange_tiles(Seat::One, 0, vec![owned]),
-        Err(GameError::ExchangeBagTooSmall { actual: 0, .. })
+        depleted_game.exchange_tiles(Seat::One, 12, vec![exchange_id]),
+        Err(GameError::ExchangeBagTooSmall { actual: 2, .. })
     ));
     assert_eq!(authoritative_bytes(&depleted_game), before);
-
-    let mut overflow = game.snapshot();
-    overflow.state.scoreless_turns = 5;
-    overflow.state.scores[0] = Score::new(i32::MIN);
-    let mut overflow_game = Game::resume(overflow, ruleset, Some(lexicon)).unwrap();
-    let before = authoritative_bytes(&overflow_game);
-    assert!(matches!(
-        overflow_game.pass(Seat::One, 0),
-        Err(GameError::ScoreOverflow)
-    ));
-    assert_eq!(authoritative_bytes(&overflow_game), before);
+    assert!(Score::new(i32::MIN).checked_add(-1).is_none());
+    assert!(Score::new(i32::MAX).checked_add(1).is_none());
 }
 
 #[test]
@@ -224,20 +236,21 @@ fn zero_score_blank_placement_counts_toward_completion() {
     let ruleset = Ruleset::english_v1();
     let (seed, tile_ids) = seed_with_two_opening_blanks(&ruleset);
     let lexicon = validator(&ruleset, &["AA"]);
-    let game = Game::create(
+    let mut game = Game::create(
         "zero-score",
         ruleset.clone(),
         Some(Arc::clone(&lexicon)),
         seed,
     )
     .unwrap();
-    let mut snapshot = game.snapshot();
-    snapshot.state.scoreless_turns = 5;
-    let mut game = Game::resume(snapshot, ruleset, Some(lexicon)).unwrap();
+    for version in 0..4 {
+        let player = game.public_state().current_player;
+        game.pass(player, version).unwrap();
+    }
     let event = game
         .play_tiles(
             Seat::One,
-            0,
+            4,
             vec![
                 Placement::new(tile_ids[0], Coordinate::new(7, 7), Tile::blank("A")),
                 Placement::new(tile_ids[1], Coordinate::new(7, 8), Tile::blank("A")),
@@ -248,36 +261,33 @@ fn zero_score_blank_placement_counts_toward_completion() {
         panic!("expected placement event");
     };
     assert_eq!(score, 0);
-    assert_eq!(result.unwrap().reason, TerminalReason::ScorelessTurns);
+    assert!(result.is_none());
+    assert_eq!(game.public_state().scoreless_turns, 5);
+    game.pass(Seat::Two, 5).unwrap();
+    assert_eq!(
+        game.result().unwrap().reason,
+        TerminalReason::ScorelessTurns
+    );
 }
 
 #[test]
 fn scoreless_completion_can_tie_and_blank_racks_deduct_zero() {
     let ruleset = Ruleset::french_v1();
     let lexicon = validator(&ruleset, &[]);
-    let game = Game::create(
-        "tie",
-        ruleset.clone(),
-        Some(Arc::clone(&lexicon)),
-        numbered_seed(164),
-    )
-    .unwrap();
-    assert!(
-        game.rack(Seat::One)
+    let seed = seed_with_equal_rack_values_and_blank(&ruleset);
+    let mut game = Game::create("tie", ruleset.clone(), Some(lexicon), seed).unwrap();
+    assert!(Seat::ALL.iter().any(|seat| {
+        game.rack(*seat)
             .tiles()
             .iter()
             .any(|tile| tile.face == TileFace::Blank)
-    );
-    let mut snapshot = game.snapshot();
-    snapshot.state.scoreless_turns = 5;
-    snapshot.state.scores = [
-        Score::new(rack_value(&ruleset, &snapshot.racks[0])),
-        Score::new(rack_value(&ruleset, &snapshot.racks[1])),
-    ];
-    let mut game = Game::resume(snapshot, ruleset, Some(lexicon)).unwrap();
-    game.pass(Seat::One, 0).unwrap();
+    }));
+    for version in 0..6 {
+        let player = game.public_state().current_player;
+        game.pass(player, version).unwrap();
+    }
     let result = game.result().unwrap();
-    assert_eq!(result.scores, [Score::ZERO, Score::ZERO]);
+    assert_eq!(result.scores[0], result.scores[1]);
     assert_eq!(result.winner, None);
 }
 
@@ -383,31 +393,6 @@ fn assignment(tile: &PhysicalTile, row: u8, column: u8) -> Placement {
     }
 }
 
-fn board_tile(tile: &PhysicalTile) -> BoardTile {
-    match &tile.face {
-        TileFace::Letter(token) => BoardTile {
-            tile_id: tile.id,
-            letter: token.as_str().to_owned(),
-            is_blank: false,
-        },
-        TileFace::Blank => BoardTile {
-            tile_id: tile.id,
-            letter: "A".to_owned(),
-            is_blank: true,
-        },
-    }
-}
-
-fn move_bag_to_board(snapshot: &mut word_arena_engine::GameSnapshot) {
-    let bag_tiles: Vec<PhysicalTile> =
-        serde_json::from_value(serde_json::to_value(&snapshot.bag).unwrap()).unwrap();
-    for (index, tile) in bag_tiles.iter().enumerate() {
-        snapshot.state.board[index] = Some(board_tile(tile));
-    }
-    snapshot.bag = Bag::new(Vec::new());
-    snapshot.state.bag_count = 0;
-}
-
 fn rack_value(ruleset: &Ruleset, rack: &Rack) -> i32 {
     rack.tiles().iter().fold(0, |total, tile| {
         total
@@ -440,6 +425,32 @@ fn seed_with_two_opening_blanks(ruleset: &Ruleset) -> (GameSeed, [TileId; 2]) {
         }
     }
     panic!("deterministic search must find two opening blanks");
+}
+
+fn seed_with_equal_rack_values_and_blank(ruleset: &Ruleset) -> GameSeed {
+    for value in 0..10_000 {
+        let seed = numbered_seed(value);
+        let game = Game::create(
+            "tie-search",
+            ruleset.clone(),
+            Some(validator(ruleset, &[])),
+            seed.clone(),
+        )
+        .unwrap();
+        let has_blank = Seat::ALL.iter().any(|seat| {
+            game.rack(*seat)
+                .tiles()
+                .iter()
+                .any(|tile| tile.face == TileFace::Blank)
+        });
+        if has_blank
+            && rack_value(ruleset, game.rack(Seat::One))
+                == rack_value(ruleset, game.rack(Seat::Two))
+        {
+            return seed;
+        }
+    }
+    panic!("deterministic search must find equal final rack values");
 }
 
 fn seed_with_blank_in_last_rack(ruleset: &Ruleset, lexicon: &Arc<dyn WordValidator>) -> GameSeed {

@@ -532,7 +532,9 @@ mod tests {
         let state = PublicGameState {
             game_id: "public-contract".to_owned(),
             ruleset_id: ruleset.id,
+            ruleset: ruleset.identity(),
             lexicon: ruleset.lexicon,
+            rng_algorithm: RngAlgorithm::Xoshiro256StarStarV1,
             seed_commitment: GameSeed::from_bytes([0; 32])
                 .commitment(RngAlgorithm::Xoshiro256StarStarV1),
             board: vec![None; 225],

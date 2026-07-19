@@ -120,21 +120,21 @@ Verification:
 
 ### GAME-005: Add privacy-safe projections, snapshots, and replay
 
-- [ ] Separate authoritative internal state from public, per-seat private,
+- [x] Separate authoritative internal state from public, per-seat private,
   human-spectator, and administrator projections.
-- [ ] Public state exposes board, scores, turn, bag count, rack counts, ruleset,
+- [x] Public state exposes board, scores, turn, bag count, rack counts, ruleset,
   lexicon identity, and completion data, but never rack contents, seed, or future
   bag order.
-- [ ] A seat projection exposes only that seat's current rack. A human-spectator
+- [x] A seat projection exposes only that seat's current rack. A human-spectator
   projection may expose both current racks. No projection exposes future bag
   order, and spectator authority is never representable by an agent seat token.
-- [ ] Classify events as public or seat-private at creation; draws and initial
+- [x] Classify events as public or seat-private at creation; draws and initial
   deals must not leak through public history.
-- [ ] Persist authoritative snapshots and replay bundles with schema versions,
+- [x] Persist authoritative snapshots and replay bundles with schema versions,
   ruleset hash, exact external lexicon-pack identity, RNG algorithm/reveal, and
   all deterministic private events. Replays reference the pack and never embed
   dictionary contents.
-- [ ] Reject tampered, missing, reordered, privacy-invalid, or incompatible
+- [x] Reject tampered, missing, reordered, privacy-invalid, or incompatible
   snapshots/events before exposing resumable state.
 
 Verification:

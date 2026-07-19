@@ -130,8 +130,9 @@ without network access after setup.
   rulesets, lexicon pack metadata, tournaments, matches, and agent runs.
 - [ ] Append events and update snapshots in one optimistic-concurrency
   transaction using expected game versions.
-- [ ] Separate public, per-seat private, human-spectator, and administrator
-  projections. Never grant spectator credentials to an agent process.
+- [ ] Wire the completed engine public, per-seat private, human-spectator, and
+  administrator projections to separate application credential types. Never
+  grant spectator credentials to an agent process.
 - [ ] Add capability-style seat tokens, expiry, revocation, and audit logging.
 - [ ] Add REST snapshots and WebSocket invalidation/event streams.
 - [ ] Add idempotency, turn deadlines, invalid-attempt policy, and recovery tests.
