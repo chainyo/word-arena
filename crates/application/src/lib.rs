@@ -14,6 +14,7 @@ mod ports;
 mod rating;
 mod scheduler;
 mod service;
+mod statistics;
 mod tournament;
 
 #[cfg(feature = "test-support")]
@@ -68,6 +69,13 @@ pub use scheduler::{
     refill_bucket, token_retry_at,
 };
 pub use service::{ApplicationRuntime, ApplicationService, CapabilityAdapters};
+pub use statistics::{
+    MatchStatisticsInput, NormalizedRunStatistics, OperatorStatistics, PremiumUse,
+    PublicStatistics, RATE_SCALE, STATISTICS_SCHEMA_VERSION, SourcedStatistic,
+    StatisticAvailability, StatisticsAccumulator, StatisticsError, StatisticsFilter,
+    StatisticsObservation, StatisticsParticipant, StatisticsRecordResult, StatisticsRepository,
+    StatisticsRepositoryError, StatisticsScope, aggregate_statistics,
+};
 pub use tournament::{
     EntrantPairing, ScheduledMatch, ScheduledSeries, SeatBalance, SeriesSeatPolicy,
     StoredTournament, SwissProgress, SwissRematchPolicy, SwissStanding,

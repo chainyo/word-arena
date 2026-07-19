@@ -68,6 +68,9 @@ The repository foundation is in place:
 - Scoped Glicko-2 rating periods with deterministic fixed-point output,
   exact paired-game accounting, transactional SQLx persistence, and audited
   rebuilds ([ratings contract](docs/RATINGS.md))
+- Versioned match/agent statistics with exact language/ruleset/pack/manifest
+  scopes, explicit usage availability, privacy-separated public/operator
+  projections, and checked SQLx rebuilds ([statistics](docs/STATISTICS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,

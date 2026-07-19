@@ -167,3 +167,16 @@ normalized-row auditing, and exact full-history rebuilds:
 cargo test -p word-arena-application --all-features --test rating
 cargo test -p word-arena-persistence --all-features --test ratings
 ```
+
+## Statistics rebuild and privacy
+
+The statistics suites cover authoritative fixture derivation, all gameplay and
+agent metrics, exact scopes/date windows, stable integer rounding, ties,
+estimated/unavailable usage, overflow, duplicate identities, incremental/full
+rebuild equivalence, transactional rollback, normalized-row audit, and the
+structurally smaller public projection:
+
+```bash
+cargo test -p word-arena-application --all-features --test statistics
+cargo test -p word-arena-persistence --all-features --test statistics
+```

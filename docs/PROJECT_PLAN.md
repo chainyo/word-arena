@@ -194,7 +194,7 @@ policy without accessing its opponent's workspace or credentials.
 - [x] Add concurrency and model-provider-rate controls, cancellation, retry, and
   worker recovery.
 - [x] Compute per-language and per-ruleset Glicko-2 ratings.
-- [ ] Report win rate, spread, average move score, bingos, invalid actions,
+- [x] Report win rate, spread, average move score, bingos, invalid actions,
   passes, exchanges, turn latency, premium use, vocabulary, tool calls, tokens,
   and cost where available.
 - [ ] Export complete public replay bundles and analytics-friendly data.

@@ -10,6 +10,7 @@ mod migration;
 mod rating_repository;
 mod repository;
 mod scheduler_repository;
+mod statistics_repository;
 mod tournament_repository;
 
 pub use agent_repository::{
@@ -22,4 +23,5 @@ pub use migration::{MIGRATOR, MigrationError, connect_and_migrate, migrate};
 pub use rating_repository::SqliteRatingRepository;
 pub use repository::SqliteGameRepository;
 pub use scheduler_repository::SqliteSchedulerRepository;
+pub use statistics_repository::SqliteStatisticsRepository;
 pub use tournament_repository::SqliteTournamentRepository;

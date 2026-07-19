@@ -136,6 +136,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Treat ratings as rebuildable fixed-point projections. Scope every Glicko-2
   period by language, exact ruleset identity, and rated-format policy; store
   immutable match inputs and count every paired seat-swap game exactly once.
+- Derive statistics only from immutable public referee events, authoritative
+  counters, and content-free normalized telemetry. Keep word-level drill-down
+  operator-only and make missing/estimated provider usage explicit.
 - Keep public and seat-private events distinguishable from their creation.
 - Never commit proprietary word lists. Every lexicon pack needs source,
   version, locale, license, normalization, and checksum metadata.

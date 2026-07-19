@@ -447,14 +447,14 @@ same versioned ratings and published reference vectors pass within tolerance.
 
 ### TOUR-005: Compute match and agent statistics
 
-- [ ] Derive win rate, spread, average move score, bingos, invalid actions,
+- [x] Derive win rate, spread, average move score, bingos, invalid actions,
   passes, exchanges, turn latency, premium use, vocabulary, tool calls, tokens,
   and cost from authoritative events and normalized telemetry.
-- [ ] Scope and version aggregations by language, ruleset, pack, agent manifest,
+- [x] Scope and version aggregations by language, ruleset, pack, agent manifest,
   tournament, seat, and date window with explicit missing-data semantics.
-- [ ] Keep private racks/transcripts and unpublished word usage out of public
+- [x] Keep private racks/transcripts and unpublished word usage out of public
   aggregates while retaining authorized operator drill-down.
-- [ ] Add fixture aggregates, incremental/full rebuild equivalence, ties,
+- [x] Add fixture aggregates, incremental/full rebuild equivalence, ties,
   null/estimated usage, overflow, deduplication, and privacy tests.
 
 Verification: statistics rebuild exactly from source records and public output

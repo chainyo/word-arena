@@ -87,6 +87,12 @@ current projection updates commit together. Loads and rebuilds recompute every
 fixed-point result and reject canonical payload, normalized row, sequence, or
 previous-rating drift.
 
+Migration 12 adds immutable completed-game statistics sources and two
+seat-scoped observations per source. Source and observations commit together;
+load re-derives gameplay and telemetry totals and rejects JSON or normalized
+scope drift. Public and operator aggregates rebuild from the same ordered,
+checked source history.
+
 Run them with:
 
 ```bash

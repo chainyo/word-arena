@@ -1,0 +1,60 @@
+{
+  "kind": "word_arena_statistics_contract",
+  "schema_version": 1,
+  "authoritative_inputs": [
+    "ordered_public_game_events",
+    "invalid_attempt_counters",
+    "normalized_content_free_run_telemetry"
+  ],
+  "scope_dimensions": [
+    "language",
+    "ruleset_id",
+    "ruleset_sha256",
+    "pack_id",
+    "pack_version",
+    "pack_sha256",
+    "agent_manifest_sha256",
+    "tournament_id",
+    "entrant_id",
+    "seat_number",
+    "finished_at_window"
+  ],
+  "date_window": "inclusive_from_exclusive_before_unix_ms",
+  "stable_scales": {
+    "win_rate": "millionths",
+    "average_move_score": "milli_points",
+    "cost": "microusd"
+  },
+  "missing_data": {
+    "states": ["exact", "estimated", "unavailable"],
+    "aggregate_policy": "unavailable_if_any_selected_source_is_unavailable_estimated_if_any_available_source_is_estimated"
+  },
+  "public_fields": [
+    "games",
+    "wins",
+    "losses",
+    "ties",
+    "win_rate",
+    "score_and_spread",
+    "average_move_score",
+    "bingos",
+    "invalid_actions",
+    "passes",
+    "exchanges",
+    "premium_use",
+    "vocabulary_size",
+    "turn_latency",
+    "tool_calls",
+    "tokens",
+    "cost"
+  ],
+  "operator_only_fields": ["word_frequencies", "source_ids"],
+  "structurally_forbidden_public_fields": [
+    "words",
+    "racks",
+    "transcripts",
+    "tool_arguments",
+    "tool_results",
+    "diagnostics"
+  ]
+}
