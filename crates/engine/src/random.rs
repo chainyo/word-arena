@@ -401,8 +401,8 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use crate::{
-        Bag, GamePhase, PhysicalTile, PublicGameState, Rack, Ruleset, Score, Seat, TileFace,
-        TileId, TileToken,
+        Bag, GameMode, GamePhase, PhysicalTile, PublicGameState, Rack, Ruleset, Score, Seat,
+        TileFace, TileId, TileToken,
     };
 
     use super::{
@@ -534,6 +534,7 @@ mod tests {
             ruleset_id: ruleset.id,
             ruleset: ruleset.identity(),
             lexicon: ruleset.lexicon,
+            mode: GameMode::Competitive,
             rng_algorithm: RngAlgorithm::Xoshiro256StarStarV1,
             seed_commitment: GameSeed::from_bytes([0; 32])
                 .commitment(RngAlgorithm::Xoshiro256StarStarV1),

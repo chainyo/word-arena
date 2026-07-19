@@ -2,8 +2,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use word_arena_engine::{
-    AdministratorProjection, GameEvent, HumanSpectatorProjection, Language, Move, PublicProjection,
-    SeatProjection, Turn,
+    AdministratorProjection, GameEvent, GameMode, HumanSpectatorProjection, Language, Move,
+    Placement, PublicProjection, SeatProjection, Turn,
 };
 
 use crate::CreatedGameAccess;
@@ -120,6 +120,8 @@ pub struct CreateGameCommand {
     pub game_id: GameId,
     /// Immutable language/ruleset selection.
     pub language: Language,
+    /// Immutable competitive or practice behavior.
+    pub mode: GameMode,
     /// Retry identity reserved before creation.
     pub idempotency_key: IdempotencyKey,
 }
@@ -138,6 +140,20 @@ pub struct GameActionCommand {
     pub idempotency_key: IdempotencyKey,
     /// Typed engine action.
     pub action: Move,
+}
+
+/// One non-mutating, credential-bound practice placement evaluation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MovePreviewCommand {
+    /// Practice game being evaluated.
+    pub game_id: GameId,
+    /// Optimistic base version that the supplied placement targets.
+    pub expected_version: u64,
+    /// Explicit current turn identity.
+    pub turn: Turn,
+    /// Caller-supplied owned tile assignments; no moves are generated.
+    pub placements: Vec<Placement>,
 }
 
 /// System mutation request for one persisted turn deadline.
@@ -244,4 +260,16 @@ pub struct GameActionResult {
     pub event: GameEvent,
     /// Updated projection for the authenticated acting seat.
     pub game: SeatProjection,
+}
+
+/// Authoritative score/event evaluation with no persisted transition.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MovePreviewResult {
+    /// Injected observation time used by the rate-limit window.
+    pub observed_at: UnixMillis,
+    /// Unchanged authoritative version evaluated by the engine.
+    pub base_version: u64,
+    /// Event that an immediate identical commit would produce.
+    pub event: GameEvent,
 }

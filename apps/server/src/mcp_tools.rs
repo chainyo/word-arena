@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use axum::http::request::Parts;
+use axum::http::{header, request::Parts};
 use rmcp::{
     Json, RoleServer, ServerHandler,
     handler::server::{
@@ -19,10 +19,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use word_arena_application::{
-    ActionRejection, ApplicationError, ApplicationRuntime, CompetitiveSeatCredential,
-    GameActionCommand, GameActionResult, IdempotencyKey, SeatGameQuery, SeatGameView,
+    ActionRejection, ApplicationError, ApplicationRuntime, AuthenticatedCredential,
+    CapabilityScope, CompetitiveSeatCredential, GameActionCommand, GameActionResult,
+    IdempotencyKey, MovePreviewCommand, MovePreviewResult, SeatGameQuery, SeatGameView,
 };
-use word_arena_engine::{Coordinate, Move, Placement, Ruleset, RulesetId, Tile, TileId, Turn};
+use word_arena_engine::{
+    Coordinate, GameMode, Move, Placement, Ruleset, RulesetId, Tile, TileId, Turn,
+};
 
 use crate::mcp_resources::{
     McpResourceSubscriptions, list_resource_templates, list_resources, read_resource, subscribe,
@@ -76,6 +79,10 @@ impl WordArenaMcp {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the complete versioned MCP tool catalog remains auditable in one declaration"
+    )]
     fn competitive_tool_router() -> ToolRouter<Self> {
         let mut router = ToolRouter::new();
         router.add_route(ToolRoute::new_dyn(
@@ -85,6 +92,7 @@ impl WordArenaMcp {
                 "Observe the authenticated seat's current board, public history, own rack, and own draws.",
                 true,
                 false,
+                true,
             ),
             |mut context| {
                 Box::pin(async move {
@@ -101,6 +109,7 @@ impl WordArenaMcp {
                 "Return the exact immutable board, scoring, tile, and lexicon configuration for this game.",
                 true,
                 false,
+                true,
             ),
             |mut context| {
                 Box::pin(async move {
@@ -117,6 +126,7 @@ impl WordArenaMcp {
                 "Place owned rack tiles on empty board squares and commit all formed words atomically.",
                 false,
                 false,
+                true,
             ),
             |mut context| {
                 Box::pin(async move {
@@ -133,6 +143,7 @@ impl WordArenaMcp {
                 "Exchange selected owned tiles when the immutable ruleset and bag permit it.",
                 false,
                 false,
+                true,
             ),
             |mut context| {
                 Box::pin(async move {
@@ -149,6 +160,7 @@ impl WordArenaMcp {
                 "End the authenticated seat's current turn without scoring or changing its rack.",
                 false,
                 false,
+                true,
             ),
             |mut context| {
                 Box::pin(async move {
@@ -165,12 +177,30 @@ impl WordArenaMcp {
                 "Concede immediately; this permanently finishes the game.",
                 false,
                 true,
+                true,
             ),
             |mut context| {
                 Box::pin(async move {
                     let input = parse_tool_input::<MutationInput>(&mut context)?;
                     let parts = request_parts(&context)?;
                     into_tool_result(context.service.resign(input, &parts).await)
+                })
+            },
+        ));
+        router.add_route(ToolRoute::new_dyn(
+            tool_definition::<PreviewTilesInput, PreviewTilesOutput>(
+                "preview_tiles",
+                "Preview tiles",
+                "Evaluate exactly one caller-supplied placement in a practice game without changing any game state.",
+                true,
+                false,
+                false,
+            ),
+            |mut context| {
+                Box::pin(async move {
+                    let input = parse_tool_input::<PreviewTilesInput>(&mut context)?;
+                    let parts = request_parts(&context)?;
+                    into_tool_result(context.service.preview_tiles(input, &parts).await)
                 })
             },
         ));
@@ -259,6 +289,49 @@ impl WordArenaMcp {
             .collect();
         self.act(parts, input.mutation, Move::Place { placements })
             .await
+    }
+
+    async fn preview_tiles(
+        &self,
+        input: PreviewTilesInput,
+        parts: &Parts,
+    ) -> Result<Json<PreviewTilesOutput>, String> {
+        validate_schema(input.schema_version)?;
+        let session_credential = authority(parts)?;
+        let authenticated = self
+            .runtime
+            .authenticate_capability(
+                bearer(parts)?,
+                session_credential.game_id(),
+                CapabilityScope::Preview,
+            )
+            .await
+            .map_err(|_| "unauthorized: practice preview capability is required".to_owned())?;
+        let AuthenticatedCredential::Seat(preview_credential) = authenticated else {
+            return Err("unauthorized: practice preview capability is required".to_owned());
+        };
+        if preview_credential != *session_credential {
+            return Err("unauthorized: MCP session authority changed".to_owned());
+        }
+        let placements = placements(input.placements);
+        let result = self
+            .runtime
+            .service()
+            .preview_tiles(
+                &preview_credential,
+                MovePreviewCommand {
+                    game_id: preview_credential.game_id().clone(),
+                    expected_version: input.expected_version,
+                    turn: Turn {
+                        number: input.turn_id,
+                        seat: preview_credential.seat(),
+                    },
+                    placements,
+                },
+            )
+            .await
+            .map_err(tool_error)?;
+        preview_output(result)
     }
 
     async fn exchange_tiles(
@@ -360,9 +433,44 @@ impl ServerHandler for WordArenaMcp {
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, rmcp::ErrorData> {
-        Ok(ListToolsResult::with_all_items(self.tool_router.list_all()))
+        let parts = context
+            .extensions
+            .get::<Parts>()
+            .ok_or_else(|| rmcp::ErrorData::internal_error("missing HTTP request context", None))?;
+        let credential =
+            authority(parts).map_err(|message| rmcp::ErrorData::invalid_request(message, None))?;
+        let view = self
+            .runtime
+            .service()
+            .seat_game(
+                credential,
+                SeatGameQuery {
+                    game_id: credential.game_id().clone(),
+                },
+            )
+            .await
+            .map_err(|error| rmcp::ErrorData::internal_error(tool_error(error), None))?;
+        let mut tools = self.tool_router.list_all();
+        let preview_authorized = if view.game.public.state.mode == GameMode::Practice {
+            matches!(
+                self.runtime
+                    .authenticate_capability(
+                        bearer(parts).unwrap_or_default(),
+                        credential.game_id(),
+                        CapabilityScope::Preview,
+                    )
+                    .await,
+                Ok(AuthenticatedCredential::Seat(ref preview)) if preview == credential
+            )
+        } else {
+            false
+        };
+        if !preview_authorized {
+            tools.retain(|tool| tool.name.as_ref() != "preview_tiles");
+        }
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
@@ -441,6 +549,19 @@ struct PlayTilesInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+struct PreviewTilesInput {
+    /// Practice preview schema. Must be 1.
+    schema_version: u16,
+    /// Unchanged public version returned by `observe_game`.
+    expected_version: u64,
+    /// Active turn identifier returned by `observe_game`.
+    turn_id: u64,
+    /// Caller-supplied owned rack tiles; the server never generates placements.
+    placements: Vec<PlacementInput>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct PlacementInput {
     /// Physical tile ID from the authenticated seat's rack.
     tile_id: u16,
@@ -494,12 +615,52 @@ struct ActionOutput {
     game: Value,
 }
 
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct PreviewTilesOutput {
+    schema_version: u16,
+    summary: String,
+    observed_at_unix_ms: i64,
+    /// Authoritative version evaluated without mutation.
+    base_version: u64,
+    /// Exact event an immediate identical commit would produce.
+    event: Value,
+}
+
 fn authority(parts: &Parts) -> Result<&CompetitiveSeatCredential, String> {
     parts
         .extensions
         .get::<McpRequestAuthority>()
         .map(|authority| &authority.credential)
         .ok_or_else(|| "unauthorized: authenticated seat context is missing".to_owned())
+}
+
+fn bearer(parts: &Parts) -> Result<&str, String> {
+    parts
+        .headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|token| !token.is_empty() && token.len() <= 256)
+        .ok_or_else(|| "unauthorized: bearer capability is missing".to_owned())
+}
+
+fn placements(inputs: Vec<PlacementInput>) -> Vec<Placement> {
+    inputs
+        .into_iter()
+        .map(|placement| {
+            let tile = if placement.is_blank {
+                Tile::blank(placement.letter)
+            } else {
+                Tile::letter(placement.letter)
+            };
+            Placement::new(
+                TileId(placement.tile_id),
+                Coordinate::new(placement.row, placement.column),
+                tile,
+            )
+        })
+        .collect()
 }
 
 fn validate_schema(schema_version: u16) -> Result<(), String> {
@@ -549,6 +710,19 @@ fn action_output(result: GameActionResult) -> Result<Json<ActionOutput>, String>
     }))
 }
 
+fn preview_output(result: MovePreviewResult) -> Result<Json<PreviewTilesOutput>, String> {
+    Ok(Json(PreviewTilesOutput {
+        schema_version: MCP_TOOL_SCHEMA_VERSION,
+        summary: format!(
+            "placement is legal at unchanged version {} and would score authoritatively",
+            result.base_version
+        ),
+        observed_at_unix_ms: result.observed_at.0,
+        base_version: result.base_version,
+        event: serde_json::to_value(result.event).map_err(|error| serialization_error(&error))?,
+    }))
+}
+
 fn tool_error(error: ApplicationError) -> String {
     match error {
         ApplicationError::ActionRejected(ActionRejection::VersionConflict)
@@ -571,6 +745,15 @@ fn tool_error(error: ApplicationError) -> String {
         ApplicationError::Repository(word_arena_application::RepositoryError::NotFound) => {
             "not_found: game does not exist".to_owned()
         }
+        ApplicationError::PracticeOnly => {
+            "practice_only: preview is unavailable in competitive games".to_owned()
+        }
+        ApplicationError::PreviewRateLimited { retry_after_ms } => {
+            format!("rate_limited: retry preview after {retry_after_ms} ms")
+        }
+        ApplicationError::PreviewUnavailable => {
+            "request_failed: preview limiter is unavailable".to_owned()
+        }
         ApplicationError::Engine(error) => format!("invalid_action: {error}"),
         _ => "request_failed: the game request could not be completed".to_owned(),
     }
@@ -586,6 +769,7 @@ fn tool_definition<I, O>(
     description: &'static str,
     read_only: bool,
     destructive: bool,
+    idempotent: bool,
 ) -> Tool
 where
     I: JsonSchema + 'static,
@@ -602,7 +786,7 @@ where
         ToolAnnotations::with_title(title)
             .read_only(read_only)
             .destructive(destructive)
-            .idempotent(true)
+            .idempotent(idempotent)
             .open_world(false),
     )
 }

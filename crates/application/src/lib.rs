@@ -29,15 +29,15 @@ pub use capability::{
 pub use command::{
     AdministratorGameQuery, AdministratorGameView, CreateGameCommand, CreatedGame,
     GameActionCommand, GameActionResult, GameId, HumanSpectatorGameQuery, HumanSpectatorGameView,
-    IdempotencyKey, PublicGameQuery, PublicGameView, SeatGameQuery, SeatGameView, TimeoutCommand,
-    UnixMillis,
+    IdempotencyKey, MovePreviewCommand, MovePreviewResult, PublicGameQuery, PublicGameView,
+    SeatGameQuery, SeatGameView, TimeoutCommand, UnixMillis,
 };
 pub use error::{ApplicationError, RepositoryError};
 pub use operations::{
     ACTION_OUTCOME_SCHEMA_VERSION, ActionCommit, ActionOutcome, ActionRejection,
     CreationIdempotencyLookup, CreationIdempotencyRecord, IDEMPOTENCY_DIGEST_VERSION,
     IdempotencyLookup, IdempotencyRecord, InvalidAttemptResponse, InvalidAttemptState,
-    OperationalPolicy, PersistedActionResult, PersistedCreateResult, RecoveryRecord,
+    OperationalPolicy, PersistedActionResult, PersistedCreateResult, PreviewPolicy, RecoveryRecord,
     TimeoutResponse, TurnDeadline,
 };
 pub use ports::{

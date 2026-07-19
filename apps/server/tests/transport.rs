@@ -14,15 +14,16 @@ use tokio_tungstenite::{
 };
 use tower::ServiceExt;
 use word_arena_application::{
-    AgentRunId, ApplicationClock, ApplicationRuntime, CapabilityAdapters, CapabilityDigestKey,
-    CapabilityRepository, CapabilityRole, CapabilityScope, GameId, GameIdSource, GameRepository,
-    IdempotencyKey, IssueCapabilityRequest, LexiconResolver, SeedSource, UnixMillis,
+    AgentRunId, ApplicationClock, ApplicationRuntime, AuditOutcome, CapabilityAdapters,
+    CapabilityDigestKey, CapabilityError, CapabilityRole, CapabilityScope, GameId, GameIdSource,
+    GameRepository, IdempotencyKey, IssueCapabilityRequest, LexiconResolver, PreviewPolicy,
+    SeedSource, UnixMillis,
     test_support::{
         InMemoryCapabilityRepository, InMemoryGameRepository, ManualClock,
         SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
     },
 };
-use word_arena_engine::{Language, Ruleset, Seat, WordValidator};
+use word_arena_engine::{GameMode, Language, Ruleset, Seat, WordValidator};
 use word_arena_lexicon::{
     BuilderDescriptor, FileDescriptor, NormalizedKey, PackIdentity, PackManifest, PolicyDescriptor,
     REQUIRED_PAYLOAD_FILES, SourceDescriptor,
@@ -407,6 +408,247 @@ async fn authenticated_mcp_handshake_exposes_competitive_tools() {
     assert_eq!(
         schema_digest,
         include_str!("snapshots/mcp_competitive_tools_v1.sha256").trim()
+    );
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one end-to-end narrative proves the complete practice-preview security boundary"
+)]
+async fn practice_preview_is_scoped_hidden_bounded_audited_and_non_mutating() {
+    let fixture = fixture_with_preview_policy(PreviewPolicy {
+        version: 3,
+        max_requests: 2,
+        window_ms: 60_000,
+    });
+    let competitive = create_game(&fixture, "preview-competitive").await;
+    assert!(matches!(
+        fixture
+            .runtime
+            .issue_capability(IssueCapabilityRequest {
+                game_id: competitive.clone(),
+                role: CapabilityRole::Seat(Seat::One),
+                scopes: BTreeSet::from([CapabilityScope::Act, CapabilityScope::Preview]),
+                expires_at: UnixMillis(NOW.0 + 60_000),
+                agent_run_id: Some(AgentRunId::new("invalid-competitive-preview").unwrap()),
+            })
+            .await,
+        Err(CapabilityError::InvalidRequest)
+    ));
+    let competitive_token = issue(
+        &fixture,
+        &competitive,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        Some("competitive-preview-denial"),
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let (competitive_session, _) =
+        mcp_initialize(app.clone(), &competitive, &competitive_token).await;
+    let competitive_tools = mcp_rpc(
+        app.clone(),
+        &competitive,
+        &competitive_token,
+        &competitive_session,
+        20,
+        "tools/list",
+        json!({}),
+    )
+    .await;
+    let competitive_names = competitive_tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(!competitive_names.contains(&"preview_tiles"));
+    let denied = mcp_call(
+        app.clone(),
+        &competitive,
+        &competitive_token,
+        &competitive_session,
+        21,
+        "preview_tiles",
+        json!({
+            "schema_version":1,
+            "expected_version":0,
+            "turn_id":0,
+            "placements":[]
+        }),
+    )
+    .await;
+    assert_eq!(denied["isError"], true);
+    assert!(
+        denied["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("unauthorized")
+    );
+
+    let practice = create_game_mode(
+        &fixture,
+        "preview-practice",
+        Language::English,
+        GameMode::Practice,
+    )
+    .await;
+    let practice_token = issue(
+        &fixture,
+        &practice,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act, CapabilityScope::Preview],
+        Some("practice-preview"),
+    )
+    .await;
+    let (practice_session, _) = mcp_initialize(app.clone(), &practice, &practice_token).await;
+    let practice_tools = mcp_rpc(
+        app.clone(),
+        &practice,
+        &practice_token,
+        &practice_session,
+        22,
+        "tools/list",
+        json!({}),
+    )
+    .await;
+    let practice_names = practice_tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(practice_names.len(), 7);
+    assert!(practice_names.contains(&"preview_tiles"));
+
+    let before = mcp_call(
+        app.clone(),
+        &practice,
+        &practice_token,
+        &practice_session,
+        23,
+        "observe_game",
+        json!({"schema_version":1}),
+    )
+    .await;
+    assert_eq!(
+        before["structuredContent"]["game"]["public"]["state"]["mode"],
+        "practice"
+    );
+    let rack = before["structuredContent"]["game"]["rack"]
+        .as_array()
+        .unwrap();
+    let placements = rack
+        .iter()
+        .take(2)
+        .enumerate()
+        .map(|(offset, tile)| {
+            let face = &tile["face"];
+            let is_blank = face["kind"] == "blank";
+            json!({
+                "tile_id":tile["id"],
+                "row":7,
+                "column":7 + offset,
+                "letter":if is_blank { "A" } else { face["token"].as_str().unwrap() },
+                "is_blank":is_blank
+            })
+        })
+        .collect::<Vec<_>>();
+    let preview_arguments = json!({
+        "schema_version":1,
+        "expected_version":0,
+        "turn_id":0,
+        "placements":placements
+    });
+    let preview = mcp_call(
+        app.clone(),
+        &practice,
+        &practice_token,
+        &practice_session,
+        24,
+        "preview_tiles",
+        preview_arguments.clone(),
+    )
+    .await;
+    assert_eq!(preview["isError"], false);
+    assert_eq!(preview["structuredContent"]["base_version"], 0);
+    let after = mcp_call(
+        app.clone(),
+        &practice,
+        &practice_token,
+        &practice_session,
+        25,
+        "observe_game",
+        json!({"schema_version":1}),
+    )
+    .await;
+    assert_eq!(
+        after["structuredContent"]["game"],
+        before["structuredContent"]["game"]
+    );
+
+    let second = mcp_call(
+        app.clone(),
+        &practice,
+        &practice_token,
+        &practice_session,
+        26,
+        "preview_tiles",
+        preview_arguments.clone(),
+    )
+    .await;
+    assert_eq!(second["structuredContent"], preview["structuredContent"]);
+    let limited = mcp_call(
+        app.clone(),
+        &practice,
+        &practice_token,
+        &practice_session,
+        27,
+        "preview_tiles",
+        preview_arguments.clone(),
+    )
+    .await;
+    assert_eq!(limited["isError"], true);
+    assert!(
+        limited["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("rate_limited")
+    );
+
+    let mut commit_arguments = preview_arguments;
+    commit_arguments["idempotency_key"] = json!("preview-equivalent-commit");
+    let committed = mcp_call(
+        app,
+        &practice,
+        &practice_token,
+        &practice_session,
+        28,
+        "play_tiles",
+        commit_arguments,
+    )
+    .await;
+    assert_eq!(committed["isError"], false);
+    assert_eq!(
+        committed["structuredContent"]["event"],
+        preview["structuredContent"]["event"]
+    );
+    let preview_audits = fixture
+        .capabilities
+        .audits()
+        .into_iter()
+        .filter(|audit| audit.scope == Some(CapabilityScope::Preview))
+        .collect::<Vec<_>>();
+    assert!(
+        preview_audits
+            .iter()
+            .any(|audit| audit.outcome == AuditOutcome::DeniedScope)
+    );
+    assert!(
+        preview_audits
+            .iter()
+            .any(|audit| audit.outcome == AuditOutcome::Success)
     );
 }
 
@@ -1175,9 +1417,14 @@ async fn mcp_gateway_cancels_active_sessions_for_graceful_shutdown() {
 struct Fixture {
     runtime: Arc<ApplicationRuntime>,
     state: Arc<ServerState>,
+    capabilities: Arc<InMemoryCapabilityRepository>,
 }
 
 fn fixture() -> Fixture {
+    fixture_with_preview_policy(PreviewPolicy::default())
+}
+
+fn fixture_with_preview_policy(preview_policy: PreviewPolicy) -> Fixture {
     let lexicons = [Language::English, Language::French].map(|language| {
         let ruleset = Ruleset::for_language(language).unwrap();
         let manifest = fixture_manifest(&ruleset.lexicon);
@@ -1188,22 +1435,28 @@ fn fixture() -> Fixture {
     let ids: Arc<dyn GameIdSource> = Arc::new(SequenceGameIds::new("http-game"));
     let seeds: Arc<dyn SeedSource> = Arc::new(SequenceSeeds::new(99));
     let clock: Arc<dyn ApplicationClock> = Arc::new(ManualClock::new(NOW));
-    let capabilities: Arc<dyn CapabilityRepository> =
-        Arc::new(InMemoryCapabilityRepository::default());
-    let runtime = Arc::new(ApplicationRuntime::new(
-        game_repository,
-        resolver,
-        ids,
-        seeds,
-        clock,
-        CapabilityAdapters::new(
-            capabilities,
-            Arc::new(SequenceCapabilityTokens::new(1)),
-            CapabilityDigestKey::new([21; 32]),
-        ),
-    ));
+    let capabilities = Arc::new(InMemoryCapabilityRepository::default());
+    let runtime = Arc::new(
+        ApplicationRuntime::new(
+            game_repository,
+            resolver,
+            ids,
+            seeds,
+            clock,
+            CapabilityAdapters::new(
+                capabilities.clone(),
+                Arc::new(SequenceCapabilityTokens::new(1)),
+                CapabilityDigestKey::new([21; 32]),
+            ),
+        )
+        .with_preview_policy(preview_policy),
+    );
     let state = Arc::new(ServerState::new(Arc::clone(&runtime)));
-    Fixture { runtime, state }
+    Fixture {
+        runtime,
+        state,
+        capabilities,
+    }
 }
 
 fn fixture_manifest(identity: &PackIdentity) -> PackManifest {
@@ -1247,9 +1500,22 @@ async fn create_game(fixture: &Fixture, key: &str) -> GameId {
 }
 
 async fn create_game_language(fixture: &Fixture, key: &str, language: Language) -> GameId {
+    create_game_mode(fixture, key, language, GameMode::Competitive).await
+}
+
+async fn create_game_mode(
+    fixture: &Fixture,
+    key: &str,
+    language: Language,
+    mode: GameMode,
+) -> GameId {
     let service = fixture.runtime.service();
     service
-        .create_game(service.prepare_create_game(language, IdempotencyKey::new(key).unwrap()))
+        .create_game(service.prepare_create_game_with_mode(
+            language,
+            mode,
+            IdempotencyKey::new(key).unwrap(),
+        ))
         .await
         .unwrap()
         .game_id

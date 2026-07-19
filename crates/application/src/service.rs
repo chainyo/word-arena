@@ -1,8 +1,14 @@
-use std::{fmt::Write as _, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::Write as _,
+    sync::{Arc, Mutex},
+};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use word_arena_engine::{Game, GameError, GamePhase, Move, Ruleset, RulesetId, Seat, Turn};
+use word_arena_engine::{
+    Game, GameError, GameMode, GamePhase, Move, Ruleset, RulesetId, Seat, Turn,
+};
 use word_arena_lexicon::{PackIdentity, PackManifest};
 
 use crate::capability::{actor, credential, validate_issue};
@@ -17,10 +23,11 @@ use crate::{
     GameActionResult, GameId, GameIdSource, GameRepository, HumanSpectatorCredential,
     HumanSpectatorGameQuery, HumanSpectatorGameView, IDEMPOTENCY_DIGEST_VERSION, IdempotencyKey,
     IdempotencyLookup, IdempotencyRecord, InvalidAttemptResponse, InvalidAttemptState,
-    IssueCapabilityRequest, IssuedCapability, LexiconResolver, OperationalPolicy,
-    PersistedActionResult, PersistedCreateResult, PublicGameQuery, PublicGameView,
-    PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView, SeedSource, StoredGame,
-    TimeoutCommand, TimeoutResponse, TurnDeadline,
+    IssueCapabilityRequest, IssuedCapability, LexiconResolver, MovePreviewCommand,
+    MovePreviewResult, OperationalPolicy, PersistedActionResult, PersistedCreateResult,
+    PreviewPolicy, PublicGameQuery, PublicGameView, PublicViewerCredential, RepositoryError,
+    SeatGameQuery, SeatGameView, SeedSource, StoredGame, TimeoutCommand, TimeoutResponse,
+    TurnDeadline, UnixMillis,
 };
 
 /// Process-bootstrap boundary that owns operator-only credential issuance.
@@ -87,6 +94,13 @@ impl ApplicationRuntime {
         self
     }
 
+    /// Applies one validated versioned practice-preview policy at bootstrap.
+    #[must_use]
+    pub fn with_preview_policy(mut self, policy: PreviewPolicy) -> Self {
+        self.service = self.service.with_preview_policy(policy);
+        self
+    }
+
     /// Non-operator game use cases safe to give to transport and agent adapters.
     #[must_use]
     pub const fn service(&self) -> &ApplicationService {
@@ -119,7 +133,8 @@ impl ApplicationRuntime {
         &self,
         request: IssueCapabilityRequest,
     ) -> Result<IssuedCapability, CapabilityError> {
-        self.service
+        let game = self
+            .service
             .load_game(&request.game_id)
             .await
             .map_err(|error| match error {
@@ -128,6 +143,11 @@ impl ApplicationRuntime {
             })?;
         let issued_at = self.service.clock.now();
         validate_issue(&request, issued_at)?;
+        if request.scopes.contains(&CapabilityScope::Preview)
+            && game.public_state().mode != GameMode::Practice
+        {
+            return Err(CapabilityError::InvalidRequest);
+        }
         let material = self.capability_tokens.next_material()?;
         let capability_id = CapabilityId::new(encode_id(material.capability_id()))?;
         let token = CapabilityToken::from_material(&material);
@@ -383,6 +403,15 @@ pub struct ApplicationService {
     seeds: Arc<dyn SeedSource>,
     clock: Arc<dyn ApplicationClock>,
     policy: OperationalPolicy,
+    preview_policy: PreviewPolicy,
+    preview_limits: Arc<Mutex<HashMap<(GameId, Seat), PreviewWindow>>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PreviewWindow {
+    policy_version: u32,
+    started_at: UnixMillis,
+    requests: u32,
 }
 
 impl ApplicationService {
@@ -402,6 +431,8 @@ impl ApplicationService {
             seeds,
             clock,
             policy: OperationalPolicy::default(),
+            preview_policy: PreviewPolicy::default(),
+            preview_limits: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -425,6 +456,26 @@ impl ApplicationService {
         self
     }
 
+    /// Overrides the versioned fixed-window practice-preview policy.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the version, request allowance, or window is not positive.
+    #[must_use]
+    pub fn with_preview_policy(mut self, policy: PreviewPolicy) -> Self {
+        assert!(
+            policy.version > 0,
+            "preview policy version must be positive"
+        );
+        assert!(
+            policy.max_requests > 0,
+            "preview request allowance must be positive"
+        );
+        assert!(policy.window_ms > 0, "preview window must be positive");
+        self.preview_policy = policy;
+        self
+    }
+
     /// Returns the verified immutable manifest for one exact active pack.
     ///
     /// This is transport-neutral release metadata; callers must first derive
@@ -443,9 +494,21 @@ impl ApplicationService {
         language: word_arena_engine::Language,
         idempotency_key: IdempotencyKey,
     ) -> CreateGameCommand {
+        self.prepare_create_game_with_mode(language, GameMode::Competitive, idempotency_key)
+    }
+
+    /// Allocates a command with an explicit immutable game mode.
+    #[must_use]
+    pub fn prepare_create_game_with_mode(
+        &self,
+        language: word_arena_engine::Language,
+        mode: GameMode,
+        idempotency_key: IdempotencyKey,
+    ) -> CreateGameCommand {
         CreateGameCommand {
             game_id: self.ids.next_game_id(),
             language,
+            mode,
             idempotency_key,
         }
     }
@@ -463,6 +526,7 @@ impl ApplicationService {
         let key_digest = digest_key(&command.idempotency_key);
         let payload_sha256 = payload_sha256(&CreatePayload {
             language: command.language,
+            mode: command.mode,
         })?;
         match self
             .repository
@@ -484,11 +548,12 @@ impl ApplicationService {
             }
         })?;
         let created_at = self.clock.now();
-        let game = Game::create(
+        let game = Game::create_with_mode(
             command.game_id.as_str(),
             ruleset,
             Some(lexicon),
             self.seeds.next_seed(),
+            command.mode,
         )?;
         let record = StoredGame {
             game_id: command.game_id.clone(),
@@ -566,6 +631,57 @@ impl ApplicationService {
         Ok(SeatGameView {
             observed_at: self.clock.now(),
             game: game.seat_projection(credential.seat()),
+        })
+    }
+
+    /// Evaluates one caller-supplied placement in an explicit practice game.
+    ///
+    /// The authoritative engine runs against an ephemeral resumed game. The
+    /// resulting event is returned, but no snapshot, replay, idempotency row,
+    /// rack, bag, score, deadline, or invalid-attempt counter is persisted.
+    ///
+    /// # Errors
+    ///
+    /// Rejects competitive games, cross-game/seat authority, stale turns,
+    /// exhausted preview allowances, and the same illegal placements as a
+    /// committed move.
+    pub async fn preview_tiles(
+        &self,
+        credential: &CompetitiveSeatCredential,
+        command: MovePreviewCommand,
+    ) -> Result<MovePreviewResult, ApplicationError> {
+        ensure_game(credential.game_id(), &command.game_id)?;
+        if command.turn.seat != credential.seat() {
+            return Err(ApplicationError::WrongSeatAuthority {
+                actual: credential.seat(),
+                claimed: command.turn.seat,
+            });
+        }
+        if command.turn.number != command.expected_version {
+            return Err(ApplicationError::TurnVersionMismatch {
+                turn: command.turn.number,
+                expected_version: command.expected_version,
+            });
+        }
+
+        let mut game = self.load_game(&command.game_id).await?;
+        if game.public_state().mode != GameMode::Practice {
+            return Err(ApplicationError::PracticeOnly);
+        }
+        let observed_at = self.clock.now();
+        self.consume_preview_allowance(&command.game_id, credential.seat(), observed_at)?;
+        let base_version = game.public_state().version;
+        let event = game
+            .play_tiles(
+                credential.seat(),
+                command.expected_version,
+                command.placements,
+            )
+            .map_err(|error| ApplicationError::ActionRejected(rejection_from_engine(&error)))?;
+        Ok(MovePreviewResult {
+            observed_at,
+            base_version,
+            event,
         })
     }
 
@@ -920,6 +1036,47 @@ impl ApplicationService {
         self.resume(&record)
     }
 
+    fn consume_preview_allowance(
+        &self,
+        game_id: &GameId,
+        seat: Seat,
+        now: UnixMillis,
+    ) -> Result<(), ApplicationError> {
+        let mut limits = self
+            .preview_limits
+            .lock()
+            .map_err(|_| ApplicationError::PreviewUnavailable)?;
+        let window = limits
+            .entry((game_id.clone(), seat))
+            .or_insert(PreviewWindow {
+                policy_version: self.preview_policy.version,
+                started_at: now,
+                requests: 0,
+            });
+        let elapsed = now.0.saturating_sub(window.started_at.0);
+        if window.policy_version != self.preview_policy.version
+            || now < window.started_at
+            || elapsed >= self.preview_policy.window_ms
+        {
+            *window = PreviewWindow {
+                policy_version: self.preview_policy.version,
+                started_at: now,
+                requests: 0,
+            };
+        }
+        if window.requests >= self.preview_policy.max_requests {
+            let retry_at = window
+                .started_at
+                .0
+                .saturating_add(self.preview_policy.window_ms);
+            return Err(ApplicationError::PreviewRateLimited {
+                retry_after_ms: retry_at.saturating_sub(now.0).max(0),
+            });
+        }
+        window.requests = window.requests.saturating_add(1);
+        Ok(())
+    }
+
     fn resume(&self, record: &StoredGame) -> Result<Game, ApplicationError> {
         let ruleset = match record.snapshot.state.ruleset_id {
             RulesetId::EnglishV1 => Ruleset::english_v1(),
@@ -967,6 +1124,7 @@ struct ActionPayload<'a> {
 #[derive(Serialize)]
 struct CreatePayload {
     language: word_arena_engine::Language,
+    mode: GameMode,
 }
 
 #[derive(Serialize)]

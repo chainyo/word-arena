@@ -27,7 +27,7 @@ use word_arena_application::{
     HumanSpectatorGameQuery, IdempotencyKey, IssueCapabilityRequest, PublicGameQuery,
     RepositoryError, SeatGameQuery,
 };
-use word_arena_engine::{Language, Move, Ruleset, RulesetId, Turn};
+use word_arena_engine::{GameMode, Language, Move, Ruleset, RulesetId, Turn};
 
 use crate::{RuntimeLexicons, mcp::McpGateway};
 
@@ -132,6 +132,9 @@ pub struct ApiEnvelope<T> {
 pub struct CreateGameRequest {
     /// Immutable language/ruleset selection.
     pub language: Language,
+    /// Immutable competitive or practice behavior; competitive by default.
+    #[serde(default)]
+    pub mode: GameMode,
     /// Mandatory retry identity for durable creation deduplication.
     pub idempotency_key: IdempotencyKey,
 }
@@ -310,10 +313,11 @@ async fn create_game(
     payload: Result<Json<CreateGameRequest>, JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CreateGameResponse>>, ApiError> {
     let Json(request) = payload.map_err(|error| json_rejection(&error))?;
-    let command = state
-        .runtime
-        .service()
-        .prepare_create_game(request.language, request.idempotency_key);
+    let command = state.runtime.service().prepare_create_game_with_mode(
+        request.language,
+        request.mode,
+        request.idempotency_key,
+    );
     let created = state
         .runtime
         .service()
@@ -758,7 +762,19 @@ fn map_application_error(error: &ApplicationError) -> ApiError {
             "deadline_not_reached",
             "turn deadline has not been reached",
         ),
-        ApplicationError::MissingLexicon { .. } | ApplicationError::Repository(_) => ApiError::new(
+        ApplicationError::PracticeOnly => ApiError::new(
+            StatusCode::FORBIDDEN,
+            "practice_only",
+            "move preview is available only in practice games",
+        ),
+        ApplicationError::PreviewRateLimited { .. } => ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "preview_rate_limited",
+            "move preview rate limit reached",
+        ),
+        ApplicationError::MissingLexicon { .. }
+        | ApplicationError::PreviewUnavailable
+        | ApplicationError::Repository(_) => ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "service_unavailable",
             "service is temporarily unavailable",

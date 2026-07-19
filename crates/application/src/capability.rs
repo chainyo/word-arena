@@ -134,6 +134,8 @@ pub enum CapabilityScope {
     ObserveSeat,
     /// Submit actions for the bound competitive seat.
     Act,
+    /// Preview one caller-supplied placement in an explicit practice game.
+    Preview,
     /// Read the human-only both-rack projection.
     ObserveHumanSpectator,
     /// Read the authoritative administrator projection.
@@ -500,7 +502,10 @@ pub(crate) const fn role_allows(role: CapabilityRole, scope: CapabilityScope) ->
         CapabilityRole::Public => matches!(scope, CapabilityScope::ObservePublic),
         CapabilityRole::Seat(_) => matches!(
             scope,
-            CapabilityScope::ObservePublic | CapabilityScope::ObserveSeat | CapabilityScope::Act
+            CapabilityScope::ObservePublic
+                | CapabilityScope::ObserveSeat
+                | CapabilityScope::Act
+                | CapabilityScope::Preview
         ),
         CapabilityRole::HumanSpectator => matches!(
             scope,

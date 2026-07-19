@@ -66,6 +66,18 @@ pub enum ApplicationError {
         /// Command expected version.
         expected_version: u64,
     },
+    /// Move preview was requested for a competitive game.
+    #[error("move preview is available only in explicit practice games")]
+    PracticeOnly,
+    /// One seat exhausted its versioned fixed-window preview allowance.
+    #[error("move preview rate limit reached; retry after {retry_after_ms} ms")]
+    PreviewRateLimited {
+        /// Remaining injected-clock duration in the active window.
+        retry_after_ms: i64,
+    },
+    /// The in-process preview limiter could not safely access its state.
+    #[error("move preview limiter is unavailable")]
+    PreviewUnavailable,
     /// Stable deterministic mutation rejection, including cached retries.
     #[error("action rejected: {0:?}")]
     ActionRejected(ActionRejection),

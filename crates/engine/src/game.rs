@@ -110,6 +110,17 @@ pub struct BoardTile {
     pub is_blank: bool,
 }
 
+/// Immutable game behavior selected before the opening deal.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameMode {
+    /// Rated-capable play without any move-preview surface.
+    #[default]
+    Competitive,
+    /// Explicit unranked play where supplied moves may be previewed.
+    Practice,
+}
+
 /// Lifecycle state represented in snapshots and results.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -168,6 +179,9 @@ pub struct PublicGameState {
     pub ruleset: RulesetIdentity,
     /// Exact pack selected during creation.
     pub lexicon: PackIdentity,
+    /// Immutable competitive or practice behavior selected at creation.
+    #[serde(default)]
+    pub mode: GameMode,
     /// Versioned random contract used by this game.
     pub rng_algorithm: RngAlgorithm,
     /// Public seed commitment; the seed remains private during play.
@@ -278,6 +292,9 @@ pub enum GameEventKind {
         game_id: String,
         /// Full versioned ruleset.
         ruleset: Ruleset,
+        /// Immutable competitive or practice behavior.
+        #[serde(default)]
+        mode: GameMode,
         /// Independently versioned random algorithm.
         rng_algorithm: RngAlgorithm,
         /// Proof binding the eventual seed reveal.
@@ -507,6 +524,22 @@ impl Game {
         lexicon: Option<Arc<dyn WordValidator>>,
         seed: GameSeed,
     ) -> Result<Self, GameError> {
+        Self::create_with_mode(game_id, ruleset, lexicon, seed, GameMode::Competitive)
+    }
+
+    /// Creates, shuffles, and deals a game with explicit immutable behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns before creating state when the ruleset, exact lexicon, seed
+    /// setup, count conversion, or conservation contract fails.
+    pub fn create_with_mode(
+        game_id: impl Into<String>,
+        ruleset: Ruleset,
+        lexicon: Option<Arc<dyn WordValidator>>,
+        seed: GameSeed,
+        mode: GameMode,
+    ) -> Result<Self, GameError> {
         ruleset.validate()?;
         let lexicon = lexicon.ok_or_else(|| GameError::MissingLexicon {
             ruleset: ruleset.id,
@@ -526,6 +559,7 @@ impl Game {
             ruleset_id: ruleset.id,
             ruleset: ruleset.identity(),
             lexicon: identity.clone(),
+            mode,
             rng_algorithm: algorithm,
             seed_commitment: commitment.clone(),
             board: vec![None; BOARD_SQUARES],
@@ -545,6 +579,7 @@ impl Game {
             kind: GameEventKind::Created {
                 game_id,
                 ruleset: ruleset.clone(),
+                mode,
                 rng_algorithm: algorithm,
                 seed_commitment: commitment,
                 rack_counts,
@@ -1003,6 +1038,7 @@ impl Game {
         let GameEventKind::Created {
             game_id,
             ruleset,
+            mode,
             rng_algorithm,
             seed_commitment,
             ..
@@ -1027,7 +1063,13 @@ impl Game {
         if !seed_commitment.verify(&seed) {
             return Err(GameError::SeedCommitmentMismatch);
         }
-        let mut game = Self::create(game_id.clone(), bundle.ruleset.clone(), Some(lexicon), seed)?;
+        let mut game = Self::create_with_mode(
+            game_id.clone(),
+            bundle.ruleset.clone(),
+            Some(lexicon),
+            seed,
+            *mode,
+        )?;
         if game.events[0] != *created {
             return Err(GameError::ReplayEventMismatch { sequence: 0 });
         }

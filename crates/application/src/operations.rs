@@ -132,6 +132,27 @@ impl Default for OperationalPolicy {
     }
 }
 
+/// Versioned fixed-window policy for practice move previews.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PreviewPolicy {
+    /// Policy identity recorded in diagnostics.
+    pub version: u32,
+    /// Maximum preview attempts by one seat in one window.
+    pub max_requests: u32,
+    /// Fixed window duration in injected-clock milliseconds.
+    pub window_ms: i64,
+}
+
+impl Default for PreviewPolicy {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            max_requests: 10,
+            window_ms: 60_000,
+        }
+    }
+}
+
 /// Persisted counter scoped to one exact turn.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidAttemptState {

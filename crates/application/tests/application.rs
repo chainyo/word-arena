@@ -8,17 +8,17 @@ use word_arena_application::{
     CapabilityDigestKey, CapabilityError, CapabilityRole, CapabilityScope,
     CompetitiveSeatCredential, GameActionCommand, GameId, GameIdSource, GameRepository,
     HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey,
-    InvalidAttemptResponse, IssueCapabilityRequest, LexiconResolver, OperationalPolicy,
-    PublicGameQuery, PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView,
-    SeedSource, TimeoutCommand, TimeoutResponse, UnixMillis,
+    InvalidAttemptResponse, IssueCapabilityRequest, LexiconResolver, MovePreviewCommand,
+    OperationalPolicy, PreviewPolicy, PublicGameQuery, PublicViewerCredential, RepositoryError,
+    SeatGameQuery, SeatGameView, SeedSource, TimeoutCommand, TimeoutResponse, UnixMillis,
     test_support::{
         FixedClock, InMemoryCapabilityRepository, InMemoryGameRepository, InMemoryLexiconResolver,
         ManualClock, SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
     },
 };
 use word_arena_engine::{
-    Coordinate, GameEventKind, GamePhase, Language, Move, PhysicalTile, Placement, Ruleset, Seat,
-    Tile, TileFace, Turn, WordValidator,
+    Coordinate, GameEventKind, GameMode, GamePhase, Language, Move, PhysicalTile, Placement,
+    Ruleset, Seat, Tile, TileFace, Turn, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 
@@ -295,6 +295,175 @@ async fn placement_exchange_pass_and_resignation_route_to_the_engine() {
         GameEventKind::Resigned { .. }
     ));
     assert_eq!(resigned.game.public.state.phase, GamePhase::Finished);
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one application narrative compares preview, rejection, persistence, and rate limits"
+)]
+async fn practice_preview_is_bounded_exact_and_never_mutates_game_state() {
+    let runtime = setup_runtime(&[Language::English]).with_preview_policy(PreviewPolicy {
+        version: 7,
+        max_requests: 2,
+        window_ms: 60_000,
+    });
+    let service = runtime.service();
+    let competitive = service
+        .create_game(service.prepare_create_game(Language::English, key("competitive")))
+        .await
+        .unwrap();
+    assert_eq!(competitive.public.state.mode, GameMode::Competitive);
+    assert!(matches!(
+        service
+            .preview_tiles(
+                &competitive.access.seat_one,
+                MovePreviewCommand {
+                    game_id: competitive.game_id,
+                    expected_version: 0,
+                    turn: Turn {
+                        number: 0,
+                        seat: Seat::One,
+                    },
+                    placements: Vec::new(),
+                },
+            )
+            .await,
+        Err(ApplicationError::PracticeOnly)
+    ));
+
+    let practice = service
+        .create_game(service.prepare_create_game_with_mode(
+            Language::English,
+            GameMode::Practice,
+            key("practice"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(practice.public.state.mode, GameMode::Practice);
+    let before = service
+        .seat_game(
+            &practice.access.seat_one,
+            SeatGameQuery {
+                game_id: practice.game_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let placements = before
+        .game
+        .rack
+        .tiles()
+        .iter()
+        .take(2)
+        .enumerate()
+        .map(|(index, tile)| {
+            Placement::new(
+                tile.id,
+                Coordinate::new(7, 6 + u8::try_from(index).unwrap()),
+                assignment(tile, index),
+            )
+        })
+        .collect::<Vec<_>>();
+    let preview = service
+        .preview_tiles(
+            &practice.access.seat_one,
+            MovePreviewCommand {
+                game_id: practice.game_id.clone(),
+                expected_version: 0,
+                turn: Turn {
+                    number: 0,
+                    seat: Seat::One,
+                },
+                placements: placements.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(preview.base_version, 0);
+
+    let invalid_preview = service
+        .preview_tiles(
+            &practice.access.seat_one,
+            MovePreviewCommand {
+                game_id: practice.game_id.clone(),
+                expected_version: 0,
+                turn: Turn {
+                    number: 0,
+                    seat: Seat::One,
+                },
+                placements: Vec::new(),
+            },
+        )
+        .await
+        .unwrap_err();
+    let after_previews = service
+        .seat_game(
+            &practice.access.seat_one,
+            SeatGameQuery {
+                game_id: practice.game_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(after_previews, before);
+    assert!(matches!(
+        service
+            .preview_tiles(
+                &practice.access.seat_one,
+                MovePreviewCommand {
+                    game_id: practice.game_id.clone(),
+                    expected_version: 0,
+                    turn: Turn {
+                        number: 0,
+                        seat: Seat::One,
+                    },
+                    placements: placements.clone(),
+                },
+            )
+            .await,
+        Err(ApplicationError::PreviewRateLimited {
+            retry_after_ms: 60_000
+        })
+    ));
+
+    let invalid_commit = service
+        .act(
+            &practice.access.seat_one,
+            GameActionCommand {
+                game_id: practice.game_id.clone(),
+                expected_version: 0,
+                turn: Turn {
+                    number: 0,
+                    seat: Seat::One,
+                },
+                idempotency_key: key("invalid-commit"),
+                action: Move::Place {
+                    placements: Vec::new(),
+                },
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(invalid_preview.to_string(), invalid_commit.to_string());
+    let committed = service
+        .act(
+            &practice.access.seat_one,
+            GameActionCommand {
+                game_id: practice.game_id,
+                expected_version: 0,
+                turn: Turn {
+                    number: 0,
+                    seat: Seat::One,
+                },
+                idempotency_key: key("valid-commit"),
+                action: Move::Place { placements },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(committed.event, preview.event);
+    assert_eq!(committed.game.public.state.version, 1);
 }
 
 #[tokio::test]

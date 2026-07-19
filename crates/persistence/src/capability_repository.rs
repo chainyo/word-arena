@@ -311,7 +311,10 @@ const fn role_allows(role: CapabilityRole, scope: CapabilityScope) -> bool {
         CapabilityRole::Public => matches!(scope, CapabilityScope::ObservePublic),
         CapabilityRole::Seat(_) => matches!(
             scope,
-            CapabilityScope::ObservePublic | CapabilityScope::ObserveSeat | CapabilityScope::Act
+            CapabilityScope::ObservePublic
+                | CapabilityScope::ObserveSeat
+                | CapabilityScope::Act
+                | CapabilityScope::Preview
         ),
         CapabilityRole::HumanSpectator => matches!(
             scope,

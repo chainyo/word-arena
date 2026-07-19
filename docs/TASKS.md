@@ -174,13 +174,13 @@ exact pack/ruleset identities without exposing future bag order or raw secrets.
 
 ### MCP-004: Add practice-only move preview
 
-- [ ] Define an explicit practice-game mode at creation that is immutable and
+- [x] Define an explicit practice-game mode at creation that is immutable and
   visible in recorded metadata.
-- [ ] Add a rate-limited preview use case and MCP tool that runs authoritative
+- [x] Add a rate-limited preview use case and MCP tool that runs authoritative
   validation/scoring without mutation only for practice credentials.
-- [ ] Keep move generation and best-move search absent; preview only evaluates
+- [x] Keep move generation and best-move search absent; preview only evaluates
   the caller's supplied placement.
-- [ ] Test competitive denial, rate limits, no-state-change behavior, score/error
+- [x] Test competitive denial, rate limits, no-state-change behavior, score/error
   equivalence with commit, and audit records.
 
 Verification: no competitive game/session can discover or invoke preview, and
