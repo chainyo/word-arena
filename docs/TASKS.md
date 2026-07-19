@@ -46,14 +46,14 @@ cannot request or deserialize another authority's projection.
 
 ### APP-002: Add versioned SQLite migrations through SQLx
 
-- [ ] Record the SQLite/SQLx persistence decision and add the minimum supported
+- [x] Record the SQLite/SQLx persistence decision and add the minimum supported
   SQLx dependency/features with a committed lockfile.
-- [ ] Add forward-only migrations for games, seats, events, private events,
+- [x] Add forward-only migrations for games, seats, events, private events,
   snapshots, rulesets, lexicon packs, tournaments, matches, agent manifests,
   agent runs, idempotency records, and audit records.
-- [ ] Add constraints, foreign keys, indexes, schema-version metadata, UTC time
+- [x] Add constraints, foreign keys, indexes, schema-version metadata, UTC time
   representation, and opaque secret-digest storage; never store raw tokens.
-- [ ] Provide an idempotent migration entry point and temporary-database tests
+- [x] Provide an idempotent migration entry point and temporary-database tests
   for clean install, upgrade ordering, constraints, and rollback-on-failure.
 
 Verification: a fresh SQLite database migrates offline to the expected schema,

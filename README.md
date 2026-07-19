@@ -34,6 +34,8 @@ The repository foundation is in place:
   runner, covered by English/French golden, property, and 1,000-game stress tests
 - Transport-independent application commands and public, seat, human-spectator,
   and administrator query APIs over injected persistence/runtime boundaries
+- Embedded forward-only SQLx 0.9 migrations for the constrained local SQLite
+  game, credential, tournament, match, agent-run, idempotency, and audit schema
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
@@ -98,6 +100,7 @@ crates/engine/   Deterministic game domain and rules engine
 crates/application/  Typed application commands, queries, and adapter ports
 crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks
 crates/lexicon-builder/  Reproducible source importers and audit reports
+crates/persistence/  Embedded SQLx migrations and SQLite adapters
 docs/            Architecture decisions and the maintained creation plan
 lexicons/        Pinned source metadata, licenses, and pack documentation
 rulesets/        Immutable board, premium, tile, score, and lexicon definitions

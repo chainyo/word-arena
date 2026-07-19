@@ -27,6 +27,9 @@ repeated correction should apply to future work.
   game engine and transport layers.
 - `crates/lexicon-builder/`: deterministic, auditable source importers and pack
   build tooling. Generated word data and build output must stay outside Git.
+- `crates/persistence/`: SQLite schema, SQLx migrations, and application port
+  adapters. Keep migrations forward-only, embedded, constraint-heavy, and
+  covered by temporary-database integration tests.
 - `apps/server/`: process entry point and application adapters. HTTP, WebSocket,
   MCP, authentication, persistence, and observability belong here or in focused
   crates extracted from it later.
@@ -59,6 +62,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo build --workspace --all-features
+cargo test -p word-arena-persistence --all-features
 cargo run -p word-arena-server
 ```
 
