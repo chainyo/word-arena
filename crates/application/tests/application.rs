@@ -3,10 +3,11 @@
 use std::sync::Arc;
 
 use word_arena_application::{
-    AdministratorGameQuery, ApplicationClock, ApplicationError, ApplicationService,
-    GameActionCommand, GameId, GameIdSource, GameRepository, HumanSpectatorGameQuery,
-    HumanSpectatorGameView, IdempotencyKey, LexiconResolver, PublicGameQuery, RepositoryError,
-    SeatGameQuery, SeatGameView, SeedSource, UnixMillis,
+    AdministratorCredential, AdministratorGameQuery, ApplicationClock, ApplicationError,
+    ApplicationRuntime, Authorizes, CompetitiveSeatCredential, GameActionCommand, GameId,
+    GameIdSource, GameRepository, HumanSpectatorCredential, HumanSpectatorGameQuery,
+    HumanSpectatorGameView, IdempotencyKey, LexiconResolver, PublicGameQuery,
+    PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView, SeedSource, UnixMillis,
     test_support::{
         FixedClock, InMemoryGameRepository, InMemoryLexiconResolver, SequenceGameIds, SequenceSeeds,
     },
@@ -16,6 +17,58 @@ use word_arena_engine::{
     Ruleset, Seat, Tile, TileFace, Turn, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
+
+macro_rules! assert_not_authorizes {
+    ($credential:ty, $query:ty) => {
+        const _: fn() = || {
+            struct Check<T: ?Sized>(std::marker::PhantomData<T>);
+            trait AmbiguousIfAuthorized<Marker> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfAuthorized<()> for Check<T> {}
+            impl<T: ?Sized + Authorizes<$query>> AmbiguousIfAuthorized<u8> for Check<T> {}
+            let _ = <Check<$credential> as AmbiguousIfAuthorized<_>>::marker;
+        };
+    };
+}
+
+macro_rules! assert_not_serializable {
+    ($credential:ty) => {
+        const _: fn() = || {
+            struct Check<T: ?Sized>(std::marker::PhantomData<T>);
+            trait AmbiguousIfSerializable<Marker> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfSerializable<()> for Check<T> {}
+            impl<T: ?Sized + serde::Serialize> AmbiguousIfSerializable<u8> for Check<T> {}
+            let _ = <Check<$credential> as AmbiguousIfSerializable<_>>::marker;
+        };
+    };
+}
+
+assert_not_authorizes!(PublicViewerCredential, SeatGameQuery);
+assert_not_authorizes!(PublicViewerCredential, HumanSpectatorGameQuery);
+assert_not_authorizes!(PublicViewerCredential, AdministratorGameQuery);
+assert_not_authorizes!(CompetitiveSeatCredential, PublicGameQuery);
+assert_not_authorizes!(CompetitiveSeatCredential, HumanSpectatorGameQuery);
+assert_not_authorizes!(CompetitiveSeatCredential, AdministratorGameQuery);
+assert_not_authorizes!(HumanSpectatorCredential, PublicGameQuery);
+assert_not_authorizes!(HumanSpectatorCredential, SeatGameQuery);
+assert_not_authorizes!(HumanSpectatorCredential, AdministratorGameQuery);
+assert_not_authorizes!(AdministratorCredential, PublicGameQuery);
+assert_not_authorizes!(AdministratorCredential, SeatGameQuery);
+assert_not_authorizes!(AdministratorCredential, HumanSpectatorGameQuery);
+
+assert_not_serializable!(PublicViewerCredential);
+assert_not_serializable!(CompetitiveSeatCredential);
+assert_not_serializable!(HumanSpectatorCredential);
+assert_not_serializable!(AdministratorCredential);
+
+fn assert_authorizes<Credential, Query>()
+where
+    Credential: Authorizes<Query>,
+{
+}
 
 #[derive(Debug)]
 struct AcceptingLexicon(PackIdentity);
@@ -30,9 +83,18 @@ impl WordValidator for AcceptingLexicon {
     }
 }
 
+#[test]
+fn credential_query_authorization_matrix_is_exact_at_compile_time() {
+    assert_authorizes::<PublicViewerCredential, PublicGameQuery>();
+    assert_authorizes::<CompetitiveSeatCredential, SeatGameQuery>();
+    assert_authorizes::<HumanSpectatorCredential, HumanSpectatorGameQuery>();
+    assert_authorizes::<AdministratorCredential, AdministratorGameQuery>();
+}
+
 #[tokio::test]
 async fn english_and_french_finish_through_typed_application_apis() {
-    let service = setup_service(&[Language::English, Language::French]);
+    let runtime = setup_runtime(&[Language::English, Language::French]);
+    let service = runtime.service();
     for language in [Language::English, Language::French] {
         let command = service.prepare_create_game(language, key("create"));
         let created = service.create_game(command).await.unwrap();
@@ -56,9 +118,12 @@ async fn english_and_french_finish_through_typed_application_apis() {
         }
 
         let public = service
-            .public_game(PublicGameQuery {
-                game_id: created.game_id.clone(),
-            })
+            .public_game(
+                &created.access.public,
+                PublicGameQuery {
+                    game_id: created.game_id.clone(),
+                },
+            )
             .await
             .unwrap();
         assert_eq!(public.game.state.phase, GamePhase::Finished);
@@ -85,9 +150,13 @@ async fn english_and_french_finish_through_typed_application_apis() {
         assert_eq!(seat_two.game.seat, Seat::Two);
         assert_ne!(seat_one.game.rack, seat_two.game.rack);
 
+        let spectator_credential = runtime
+            .issue_human_spectator(&created.game_id)
+            .await
+            .unwrap();
         let spectator = service
             .human_spectator_game(
-                &created.access.human_spectator,
+                &spectator_credential,
                 HumanSpectatorGameQuery {
                     game_id: created.game_id.clone(),
                 },
@@ -97,9 +166,10 @@ async fn english_and_french_finish_through_typed_application_apis() {
         assert_eq!(spectator.game.racks[0], seat_one.game.rack);
         assert_eq!(spectator.game.racks[1], seat_two.game.rack);
 
+        let administrator_credential = runtime.issue_administrator(&created.game_id).await.unwrap();
         let administrator = service
             .administrator_game(
-                &created.access.administrator,
+                &administrator_credential,
                 AdministratorGameQuery {
                     game_id: created.game_id,
                 },
@@ -112,7 +182,8 @@ async fn english_and_french_finish_through_typed_application_apis() {
 
 #[tokio::test]
 async fn placement_exchange_pass_and_resignation_route_to_the_engine() {
-    let service = setup_service(&[Language::English]);
+    let runtime = setup_runtime(&[Language::English]);
+    let service = runtime.service();
     let created = service
         .create_game(service.prepare_create_game(Language::English, key("create")))
         .await
@@ -205,8 +276,9 @@ async fn placement_exchange_pass_and_resignation_route_to_the_engine() {
 }
 
 #[tokio::test]
-async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() {
-    let service = setup_service(&[Language::English]);
+async fn every_credential_rejects_cross_game_reuse() {
+    let runtime = setup_runtime(&[Language::English]);
+    let service = runtime.service();
     let first = service
         .create_game(service.prepare_create_game(Language::English, key("first")))
         .await
@@ -218,6 +290,17 @@ async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() 
 
     assert!(matches!(
         service
+            .public_game(
+                &first.access.public,
+                PublicGameQuery {
+                    game_id: second.game_id.clone()
+                }
+            )
+            .await,
+        Err(ApplicationError::WrongGameAuthority { .. })
+    ));
+    assert!(matches!(
+        service
             .seat_game(
                 &first.access.seat_one,
                 SeatGameQuery {
@@ -227,6 +310,46 @@ async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() 
             .await,
         Err(ApplicationError::WrongGameAuthority { .. })
     ));
+    let spectator = runtime.issue_human_spectator(&first.game_id).await.unwrap();
+    assert!(matches!(
+        service
+            .human_spectator_game(
+                &spectator,
+                HumanSpectatorGameQuery {
+                    game_id: second.game_id.clone()
+                }
+            )
+            .await,
+        Err(ApplicationError::WrongGameAuthority { .. })
+    ));
+    let administrator = runtime.issue_administrator(&first.game_id).await.unwrap();
+    assert!(matches!(
+        service
+            .administrator_game(
+                &administrator,
+                AdministratorGameQuery {
+                    game_id: second.game_id.clone()
+                }
+            )
+            .await,
+        Err(ApplicationError::WrongGameAuthority { .. })
+    ));
+
+    let competitive = first.access.competitive(Seat::One);
+    assert_eq!(competitive.public.game_id(), &first.game_id);
+    assert_eq!(competitive.seat.game_id(), &first.game_id);
+    assert_eq!(competitive.seat.seat(), Seat::One);
+}
+
+#[tokio::test]
+async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() {
+    let runtime = setup_runtime(&[Language::English]);
+    let service = runtime.service();
+    let first = service
+        .create_game(service.prepare_create_game(Language::English, key("first")))
+        .await
+        .unwrap();
+
     assert!(matches!(
         service
             .act(
@@ -262,42 +385,72 @@ async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() 
         Err(ApplicationError::Engine(GameError::EmptyPlacement))
     ));
     let unchanged = service
-        .public_game(PublicGameQuery {
-            game_id: first.game_id.clone(),
-        })
+        .public_game(
+            &first.access.public,
+            PublicGameQuery {
+                game_id: first.game_id.clone(),
+            },
+        )
         .await
         .unwrap();
     assert_eq!(unchanged.game.state.version, 0);
 
     assert!(matches!(
         service
-            .public_game(PublicGameQuery {
-                game_id: GameId::new("missing").unwrap()
-            })
+            .public_game(
+                &first.access.public,
+                PublicGameQuery {
+                    game_id: GameId::new("missing").unwrap()
+                }
+            )
+            .await,
+        Err(ApplicationError::WrongGameAuthority { .. })
+    ));
+
+    assert!(matches!(
+        runtime
+            .issue_public_viewer(&GameId::new("missing").unwrap())
+            .await,
+        Err(ApplicationError::Repository(RepositoryError::NotFound))
+    ));
+    assert!(matches!(
+        runtime
+            .issue_human_spectator(&GameId::new("missing").unwrap())
+            .await,
+        Err(ApplicationError::Repository(RepositoryError::NotFound))
+    ));
+    assert!(matches!(
+        runtime
+            .issue_administrator(&GameId::new("missing").unwrap())
             .await,
         Err(ApplicationError::Repository(RepositoryError::NotFound))
     ));
 
-    let english_only = setup_service(&[Language::English]);
+    let english_only = setup_runtime(&[Language::English]);
+    let missing_pack = english_only
+        .service()
+        .prepare_create_game(Language::French, key("missing-pack"));
     assert!(matches!(
-        english_only
-            .create_game(english_only.prepare_create_game(Language::French, key("missing-pack")))
-            .await,
+        english_only.service().create_game(missing_pack).await,
         Err(ApplicationError::MissingLexicon { .. })
     ));
 }
 
 #[tokio::test]
 async fn role_results_are_serialization_isolated() {
-    let service = setup_service(&[Language::English]);
+    let runtime = setup_runtime(&[Language::English]);
+    let service = runtime.service();
     let created = service
         .create_game(service.prepare_create_game(Language::English, key("create")))
         .await
         .unwrap();
     let public = service
-        .public_game(PublicGameQuery {
-            game_id: created.game_id.clone(),
-        })
+        .public_game(
+            &created.access.public,
+            PublicGameQuery {
+                game_id: created.game_id.clone(),
+            },
+        )
         .await
         .unwrap();
     let seat = service
@@ -309,9 +462,13 @@ async fn role_results_are_serialization_isolated() {
         )
         .await
         .unwrap();
+    let spectator_credential = runtime
+        .issue_human_spectator(&created.game_id)
+        .await
+        .unwrap();
     let spectator = service
         .human_spectator_game(
-            &created.access.human_spectator,
+            &spectator_credential,
             HumanSpectatorGameQuery {
                 game_id: created.game_id,
             },
@@ -326,12 +483,16 @@ async fn role_results_are_serialization_isolated() {
     assert!(serde_json::from_str::<SeatGameView>(&public_json).is_err());
 
     let seat_json = serde_json::to_string(&seat).unwrap();
+    assert!(!seat_json.contains("\"seed\""));
+    assert!(!seat_json.contains("\"bag\""));
+    assert!(!seat_json.contains("\"racks\""));
+    assert!(!seat_json.contains("\"snapshot\""));
     assert!(serde_json::from_str::<HumanSpectatorGameView>(&seat_json).is_err());
     let spectator_json = serde_json::to_string(&spectator).unwrap();
     assert!(serde_json::from_str::<SeatGameView>(&spectator_json).is_err());
 }
 
-fn setup_service(languages: &[Language]) -> ApplicationService {
+fn setup_runtime(languages: &[Language]) -> ApplicationRuntime {
     let lexicons = languages.iter().map(|language| {
         let ruleset = Ruleset::for_language(*language).unwrap();
         Arc::new(AcceptingLexicon(ruleset.lexicon)) as Arc<dyn WordValidator>
@@ -341,7 +502,7 @@ fn setup_service(languages: &[Language]) -> ApplicationService {
     let ids: Arc<dyn GameIdSource> = Arc::new(SequenceGameIds::new("game"));
     let seeds: Arc<dyn SeedSource> = Arc::new(SequenceSeeds::new(7));
     let clock: Arc<dyn ApplicationClock> = Arc::new(FixedClock(UnixMillis(1_700_000_000_000)));
-    ApplicationService::new(repository, resolver, ids, seeds, clock)
+    ApplicationRuntime::new(repository, resolver, ids, seeds, clock)
 }
 
 fn key(value: &str) -> IdempotencyKey {

@@ -1,4 +1,4 @@
-//! Transport-agnostic application commands and authority-bound game queries.
+//! Transport-agnostic application commands and credential-bound game queries.
 //!
 //! The application layer coordinates the deterministic engine through injected
 //! storage, lexicon, ID, seed, and clock boundaries. HTTP, MCP, `SQLx`, and token
@@ -14,7 +14,8 @@ mod service;
 pub mod test_support;
 
 pub use authority::{
-    AdministratorAuthority, CreatedGameAccess, HumanSpectatorAuthority, SeatAuthority,
+    AdministratorCredential, Authorizes, CompetitiveGameCredentials, CompetitiveSeatCredential,
+    CreatedGameAccess, HumanSpectatorCredential, PublicViewerCredential,
 };
 pub use command::{
     AdministratorGameQuery, AdministratorGameView, CreateGameCommand, CreatedGame,
@@ -26,4 +27,4 @@ pub use ports::{
     ApplicationClock, BoxFuture, GameIdSource, GameRepository, LexiconResolver, SeedSource,
     StoredGame,
 };
-pub use service::ApplicationService;
+pub use service::{ApplicationRuntime, ApplicationService};

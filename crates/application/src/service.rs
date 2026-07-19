@@ -3,13 +3,85 @@ use std::sync::Arc;
 use word_arena_engine::{Game, Ruleset, RulesetId};
 
 use crate::{
-    AdministratorAuthority, AdministratorGameQuery, AdministratorGameView, ApplicationClock,
-    ApplicationError, CreateGameCommand, CreatedGame, CreatedGameAccess, GameActionCommand,
-    GameActionResult, GameIdSource, GameRepository, HumanSpectatorAuthority,
-    HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey, LexiconResolver,
-    PublicGameQuery, PublicGameView, RepositoryError, SeatAuthority, SeatGameQuery, SeatGameView,
-    SeedSource, StoredGame,
+    AdministratorCredential, AdministratorGameQuery, AdministratorGameView, ApplicationClock,
+    ApplicationError, CompetitiveSeatCredential, CreateGameCommand, CreatedGame, CreatedGameAccess,
+    GameActionCommand, GameActionResult, GameId, GameIdSource, GameRepository,
+    HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey,
+    LexiconResolver, PublicGameQuery, PublicGameView, PublicViewerCredential, RepositoryError,
+    SeatGameQuery, SeatGameView, SeedSource, StoredGame,
 };
+
+/// Process-bootstrap boundary that owns operator-only credential issuance.
+///
+/// Agent drivers and transport handlers should receive only
+/// [`ApplicationService`] plus their authenticated competitive credentials.
+/// Keeping this runtime out of agent processes makes human-spectator and
+/// administrator issuance unavailable to agent configuration and commands.
+#[derive(Debug)]
+pub struct ApplicationRuntime {
+    service: ApplicationService,
+}
+
+impl ApplicationRuntime {
+    /// Builds the application process from explicit adapters.
+    #[must_use]
+    pub fn new(
+        repository: Arc<dyn GameRepository>,
+        lexicons: Arc<dyn LexiconResolver>,
+        ids: Arc<dyn GameIdSource>,
+        seeds: Arc<dyn SeedSource>,
+        clock: Arc<dyn ApplicationClock>,
+    ) -> Self {
+        Self {
+            service: ApplicationService::new(repository, lexicons, ids, seeds, clock),
+        }
+    }
+
+    /// Non-operator game use cases safe to give to transport and agent adapters.
+    #[must_use]
+    pub const fn service(&self) -> &ApplicationService {
+        &self.service
+    }
+
+    /// Issues a public-view credential after confirming that the game exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an application error when the game cannot be loaded exactly.
+    pub async fn issue_public_viewer(
+        &self,
+        game_id: &GameId,
+    ) -> Result<PublicViewerCredential, ApplicationError> {
+        self.service.load_game(game_id).await?;
+        Ok(PublicViewerCredential::new(game_id))
+    }
+
+    /// Issues a human-only spectator credential from the operator boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an application error when the game cannot be loaded exactly.
+    pub async fn issue_human_spectator(
+        &self,
+        game_id: &GameId,
+    ) -> Result<HumanSpectatorCredential, ApplicationError> {
+        self.service.load_game(game_id).await?;
+        Ok(HumanSpectatorCredential::new(game_id))
+    }
+
+    /// Issues an administrator credential from the operator boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an application error when the game cannot be loaded exactly.
+    pub async fn issue_administrator(
+        &self,
+        game_id: &GameId,
+    ) -> Result<AdministratorCredential, ApplicationError> {
+        self.service.load_game(game_id).await?;
+        Ok(AdministratorCredential::new(game_id))
+    }
+}
 
 /// Transport-independent application coordinator.
 #[derive(Debug)]
@@ -24,7 +96,7 @@ pub struct ApplicationService {
 impl ApplicationService {
     /// Creates a service from explicit application-boundary adapters.
     #[must_use]
-    pub fn new(
+    fn new(
         repository: Arc<dyn GameRepository>,
         lexicons: Arc<dyn LexiconResolver>,
         ids: Arc<dyn GameIdSource>,
@@ -59,7 +131,7 @@ impl ApplicationService {
     /// # Errors
     ///
     /// Returns a ruleset/pack, engine, or repository error before exposing
-    /// authority bindings when creation cannot commit.
+    /// credential bindings when creation cannot commit.
     pub async fn create_game(
         &self,
         command: CreateGameCommand,
@@ -92,15 +164,17 @@ impl ApplicationService {
         })
     }
 
-    /// Loads the public-only projection for any observer.
+    /// Loads the public-only projection for a game-bound observer.
     ///
     /// # Errors
     ///
     /// Returns repository, compatibility, or deterministic resume errors.
     pub async fn public_game(
         &self,
+        credential: &PublicViewerCredential,
         query: PublicGameQuery,
     ) -> Result<PublicGameView, ApplicationError> {
+        ensure_game(credential.game_id(), &query.game_id)?;
         let game = self.load_game(&query.game_id).await?;
         Ok(PublicGameView {
             observed_at: self.clock.now(),
@@ -116,14 +190,14 @@ impl ApplicationService {
     /// compatibility, or deterministic resume errors.
     pub async fn seat_game(
         &self,
-        authority: &SeatAuthority,
+        credential: &CompetitiveSeatCredential,
         query: SeatGameQuery,
     ) -> Result<SeatGameView, ApplicationError> {
-        ensure_game(authority.game_id(), &query.game_id)?;
+        ensure_game(credential.game_id(), &query.game_id)?;
         let game = self.load_game(&query.game_id).await?;
         Ok(SeatGameView {
             observed_at: self.clock.now(),
-            game: game.seat_projection(authority.seat()),
+            game: game.seat_projection(credential.seat()),
         })
     }
 
@@ -135,10 +209,10 @@ impl ApplicationService {
     /// compatibility, or deterministic resume errors.
     pub async fn human_spectator_game(
         &self,
-        authority: &HumanSpectatorAuthority,
+        credential: &HumanSpectatorCredential,
         query: HumanSpectatorGameQuery,
     ) -> Result<HumanSpectatorGameView, ApplicationError> {
-        ensure_game(authority.game_id(), &query.game_id)?;
+        ensure_game(credential.game_id(), &query.game_id)?;
         let game = self.load_game(&query.game_id).await?;
         Ok(HumanSpectatorGameView {
             observed_at: self.clock.now(),
@@ -154,10 +228,10 @@ impl ApplicationService {
     /// compatibility, or deterministic resume errors.
     pub async fn administrator_game(
         &self,
-        authority: &AdministratorAuthority,
+        credential: &AdministratorCredential,
         query: AdministratorGameQuery,
     ) -> Result<AdministratorGameView, ApplicationError> {
-        ensure_game(authority.game_id(), &query.game_id)?;
+        ensure_game(credential.game_id(), &query.game_id)?;
         let game = self.load_game(&query.game_id).await?;
         Ok(AdministratorGameView {
             observed_at: self.clock.now(),
@@ -173,13 +247,13 @@ impl ApplicationService {
     /// loading. Engine and optimistic repository errors preserve prior state.
     pub async fn act(
         &self,
-        authority: &SeatAuthority,
+        credential: &CompetitiveSeatCredential,
         command: GameActionCommand,
     ) -> Result<GameActionResult, ApplicationError> {
-        ensure_game(authority.game_id(), &command.game_id)?;
-        if command.turn.seat != authority.seat() {
+        ensure_game(credential.game_id(), &command.game_id)?;
+        if command.turn.seat != credential.seat() {
             return Err(ApplicationError::WrongSeatAuthority {
-                actual: authority.seat(),
+                actual: credential.seat(),
                 claimed: command.turn.seat,
             });
         }
@@ -192,7 +266,7 @@ impl ApplicationService {
         let record = self.repository.load(&command.game_id).await?;
         validate_record(&record, &command.game_id)?;
         let mut game = self.resume(&record)?;
-        let event = game.apply_move(authority.seat(), command.expected_version, command.action)?;
+        let event = game.apply_move(credential.seat(), command.expected_version, command.action)?;
         let committed_at = self.clock.now();
         let updated = StoredGame {
             game_id: record.game_id,
@@ -206,7 +280,7 @@ impl ApplicationService {
         Ok(GameActionResult {
             committed_at,
             event,
-            game: game.seat_projection(authority.seat()),
+            game: game.seat_projection(credential.seat()),
         })
     }
 

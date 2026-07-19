@@ -21,7 +21,8 @@ pub struct StoredGame {
     pub snapshot: GameSnapshot,
 }
 
-/// Game persistence boundary implemented in memory now and by `SQLx` in APP-003.
+/// Game persistence boundary implemented in memory for tests and by `SQLx` for
+/// production `SQLite` storage.
 pub trait GameRepository: Debug + Send + Sync {
     /// Inserts a game exactly once.
     fn insert(&self, game: StoredGame) -> BoxFuture<'_, Result<(), RepositoryError>>;

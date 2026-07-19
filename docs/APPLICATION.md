@@ -20,21 +20,36 @@ and private events and authoritative snapshot in one transaction. Idempotency
 outcome persistence remains assigned to APP-007; the required command identity
 is already part of every API.
 
-## Authority-bound queries
+## Credential-bound queries
 
 Public, competitive seat, trusted human spectator, and administrator requests
 and results are separate Rust types. Query bodies contain a game ID but no role
-or seat selector. Nonpublic methods require a non-serializable binding created
-with the game:
+or seat selector. Every method requires a non-serializable, unforgeable
+application credential bound to the same game:
 
-- `SeatAuthority` is fixed to exactly one game and seat;
-- `HumanSpectatorAuthority` has no competitive-seat representation;
-- `AdministratorAuthority` is a distinct authoritative checkpoint boundary.
+- `PublicViewerCredential` maps only to the public projection;
+- `CompetitiveSeatCredential` is fixed to exactly one seat projection and is
+  the only credential accepted by game actions;
+- `HumanSpectatorCredential` maps only to the trusted-human both-rack view;
+- `AdministratorCredential` maps only to the authoritative checkpoint.
 
-These bindings are intentionally trusted, in-process precursors—not network
-credentials. APP-004 and APP-005 will bind the same typed query methods to
-unforgeable application credentials and opaque capabilities. Transport code
-must not construct or infer an authority from request fields.
+The sealed `Authorizes<Query>` matrix makes each credential/query pairing
+explicit and prevents downstream crates from adding role mappings. Constructors
+and fields are private, so transport code cannot construct or infer a credential
+from request fields. APP-005 will authenticate opaque network capabilities and
+map them to these application types.
+
+## Operator separation
+
+`ApplicationRuntime` is the trusted process-bootstrap boundary. It alone can
+issue human-spectator and administrator credentials after loading the bound
+game. Agent drivers and transport handlers receive `ApplicationService` plus a
+`CompetitiveGameCredentials` value containing one seat and its public viewer;
+that shape cannot contain or request an operator credential.
+
+Game creation returns public and both seat credentials to trusted orchestration,
+but never returns spectator or administrator credentials. The runtime itself
+must remain outside every agent process and workspace.
 
 ## Injected ports
 
@@ -52,9 +67,10 @@ not compiled into default production builds.
 ## Verification
 
 `crates/application/tests/application.rs` covers complete English/French games,
-placement/exchange/pass/resignation routing, wrong-game and wrong-seat bindings,
+placement/exchange/pass/resignation routing, every allowed and denied
+credential/query pairing, cross-game and cross-seat reuse, operator issuance,
 stale versions, missing games/packs, rejected-action atomicity, exact timestamps,
-and serialization isolation among public, seat, and spectator result types.
+and serialization isolation among credentials and result types.
 
 Run it with:
 

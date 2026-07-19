@@ -74,13 +74,13 @@ after process reconstruction, stored snapshots/events resume to the same state.
 
 ### APP-004: Bind projections to application credentials
 
-- [ ] Introduce unforgeable application credential variants for public viewer,
+- [x] Introduce unforgeable application credential variants for public viewer,
   competitive seat, human spectator, and administrator.
-- [ ] Map each credential variant to exactly one engine projection and prohibit
+- [x] Map each credential variant to exactly one engine projection and prohibit
   role escalation or cross-game/seat reuse.
-- [ ] Make human-spectator issuance an operator-only path that is not
+- [x] Make human-spectator issuance an operator-only path that is not
   representable in agent-run configuration or seat commands.
-- [ ] Add compile-time/type-shape checks and authorization/serialization tests
+- [x] Add compile-time/type-shape checks and authorization/serialization tests
   covering every allowed and denied role-query pairing.
 
 Verification: no seat-facing API can return opponent racks, future bag order,

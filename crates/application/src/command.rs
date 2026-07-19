@@ -124,7 +124,7 @@ pub struct CreateGameCommand {
     pub idempotency_key: IdempotencyKey,
 }
 
-/// One authority-bound engine mutation request.
+/// One credential-bound engine mutation request.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameActionCommand {
@@ -148,7 +148,8 @@ pub struct PublicGameQuery {
     pub game_id: GameId,
 }
 
-/// Competitive-seat query. The seat comes from [`crate::SeatAuthority`].
+/// Competitive-seat query. The seat comes from
+/// [`crate::CompetitiveSeatCredential`].
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SeatGameQuery {
@@ -181,7 +182,7 @@ pub struct CreatedGame {
     pub created_at: UnixMillis,
     /// Safe initial public state.
     pub public: PublicProjection,
-    /// In-process bindings supplied only to the trusted creator.
+    /// Non-operator credentials supplied to the trusted creator.
     pub access: CreatedGameAccess,
 }
 

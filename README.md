@@ -32,8 +32,8 @@ The repository foundation is in place:
   schemas with replay-first snapshot validation
 - Feature-gated deterministic random-legal/greedy bots and an in-memory match
   runner, covered by English/French golden, property, and 1,000-game stress tests
-- Transport-independent application commands and public, seat, human-spectator,
-  and administrator query APIs over injected persistence/runtime boundaries
+- Transport-independent application commands and unforgeable, game-bound
+  public, seat, human-spectator, and administrator credential/query APIs
 - Embedded forward-only SQLx 0.9 migrations for the constrained local SQLite
   game, credential, tournament, match, agent-run, idempotency, and audit schema
 - Transactional SQLx game storage with optimistic concurrency, ordered
