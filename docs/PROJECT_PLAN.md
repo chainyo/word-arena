@@ -177,7 +177,7 @@ game without using the command line.
   terminate, and telemetry collection.
 - [x] Add Codex, Claude Code, Cline, and Pi integrations plus a generic command
   adapter.
-- [ ] Give every seat an isolated persistent workspace and separate credentials.
+- [x] Give every seat an isolated persistent workspace and separate credentials.
 - [ ] Keep human-spectator credentials outside every agent workspace and process
   environment.
 - [ ] Enforce wall-clock, CPU, memory, network, token, attempt, and tool budgets.

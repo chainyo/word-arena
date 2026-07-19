@@ -332,14 +332,14 @@ normalized telemetry through one application interface.
 
 ### RUN-004: Isolate persistent seat workspaces and credentials
 
-- [ ] Allocate one explicit non-overlapping workspace per run/seat with safe
+- [x] Allocate one explicit non-overlapping workspace per run/seat with safe
   ownership, permissions, path validation, and configurable retention.
-- [ ] Inject only that seat's short-lived capability and MCP/CLI configuration;
+- [x] Inject only that seat's short-lived capability and MCP/CLI configuration;
   never place opponent, spectator, administrator, or database credentials in an
   agent-visible filesystem/environment.
-- [ ] Preserve allowed workspace state across turns/resume while preventing
+- [x] Preserve allowed workspace state across turns/resume while preventing
   symlink, traversal, inherited environment, and cross-seat access.
-- [ ] Add filesystem/process isolation tests, crash cleanup, retention, and
+- [x] Add filesystem/process isolation tests, crash cleanup, retention, and
   adversarial path/environment scenarios.
 
 Verification: two concurrent hostile fixture agents cannot read or infer one

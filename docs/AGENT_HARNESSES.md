@@ -29,13 +29,14 @@ actionable failures.
 native one-shot driver without changing application code. Native harnesses are
 started once per game for compatibility verification and once per turn in
 their documented headless mode. Persistent seat workspace and state directories
-preserve allowed harness state across those turn processes; their allocation
-and credential injection belong to RUN-004.
+preserve allowed harness state across those turn processes. Their allocation,
+credential injection, and fail-closed OS sandbox are described in
+`docs/AGENT_WORKSPACES.md`.
 
 The runtime translates model, provider, workspace, state, MCP configuration,
 and tool/network policy from the validated manifest plus trusted per-seat
-paths. The exact `HarnessPolicyTranslation` is retained for the sandbox/budget
-adapter added in RUN-005. Commands already select non-interactive structured
+paths. The exact `HarnessPolicyTranslation` is retained for budget enforcement
+added in RUN-006. Commands already select non-interactive structured
 output and the strictest applicable built-in network/permission settings. The
 generic adapter replaces only the exact `{workspace}`, `{mcp_config}`, and
 `{state_directory}` argument placeholders and never invokes a shell.
@@ -57,10 +58,10 @@ explicitly operator-visible channel controlled by the custom integration.
 ## Credentials and configuration
 
 Manifests cannot contain credentials. `ProcessSpec` also has a redacted debug
-representation, and the default Tokio adapter starts with an empty inherited
-environment. RUN-004 supplies one seat's isolated configuration and short-lived
-credentials out of band; opponent, spectator, administrator, and database
-credentials remain unrepresentable in commands and telemetry.
+representation, and every process starts with an empty inherited environment.
+The workspace manager supplies only one seat's short-lived capability and
+secret-free MCP/CLI configuration. Opponent, spectator, administrator, and
+database credentials remain absent from commands, files, and telemetry.
 
 ## Verification and local smoke checks
 

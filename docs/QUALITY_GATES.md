@@ -65,3 +65,19 @@ The networked full-corpus reproducibility workflow is intentionally separate
 from ordinary pull-request CI because it downloads and redistributes the exact
 pinned upstream archives. Run it manually before changing a release pin; tag
 publication repeats it before creating an immutable release.
+
+## Agent runtime isolation
+
+The runtime workspace suite validates the tagged V1 layout and credential
+contract, private filesystem modes, deterministic resume, retention, config
+integrity, path attacks, empty inherited environments, and output redaction.
+On macOS or Linux hosts with a supported sandbox it also runs two hostile seat
+processes concurrently and requires direct and symlinked cross-seat reads to
+fail:
+
+```bash
+cargo test -p word-arena-agent-runtime --all-features --test workspace
+```
+
+Runtime sandbox detection is fail closed. A missing platform sandbox is an
+explicit deployment error, not a skipped isolation policy.

@@ -648,7 +648,6 @@ impl NativeHarnessDriver {
                 "exec".to_owned(),
                 "--json".to_owned(),
                 "--ephemeral".to_owned(),
-                "--ignore-user-config".to_owned(),
                 "--ignore-rules".to_owned(),
                 "--sandbox".to_owned(),
                 "workspace-write".to_owned(),
@@ -685,6 +684,13 @@ impl NativeHarnessDriver {
                     workspace,
                     "--data-dir".to_owned(),
                     state_directory,
+                    "--config".to_owned(),
+                    path_argument(
+                        self.runtime
+                            .mcp_config
+                            .parent()
+                            .unwrap_or(&self.runtime.mcp_config),
+                    ),
                     "--model".to_owned(),
                     self.model_id.clone(),
                 ];

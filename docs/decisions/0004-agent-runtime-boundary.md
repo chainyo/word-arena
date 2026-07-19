@@ -26,6 +26,15 @@ structured headless process per turn, after an exact version probe, because
 their upstream wire formats differ from the persistent generic protocol. Their
 parsers normalize only visible messages and tool calls.
 
+Each run/seat also receives one stable private filesystem tree and an otherwise
+empty process environment. A trusted manager validates ownership, modes,
+identifiers, symlinks, manifest-bound metadata, and managed configuration on
+allocation and resume. Short-lived seat authority is passed only through an
+environment key referenced by secret-free config files. Agent processes run in
+a platform sandbox (`sandbox-exec` on macOS or Bubblewrap on Linux) that exposes
+only reviewed runtime paths and that seat's tree; unsupported platforms fail
+closed.
+
 The manifest can identify provider/model/harness versions but cannot represent
 provider secrets, game capabilities, operator authority, assigned paths, or
 process state. The persistence adapter stores canonical bytes and repeats their
@@ -46,5 +55,11 @@ the engine.
   stderr is explicitly an operator-visible diagnostic channel.
 - Native harness stderr and raw commands are redacted rather than treated as
   generic operator-visible protocol output.
+- Directory permissions are defense in depth; cross-seat confidentiality is
+  enforced at the process sandbox boundary for agents sharing one local user.
+- Allowed seat state can survive a crash/resume, while managed metadata and
+  configuration are reverified before each spawn and tampering fails closed.
+- Local deployments require a supported sandbox executable before autonomous
+  agent processes can start.
 - Export code must explicitly join agent attribution when producing tournament
   results or public replay bundles.

@@ -131,31 +131,7 @@ impl ProcessAdapter for TokioProcessAdapter {
         &'a self,
         spec: &'a ProcessSpec,
     ) -> DriverFuture<'a, Result<Box<dyn ProcessInstance>, ProcessError>> {
-        Box::pin(async move {
-            let mut command = Command::new(&spec.executable);
-            command
-                .args(&spec.arguments)
-                .env_clear()
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .kill_on_drop(true);
-            if let Some(directory) = &spec.working_directory {
-                command.current_dir(directory);
-            }
-            let mut child = command.spawn().map_err(|_| ProcessError::Spawn)?;
-            let stdin = child.stdin.take().ok_or(ProcessError::Spawn)?;
-            let stdout = child.stdout.take().ok_or(ProcessError::Spawn)?;
-            let stderr = child.stderr.take().ok_or(ProcessError::Spawn)?;
-            Ok(Box::new(TokioProcess {
-                child,
-                stdin,
-                stdout,
-                stderr,
-                stdout_closed: false,
-                stderr_closed: false,
-            }) as Box<dyn ProcessInstance>)
-        })
+        Box::pin(spawn_tokio_process(spec, &[]))
     }
 
     fn reattach<'a>(
@@ -164,6 +140,36 @@ impl ProcessAdapter for TokioProcessAdapter {
     ) -> DriverFuture<'a, Result<Box<dyn ProcessInstance>, ProcessError>> {
         Box::pin(async { Err(ProcessError::ReattachUnsupported) })
     }
+}
+
+pub(crate) async fn spawn_tokio_process(
+    spec: &ProcessSpec,
+    environment: &[(String, String)],
+) -> Result<Box<dyn ProcessInstance>, ProcessError> {
+    let mut command = Command::new(&spec.executable);
+    command
+        .args(&spec.arguments)
+        .env_clear()
+        .envs(environment.iter().map(|(key, value)| (key, value)))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(directory) = &spec.working_directory {
+        command.current_dir(directory);
+    }
+    let mut child = command.spawn().map_err(|_| ProcessError::Spawn)?;
+    let stdin = child.stdin.take().ok_or(ProcessError::Spawn)?;
+    let stdout = child.stdout.take().ok_or(ProcessError::Spawn)?;
+    let stderr = child.stderr.take().ok_or(ProcessError::Spawn)?;
+    Ok(Box::new(TokioProcess {
+        child,
+        stdin,
+        stdout,
+        stderr,
+        stdout_closed: false,
+        stderr_closed: false,
+    }))
 }
 
 struct TokioProcess {

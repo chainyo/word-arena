@@ -198,6 +198,10 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Native Codex, Claude Code, Cline, and Pi adapters use reviewed exact-version
   probes and one structured headless process per turn. Discard reasoning events
   and redact native stderr, prompts, configuration paths, and command arguments.
+- Allocate agent paths only through `SeatWorkspaceManager`. Launch with the
+  lease's process adapter so the child gets an empty allowlisted environment,
+  one seat capability, managed config integrity checks, and the platform
+  sandbox. Never fall back to an unsandboxed process.
 
 ## Documentation and dependencies
 

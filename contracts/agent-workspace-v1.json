@@ -1,0 +1,38 @@
+{
+  "kind": "word_arena_agent_workspace_contract",
+  "schema_version": 1,
+  "scope": "one_run_seat",
+  "layout": {
+    "workspace": "read_write",
+    "state": "read_write",
+    "home": "read_write",
+    "tmp": "read_write",
+    "config": "read_only_to_agent",
+    "workspace.json": "read_only_to_agent"
+  },
+  "credential": {
+    "environment": "WORD_ARENA_SEAT_CAPABILITY",
+    "maximum_ttl_ms": 3600000,
+    "persisted": false,
+    "inherited_environment": false
+  },
+  "configuration": [
+    "config/mcp.json",
+    "config/codex.toml",
+    "config/word-arena-cli.json",
+    "state/config.toml"
+  ],
+  "managed_file_behavior": "hash_verified_before_each_spawn",
+  "sandbox": {
+    "macos": "sandbox-exec",
+    "linux": "bubblewrap",
+    "unsupported_platform_behavior": "fail_closed"
+  },
+  "retention": ["delete_on_finish", "retain_on_failure"],
+  "forbidden_authority": [
+    "opponent_seat",
+    "human_spectator",
+    "administrator",
+    "database"
+  ]
+}

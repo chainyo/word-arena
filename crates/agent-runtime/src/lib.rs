@@ -6,6 +6,7 @@
 
 mod driver;
 mod harness;
+mod workspace;
 
 pub use driver::{
     AgentDriver, DRIVER_CHECKPOINT_SCHEMA_VERSION, DRIVER_TELEMETRY_SCHEMA_VERSION,
@@ -19,6 +20,11 @@ pub use harness::{
     CLAUDE_CODE_MINIMUM_VERSION, CLINE_MINIMUM_VERSION, CODEX_MINIMUM_VERSION, HarnessExecutables,
     HarnessPolicyTranslation, HarnessRuntimeConfig, NativeHarnessCheckpoint, NativeHarnessDriver,
     NativeHarnessKind, PI_MINIMUM_VERSION, SupportedAgentDriver, SupportedDriverCheckpoint,
+};
+pub use workspace::{
+    MAX_SEAT_CAPABILITY_TTL_MS, SEAT_CAPABILITY_ENV, SEAT_WORKSPACE_SCHEMA_VERSION, SeatCapability,
+    SeatSandboxBackend, SeatWorkspaceLease, SeatWorkspaceManager, SeatWorkspaceRequest,
+    WorkspaceDisposition, WorkspaceError, WorkspaceManagerConfig, WorkspaceOutcome,
 };
 
 use std::collections::{BTreeMap, BTreeSet};

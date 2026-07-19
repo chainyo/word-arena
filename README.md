@@ -44,6 +44,9 @@ The repository foundation is in place:
 - Version-pinned Codex, Claude Code, Cline, Pi, and generic adapters with
   offline fake-binary coverage and normalized privacy-safe output
   ([harness contract](docs/AGENT_HARNESSES.md))
+- Per-run/seat persistent workspaces with secret-free configuration,
+  short-lived capability injection, strict retention, and fail-closed macOS or
+  Linux process isolation ([workspace contract](docs/AGENT_WORKSPACES.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
@@ -158,6 +161,8 @@ The autonomous process lifecycle and visible telemetry boundary is documented
 in [`docs/AGENT_DRIVERS.md`](docs/AGENT_DRIVERS.md).
 Supported coding-agent versions, commands, and local smoke checks are documented
 in [`docs/AGENT_HARNESSES.md`](docs/AGENT_HARNESSES.md).
+Seat workspace layout, credentials, retention, and OS sandboxing are documented
+in [`docs/AGENT_WORKSPACES.md`](docs/AGENT_WORKSPACES.md).
 The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 The credential and bearer-capability security contract is documented in
