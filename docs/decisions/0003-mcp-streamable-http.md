@@ -54,8 +54,8 @@ The SDK and outer Axum stack jointly enforce:
   new session while authoritative game state remains in SQLite.
 - A future multi-process deployment needs a shared SDK session store or sticky
   routing, but no such infrastructure is justified for the local V1.
-- The planned stdio bridge remains a client-side adapter to this endpoint, not a
-  second game server.
+- The stdio bridge is a client-side adapter to this endpoint, not a second game
+  server; it preserves SDK session behavior and contains no game rules.
 
 ## References
 

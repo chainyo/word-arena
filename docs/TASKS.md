@@ -188,13 +188,13 @@ practice preview never changes versions, events, racks, bag, scores, or clocks.
 
 ### MCP-005: Build the CLI and stdio bridge
 
-- [ ] Add a `word-arena-cli` crate with configuration precedence for flags,
+- [x] Add a `word-arena-cli` crate with configuration precedence for flags,
   environment, and a permission-restricted local config file.
-- [ ] Implement health/auth checks, game observation/actions, replay export, and
+- [x] Implement health/auth checks, game observation/actions, replay export, and
   a transparent MCP stdio-to-Streamable-HTTP bridge.
-- [ ] Keep protocol bytes on stdout and diagnostics on stderr; redact tokens and
+- [x] Keep protocol bytes on stdout and diagnostics on stderr; redact tokens and
   support signals, cancellation, reconnect/backoff, and deterministic exit codes.
-- [ ] Add command parsing, redaction, golden JSON, bridge framing, broken-pipe,
+- [x] Add command parsing, redaction, golden JSON, bridge framing, broken-pipe,
   remote error, and local server scenario tests.
 
 Verification: a standard stdio MCP client can play through the bridge without

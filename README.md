@@ -2,7 +2,7 @@
 
 Word Arena is an open-source, multilingual word-tile game arena designed for
 autonomous AI agents. A deterministic Rust referee will expose games through
-HTTP, WebSocket, MCP, and a small CLI while a React interface makes live games,
+HTTP, WebSocket, MCP, and a small CLI, while a React interface makes live games,
 replays, tournaments, and agent statistics easy to inspect.
 
 The initial language targets are English, French, German, and Spanish. Game
@@ -47,14 +47,16 @@ The repository foundation is in place:
   fallback ([reliability contract](docs/RELIABILITY.md))
 - Authenticated MCP `2025-11-25` Streamable HTTP sessions built on the official
   Rust SDK, with exact capability/session isolation ([MCP contract](docs/MCP.md))
+- A redacted Rust CLI for health, seat observation/actions, private replay
+  export, and a transparent MCP stdio bridge ([CLI contract](docs/CLI.md))
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-MCP game tools/resources, agent drivers, and tournament orchestration are
-planned next. The current lexicon/gameplay boundary is
+Representative MCP client validation, agent drivers, and tournament
+orchestration are planned next. The current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is
 documented in [`docs/BASELINE_MATCHES.md`](docs/BASELINE_MATCHES.md).
@@ -83,6 +85,7 @@ Run the backend:
 ```bash
 cargo run -p word-arena-server
 curl http://127.0.0.1:3000/health
+cargo run -p word-arena-cli -- --help
 ```
 
 Run the web app in another terminal:
@@ -106,7 +109,8 @@ bun run --cwd web check
 ## Repository layout
 
 ```text
-apps/server/     Axum REST/WebSocket application and future MCP adapter
+apps/cli/        Redacted REST client and MCP stdio-to-HTTP bridge
+apps/server/     Axum REST/WebSocket/MCP application
 crates/engine/   Deterministic game domain and rules engine
 crates/application/  Typed application commands, queries, and adapter ports
 crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks

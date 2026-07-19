@@ -1,0 +1,30 @@
+{
+  "game_id": "test-game",
+  "kind": "seat_replay_export",
+  "private_events": [
+    {
+      "drawn": [
+        1
+      ],
+      "seat": "one",
+      "sequence": 0
+    }
+  ],
+  "public": {
+    "events": [
+      {
+        "kind": {
+          "type": "created"
+        },
+        "sequence": 0
+      }
+    ],
+    "schema_version": 1,
+    "state": {
+      "game_id": "test-game",
+      "version": 0
+    }
+  },
+  "schema_version": 1,
+  "seat": "one"
+}

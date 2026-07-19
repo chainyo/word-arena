@@ -38,7 +38,11 @@ The acting game and seat never appear in tool input. They are derived from an
 unforgeable request authority inserted only after bearer authentication and
 checked again against the MCP session binding. Competitive results never
 contain the opponent rack, future bag order, seed, or administrator snapshot.
-There is no move preview or best-move tool.
+There is no move generation or best-move tool. An explicit immutable practice
+game may additionally expose `preview_tiles` only when the same seat capability
+has the `preview` scope. The server runs the caller-supplied placement through
+the authoritative engine without changing versions, events, racks, bag, scores,
+deadlines, or clocks. Competitive sessions cannot discover or invoke it.
 
 ## Resources
 
@@ -72,3 +76,8 @@ The endpoint accepts the Streamable HTTP methods defined by the protocol:
 The main server cancellation token closes active MCP SSE streams during
 graceful shutdown. Clients should initialize a fresh session after a server
 restart; game state itself remains durable in SQLite.
+
+Local stdio-only MCP clients can use `word-arena mcp stdio`. The bridge keeps
+JSON-RPC bytes on stdout, diagnostics on stderr, preserves Streamable HTTP
+session authority, and forwards the optional server notification stream. See
+[`CLI.md`](CLI.md) for configuration, redaction, framing, and exit codes.

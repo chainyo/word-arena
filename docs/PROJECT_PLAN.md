@@ -148,7 +148,7 @@ private state, and a restarted server resumes active games correctly.
 - [x] Expose equivalent authenticated resources for public state, private seat
   state, history, rules, and the active lexicon manifest.
 - [x] Add a practice-only, rate-limited move preview capability.
-- [ ] Build `word-arena-cli` and an MCP stdio-to-HTTP bridge.
+- [x] Build `word-arena-cli` and an MCP stdio-to-HTTP bridge.
 - [ ] Test schemas and behavior with the MCP Inspector and representative agent
   clients.
 

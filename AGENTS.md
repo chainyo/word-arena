@@ -33,6 +33,8 @@ repeated correction should apply to future work.
 - `apps/server/`: process entry point and application adapters. HTTP, WebSocket,
   MCP, authentication, persistence, and observability belong here or in focused
   crates extracted from it later.
+- `apps/cli/`: redacted REST client and transparent MCP stdio bridge. Keep game
+  rules server-side, protocol bytes on stdout, and diagnostics on stderr.
 - `lexicons/`: source pins, exact third-party notices, and lexicon pack
   contracts. Never commit downloaded archives, generated packs, or word data.
 - `rulesets/`: immutable English/French physical board, premium, tile, scoring,
@@ -64,6 +66,7 @@ cargo test --workspace --all-features
 cargo build --workspace --all-features
 cargo test -p word-arena-persistence --all-features
 cargo run -p word-arena-server
+cargo run -p word-arena-cli -- --help
 ```
 
 Frontend:

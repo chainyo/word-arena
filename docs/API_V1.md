@@ -29,14 +29,16 @@ query as authorization input.
 `POST /api/v1/games`
 
 ```json
-{"language":"english","idempotency_key":"client-create-1"}
+{"language":"english","mode":"competitive","idempotency_key":"client-create-1"}
 ```
 
 The response contains `game_id`, the initial public projection, and one raw
 public-observer capability. That token is returned once. Competitive seats and
 operator capabilities are provisioned by trusted orchestration, not this
 endpoint. French uses `"french"`; German and Spanish remain unsupported until
-their offline rules/lexicons ship.
+their offline rules/lexicons ship. `mode` is immutable and may be `competitive`
+(the default when omitted) or `practice`; only practice games may issue a
+rate-limited preview capability.
 
 ### Observe
 
