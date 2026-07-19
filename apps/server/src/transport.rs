@@ -39,6 +39,8 @@ const MAX_WEBSOCKETS: usize = 64;
 const WEBSOCKET_BUFFER: usize = 64;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PUBLIC_CAPABILITY_LIFETIME_MS: i64 = 24 * 60 * 60 * 1_000;
+const DEADLINE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const DEADLINE_BATCH_SIZE: u32 = 64;
 
 /// Shared application transport state.
 #[derive(Debug)]
@@ -123,7 +125,7 @@ pub struct ApiEnvelope<T> {
 pub struct CreateGameRequest {
     /// Immutable language/ruleset selection.
     pub language: Language,
-    /// Mandatory retry identity; durable outcomes arrive in APP-007.
+    /// Mandatory retry identity for durable creation deduplication.
     pub idempotency_key: IdempotencyKey,
 }
 
@@ -241,9 +243,36 @@ pub async fn serve_application(
     lexicons: Arc<RuntimeLexicons>,
     state: Arc<ServerState>,
 ) -> std::io::Result<()> {
-    axum::serve(listener, application_app(lexicons, state))
+    let worker_state = Arc::clone(&state);
+    let deadline_worker = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(DEADLINE_POLL_INTERVAL);
+        loop {
+            interval.tick().await;
+            match worker_state
+                .runtime
+                .service()
+                .resolve_due_timeouts(DEADLINE_BATCH_SIZE)
+                .await
+            {
+                Ok(commands) => {
+                    for command in commands {
+                        worker_state.notifications.publish(GameInvalidation {
+                            schema_version: API_SCHEMA_VERSION,
+                            game_id: command.game_id,
+                            version: command.expected_version.saturating_add(1),
+                        });
+                    }
+                }
+                Err(error) => tracing::warn!(%error, "deadline worker iteration failed"),
+            }
+        }
+    });
+    let result = axum::serve(listener, application_app(lexicons, state))
         .with_graceful_shutdown(shutdown_signal())
-        .await
+        .await;
+    deadline_worker.abort();
+    let _ = deadline_worker.await;
+    result
 }
 
 async fn create_game(
@@ -666,13 +695,15 @@ fn map_application_error(error: &ApplicationError) -> ApiError {
             "game was not found",
         ),
         ApplicationError::Repository(RepositoryError::Conflict)
-        | ApplicationError::Engine(word_arena_engine::GameError::StaleVersion { .. }) => {
-            ApiError::new(
-                StatusCode::CONFLICT,
-                "version_conflict",
-                "game version changed",
-            )
-        }
+        | ApplicationError::Engine(word_arena_engine::GameError::StaleVersion { .. })
+        | ApplicationError::ActionRejected(
+            word_arena_application::ActionRejection::VersionConflict
+            | word_arena_application::ActionRejection::IdempotencyConflict,
+        ) => ApiError::new(
+            StatusCode::CONFLICT,
+            "version_conflict",
+            "game version changed",
+        ),
         ApplicationError::WrongGameAuthority { .. }
         | ApplicationError::WrongSeatAuthority { .. } => ApiError::unauthorized(),
         ApplicationError::InvalidGameId | ApplicationError::InvalidIdempotencyKey => ApiError::new(
@@ -680,13 +711,22 @@ fn map_application_error(error: &ApplicationError) -> ApiError {
             "invalid_request",
             "request is invalid",
         ),
-        ApplicationError::TurnVersionMismatch { .. } | ApplicationError::Engine(_) => {
-            ApiError::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "illegal_action",
-                "action is not legal",
-            )
-        }
+        ApplicationError::TurnVersionMismatch { .. }
+        | ApplicationError::Engine(_)
+        | ApplicationError::ActionRejected(
+            word_arena_application::ActionRejection::IllegalAction { .. },
+        ) => ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "illegal_action",
+            "action is not legal",
+        ),
+        ApplicationError::ActionRejected(
+            word_arena_application::ActionRejection::DeadlineNotReached,
+        ) => ApiError::new(
+            StatusCode::CONFLICT,
+            "deadline_not_reached",
+            "turn deadline has not been reached",
+        ),
         ApplicationError::MissingLexicon { .. } | ApplicationError::Repository(_) => ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "service_unavailable",

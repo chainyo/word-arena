@@ -140,6 +140,14 @@ pub struct GameActionCommand {
     pub action: Move,
 }
 
+/// System mutation request for one persisted turn deadline.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimeoutCommand {
+    pub game_id: GameId,
+    pub expected_version: u64,
+}
+
 /// Role-neutral public game query.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]

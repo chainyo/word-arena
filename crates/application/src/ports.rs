@@ -4,8 +4,9 @@ use word_arena_engine::{GameSeed, GameSnapshot, WordValidator};
 use word_arena_lexicon::PackIdentity;
 
 use crate::{
-    AuditRecord, CapabilityId, CapabilityRecord, CapabilityRepositoryError, GameId,
-    RepositoryError, UnixMillis,
+    ActionCommit, AuditRecord, CapabilityId, CapabilityRecord, CapabilityRepositoryError,
+    CreationIdempotencyLookup, CreationIdempotencyRecord, GameId, IdempotencyLookup,
+    InvalidAttemptState, RecoveryRecord, RepositoryError, TurnDeadline, UnixMillis,
 };
 
 /// Sendable boxed future used by adapter ports without an async-trait macro.
@@ -22,6 +23,8 @@ pub struct StoredGame {
     pub updated_at: UnixMillis,
     /// Complete authoritative engine checkpoint.
     pub snapshot: GameSnapshot,
+    /// Persisted deadline for the current active turn.
+    pub turn_deadline: Option<TurnDeadline>,
 }
 
 /// Game persistence boundary implemented in memory for tests and by `SQLx` for
@@ -29,6 +32,20 @@ pub struct StoredGame {
 pub trait GameRepository: Debug + Send + Sync {
     /// Inserts a game exactly once.
     fn insert(&self, game: StoredGame) -> BoxFuture<'_, Result<(), RepositoryError>>;
+
+    /// Inserts a game and its global creation retry outcome atomically.
+    fn insert_idempotent(
+        &self,
+        game: StoredGame,
+        idempotency: CreationIdempotencyRecord,
+    ) -> BoxFuture<'_, Result<(), RepositoryError>>;
+
+    /// Looks up a creation retry before allocating or exposing a new game.
+    fn load_creation_idempotency(
+        &self,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> BoxFuture<'_, Result<CreationIdempotencyLookup, RepositoryError>>;
 
     /// Loads one complete authoritative game record.
     fn load(&self, game_id: &GameId) -> BoxFuture<'_, Result<StoredGame, RepositoryError>>;
@@ -39,6 +56,38 @@ pub trait GameRepository: Debug + Send + Sync {
         expected_version: u64,
         game: StoredGame,
     ) -> BoxFuture<'_, Result<(), RepositoryError>>;
+
+    /// Looks up one retry key while verifying the original payload identity.
+    fn load_idempotency(
+        &self,
+        game_id: &GameId,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> BoxFuture<'_, Result<IdempotencyLookup, RepositoryError>>;
+
+    /// Loads the invalid-attempt counter for one exact turn.
+    fn load_invalid_attempt(
+        &self,
+        game_id: &GameId,
+        turn: u64,
+        seat: word_arena_engine::Seat,
+    ) -> BoxFuture<'_, Result<Option<InvalidAttemptState>, RepositoryError>>;
+
+    /// Atomically records an outcome and any associated game transition.
+    fn commit_action(&self, commit: ActionCommit) -> BoxFuture<'_, Result<(), RepositoryError>>;
+
+    /// Loads a finished-game replay artifact for corrupt-snapshot recovery.
+    fn load_recovery(
+        &self,
+        game_id: &GameId,
+    ) -> BoxFuture<'_, Result<RecoveryRecord, RepositoryError>>;
+
+    /// Lists persisted deadlines that are currently due, bounded for workers.
+    fn due_timeouts(
+        &self,
+        now: UnixMillis,
+        limit: u32,
+    ) -> BoxFuture<'_, Result<Vec<crate::TimeoutCommand>, RepositoryError>>;
 }
 
 /// Capability and privacy-safe audit persistence boundary.

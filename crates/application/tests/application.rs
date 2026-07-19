@@ -3,21 +3,22 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use word_arena_application::{
-    AdministratorCredential, AdministratorGameQuery, ApplicationClock, ApplicationError,
-    ApplicationRuntime, AuthenticatedCredential, Authorizes, CapabilityAdapters,
+    ActionRejection, AdministratorCredential, AdministratorGameQuery, ApplicationClock,
+    ApplicationError, ApplicationRuntime, AuthenticatedCredential, Authorizes, CapabilityAdapters,
     CapabilityDigestKey, CapabilityError, CapabilityRole, CapabilityScope,
     CompetitiveSeatCredential, GameActionCommand, GameId, GameIdSource, GameRepository,
     HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey,
-    IssueCapabilityRequest, LexiconResolver, PublicGameQuery, PublicViewerCredential,
-    RepositoryError, SeatGameQuery, SeatGameView, SeedSource, UnixMillis,
+    InvalidAttemptResponse, IssueCapabilityRequest, LexiconResolver, OperationalPolicy,
+    PublicGameQuery, PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView,
+    SeedSource, TimeoutCommand, TimeoutResponse, UnixMillis,
     test_support::{
         FixedClock, InMemoryCapabilityRepository, InMemoryGameRepository, InMemoryLexiconResolver,
-        SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
+        ManualClock, SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
     },
 };
 use word_arena_engine::{
-    Coordinate, GameError, GameEventKind, GamePhase, Language, Move, PhysicalTile, Placement,
-    Ruleset, Seat, Tile, TileFace, Turn, WordValidator,
+    Coordinate, GameEventKind, GamePhase, Language, Move, PhysicalTile, Placement, Ruleset, Seat,
+    Tile, TileFace, Turn, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 
@@ -99,7 +100,7 @@ async fn english_and_french_finish_through_typed_application_apis() {
     let runtime = setup_runtime(&[Language::English, Language::French]);
     let service = runtime.service();
     for language in [Language::English, Language::French] {
-        let command = service.prepare_create_game(language, key("create"));
+        let command = service.prepare_create_game(language, key(&format!("create-{language:?}")));
         let created = service.create_game(command).await.unwrap();
         assert_eq!(created.created_at, UnixMillis(1_700_000_000_000));
         assert_eq!(created.public.state.version, 0);
@@ -178,6 +179,27 @@ async fn english_and_french_finish_through_typed_application_apis() {
             .unwrap();
         assert_eq!(administrator.game.snapshot.state.phase, GamePhase::Finished);
     }
+}
+
+#[tokio::test]
+async fn creation_retry_returns_the_original_generated_game() {
+    let runtime = setup_runtime(&[Language::English, Language::French]);
+    let service = runtime.service();
+    let first_command = service.prepare_create_game(Language::English, key("same-create"));
+    let retry_command = service.prepare_create_game(Language::English, key("same-create"));
+    assert_ne!(first_command.game_id, retry_command.game_id);
+    let first = service.create_game(first_command).await.unwrap();
+    let retry = service.create_game(retry_command).await.unwrap();
+    assert_eq!(retry.game_id, first.game_id);
+    assert_eq!(retry.public, first.public);
+    assert!(matches!(
+        service
+            .create_game(service.prepare_create_game(Language::French, key("same-create")))
+            .await,
+        Err(ApplicationError::ActionRejected(
+            ActionRejection::IdempotencyConflict
+        ))
+    ));
 }
 
 #[tokio::test]
@@ -366,7 +388,9 @@ async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() 
                 action(&first.game_id, 99, Seat::One, Move::Pass)
             )
             .await,
-        Err(ApplicationError::Engine(GameError::StaleVersion { .. }))
+        Err(ApplicationError::ActionRejected(
+            ActionRejection::VersionConflict
+        ))
     ));
     assert!(matches!(
         service
@@ -382,7 +406,9 @@ async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() 
                 )
             )
             .await,
-        Err(ApplicationError::Engine(GameError::EmptyPlacement))
+        Err(ApplicationError::ActionRejected(
+            ActionRejection::IllegalAction { .. }
+        ))
     ));
     let unchanged = service
         .public_game(
@@ -511,6 +537,186 @@ fn setup_runtime(languages: &[Language]) -> ApplicationRuntime {
             CapabilityDigestKey::new([7; 32]),
         ),
     )
+}
+
+#[tokio::test]
+async fn mutation_retries_return_the_exact_outcome_and_reject_key_reuse() {
+    let runtime = setup_runtime(&[Language::English]);
+    let service = runtime.service();
+    let created = service
+        .create_game(service.prepare_create_game(Language::English, key("create-retry")))
+        .await
+        .unwrap();
+    let game_id = created.game_id.clone();
+    let command = action(&created.game_id, 0, Seat::One, Move::Pass);
+    let first = service
+        .act(&created.access.seat_one, command.clone())
+        .await
+        .unwrap();
+    let duplicate = service
+        .act(&created.access.seat_one, command.clone())
+        .await
+        .unwrap();
+    assert_eq!(duplicate, first);
+
+    let mut reused = command;
+    reused.action = Move::Resign;
+    assert!(matches!(
+        service.act(&created.access.seat_one, reused).await,
+        Err(ApplicationError::ActionRejected(
+            ActionRejection::IdempotencyConflict
+        ))
+    ));
+    let observed = service
+        .public_game(
+            &created.access.public,
+            PublicGameQuery {
+                game_id: game_id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(observed.game.state.version, 1);
+
+    let mut stale = action(&game_id, 0, Seat::Two, Move::Pass);
+    stale.idempotency_key = key("stale-retry");
+    for _ in 0..2 {
+        assert!(matches!(
+            service.act(&created.access.seat_two, stale.clone()).await,
+            Err(ApplicationError::ActionRejected(
+                ActionRejection::VersionConflict
+            ))
+        ));
+    }
+}
+
+#[tokio::test]
+async fn invalid_attempt_policy_is_persisted_without_applying_the_rejected_move() {
+    let policy = OperationalPolicy {
+        version: 7,
+        turn_duration_ms: 10,
+        timeout_response: TimeoutResponse::Pass,
+        invalid_attempt_limit: 2,
+        invalid_attempt_response: InvalidAttemptResponse::Pass,
+    };
+    let (runtime, repository, _clock) = setup_reliability_runtime(policy);
+    let service = runtime.service();
+    let created = service
+        .create_game(service.prepare_create_game(Language::English, key("create-invalid")))
+        .await
+        .unwrap();
+    for attempt in 1..=2 {
+        let mut command = action(
+            &created.game_id,
+            0,
+            Seat::One,
+            Move::Place {
+                placements: Vec::new(),
+            },
+        );
+        command.idempotency_key = key(&format!("invalid-{attempt}"));
+        assert!(matches!(
+            service.act(&created.access.seat_one, command).await,
+            Err(ApplicationError::ActionRejected(
+                ActionRejection::IllegalAction { .. }
+            ))
+        ));
+    }
+    let attempts = repository
+        .load_invalid_attempt(&created.game_id, 0, Seat::One)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(attempts.count, 2);
+    assert_eq!(attempts.policy_version, 7);
+    let observed = service
+        .public_game(
+            &created.access.public,
+            PublicGameQuery {
+                game_id: created.game_id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(observed.game.state.version, 1);
+    assert!(observed.game.state.board.iter().all(Option::is_none));
+}
+
+#[tokio::test]
+async fn deadline_retry_and_player_race_commit_exactly_one_transition() {
+    let policy = OperationalPolicy {
+        version: 2,
+        turn_duration_ms: 10,
+        timeout_response: TimeoutResponse::Pass,
+        invalid_attempt_limit: 3,
+        invalid_attempt_response: InvalidAttemptResponse::RejectOnly,
+    };
+    let (runtime, _repository, clock) = setup_reliability_runtime(policy);
+    let service = runtime.service();
+    let created = service
+        .create_game(service.prepare_create_game(Language::English, key("create-timeout")))
+        .await
+        .unwrap();
+    let timeout = TimeoutCommand {
+        game_id: created.game_id.clone(),
+        expected_version: 0,
+    };
+    assert!(matches!(
+        service.resolve_timeout(timeout.clone()).await,
+        Err(ApplicationError::ActionRejected(
+            ActionRejection::DeadlineNotReached
+        ))
+    ));
+    clock.set(UnixMillis(1_010));
+    let player = action(&created.game_id, 0, Seat::One, Move::Pass);
+    let (player_result, timeout_result) = tokio::join!(
+        service.act(&created.access.seat_one, player),
+        service.resolve_timeout(timeout.clone())
+    );
+    assert_eq!(
+        u8::from(player_result.is_ok()) + u8::from(timeout_result.is_ok()),
+        1
+    );
+    if let Ok(result) = timeout_result {
+        assert_eq!(service.resolve_timeout(timeout).await.unwrap(), result);
+    }
+    let observed = service
+        .public_game(
+            &created.access.public,
+            PublicGameQuery {
+                game_id: created.game_id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(observed.game.state.version, 1);
+}
+
+fn setup_reliability_runtime(
+    policy: OperationalPolicy,
+) -> (
+    ApplicationRuntime,
+    Arc<InMemoryGameRepository>,
+    Arc<ManualClock>,
+) {
+    let ruleset = Ruleset::english_v1();
+    let lexicon = Arc::new(AcceptingLexicon(ruleset.lexicon)) as Arc<dyn WordValidator>;
+    let repository = Arc::new(InMemoryGameRepository::default());
+    let clock = Arc::new(ManualClock::new(UnixMillis(1_000)));
+    let runtime = ApplicationRuntime::new(
+        repository.clone(),
+        Arc::new(InMemoryLexiconResolver::new([lexicon])),
+        Arc::new(SequenceGameIds::new("reliability")),
+        Arc::new(SequenceSeeds::new(9)),
+        clock.clone(),
+        CapabilityAdapters::new(
+            Arc::new(InMemoryCapabilityRepository::default()),
+            Arc::new(SequenceCapabilityTokens::new(1)),
+            CapabilityDigestKey::new([8; 32]),
+        ),
+    )
+    .with_operational_policy(policy);
+    (runtime, repository, clock)
 }
 
 async fn human_spectator_credential(

@@ -214,31 +214,83 @@ impl CapabilityTokenSource for SequenceCapabilityTokens {
 
 /// Thread-safe optimistic in-memory game repository.
 #[derive(Debug, Default)]
+struct InMemoryGameState {
+    games: BTreeMap<GameId, StoredGame>,
+    creations: BTreeMap<[u8; 32], crate::CreationIdempotencyRecord>,
+    idempotency: BTreeMap<(GameId, [u8; 32]), crate::IdempotencyRecord>,
+    invalid_attempts: BTreeMap<(GameId, u64, u8), crate::InvalidAttemptState>,
+    recoveries: BTreeMap<GameId, crate::RecoveryRecord>,
+}
+
+#[derive(Debug, Default)]
 pub struct InMemoryGameRepository {
-    games: Mutex<BTreeMap<GameId, StoredGame>>,
+    state: Mutex<InMemoryGameState>,
 }
 
 impl GameRepository for InMemoryGameRepository {
     fn insert(&self, game: StoredGame) -> BoxFuture<'_, Result<(), RepositoryError>> {
         Box::pin(async move {
-            let mut games = self
-                .games
+            let mut state = self
+                .state
                 .lock()
                 .map_err(|_| RepositoryError::Unavailable)?;
-            if games.contains_key(&game.game_id) {
+            if state.games.contains_key(&game.game_id) {
                 return Err(RepositoryError::AlreadyExists);
             }
-            games.insert(game.game_id.clone(), game);
+            state.games.insert(game.game_id.clone(), game);
             Ok(())
+        })
+    }
+
+    fn insert_idempotent(
+        &self,
+        game: StoredGame,
+        idempotency: crate::CreationIdempotencyRecord,
+    ) -> BoxFuture<'_, Result<(), RepositoryError>> {
+        Box::pin(async move {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?;
+            if state.games.contains_key(&game.game_id)
+                || state.creations.contains_key(&idempotency.key_digest)
+            {
+                return Err(RepositoryError::Conflict);
+            }
+            state.games.insert(game.game_id.clone(), game);
+            state.creations.insert(idempotency.key_digest, idempotency);
+            Ok(())
+        })
+    }
+
+    fn load_creation_idempotency(
+        &self,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> BoxFuture<'_, Result<crate::CreationIdempotencyLookup, RepositoryError>> {
+        let payload_sha256 = payload_sha256.to_owned();
+        Box::pin(async move {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?;
+            Ok(match state.creations.get(&key_digest) {
+                None => crate::CreationIdempotencyLookup::Missing,
+                Some(record) if record.payload_sha256 == payload_sha256 => {
+                    crate::CreationIdempotencyLookup::Match(Box::new(record.result.clone()))
+                }
+                Some(_) => crate::CreationIdempotencyLookup::PayloadConflict,
+            })
         })
     }
 
     fn load(&self, game_id: &GameId) -> BoxFuture<'_, Result<StoredGame, RepositoryError>> {
         let game_id = game_id.clone();
         Box::pin(async move {
-            self.games
+            self.state
                 .lock()
                 .map_err(|_| RepositoryError::Unavailable)?
+                .games
                 .get(&game_id)
                 .cloned()
                 .ok_or(RepositoryError::NotFound)
@@ -251,17 +303,179 @@ impl GameRepository for InMemoryGameRepository {
         game: StoredGame,
     ) -> BoxFuture<'_, Result<(), RepositoryError>> {
         Box::pin(async move {
-            let mut games = self
-                .games
+            let mut state = self
+                .state
                 .lock()
                 .map_err(|_| RepositoryError::Unavailable)?;
-            let current = games.get(&game.game_id).ok_or(RepositoryError::NotFound)?;
+            let current = state
+                .games
+                .get(&game.game_id)
+                .ok_or(RepositoryError::NotFound)?;
             if current.snapshot.state.version != expected_version {
                 return Err(RepositoryError::Conflict);
             }
-            games.insert(game.game_id.clone(), game);
+            state.games.insert(game.game_id.clone(), game);
             Ok(())
         })
+    }
+
+    fn load_idempotency(
+        &self,
+        game_id: &GameId,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> BoxFuture<'_, Result<crate::IdempotencyLookup, RepositoryError>> {
+        let game_id = game_id.clone();
+        let payload_sha256 = payload_sha256.to_owned();
+        Box::pin(async move {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?;
+            Ok(match state.idempotency.get(&(game_id, key_digest)) {
+                None => crate::IdempotencyLookup::Missing,
+                Some(record) if record.payload_sha256 == payload_sha256 => {
+                    crate::IdempotencyLookup::Match(record.outcome.clone())
+                }
+                Some(_) => crate::IdempotencyLookup::PayloadConflict,
+            })
+        })
+    }
+
+    fn load_invalid_attempt(
+        &self,
+        game_id: &GameId,
+        turn: u64,
+        seat: word_arena_engine::Seat,
+    ) -> BoxFuture<'_, Result<Option<crate::InvalidAttemptState>, RepositoryError>> {
+        let game_id = game_id.clone();
+        Box::pin(async move {
+            Ok(self
+                .state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?
+                .invalid_attempts
+                .get(&(game_id, turn, test_seat_number(seat)))
+                .copied())
+        })
+    }
+
+    fn commit_action(
+        &self,
+        commit: crate::ActionCommit,
+    ) -> BoxFuture<'_, Result<(), RepositoryError>> {
+        Box::pin(async move {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?;
+            let key = (
+                commit.idempotency.game_id.clone(),
+                commit.idempotency.key_digest,
+            );
+            if state.idempotency.contains_key(&key) {
+                return Err(RepositoryError::Conflict);
+            }
+            let current = state
+                .games
+                .get(&commit.idempotency.game_id)
+                .ok_or(RepositoryError::NotFound)?;
+            if let Some(attempt) = commit.invalid_attempt {
+                let key = (
+                    commit.idempotency.game_id.clone(),
+                    attempt.turn,
+                    test_seat_number(attempt.seat),
+                );
+                let prior = state
+                    .invalid_attempts
+                    .get(&key)
+                    .map_or(0, |value| value.count);
+                if attempt.count != prior.saturating_add(1) {
+                    return Err(RepositoryError::Conflict);
+                }
+            }
+            if let Some(successor) = &commit.successor {
+                if current.snapshot.state.version != commit.expected_version {
+                    return Err(RepositoryError::Conflict);
+                }
+                if let Some(replay) = commit.replay.clone() {
+                    state.recoveries.insert(
+                        successor.game_id.clone(),
+                        crate::RecoveryRecord {
+                            game_id: successor.game_id.clone(),
+                            created_at: successor.created_at,
+                            updated_at: successor.updated_at,
+                            phase: successor.snapshot.state.phase,
+                            replay,
+                        },
+                    );
+                }
+                state
+                    .games
+                    .insert(successor.game_id.clone(), successor.clone());
+            }
+            if let Some(attempt) = commit.invalid_attempt {
+                state.invalid_attempts.insert(
+                    (
+                        commit.idempotency.game_id.clone(),
+                        attempt.turn,
+                        test_seat_number(attempt.seat),
+                    ),
+                    attempt,
+                );
+            }
+            state.idempotency.insert(key, commit.idempotency);
+            Ok(())
+        })
+    }
+
+    fn load_recovery(
+        &self,
+        game_id: &GameId,
+    ) -> BoxFuture<'_, Result<crate::RecoveryRecord, RepositoryError>> {
+        let game_id = game_id.clone();
+        Box::pin(async move {
+            self.state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?
+                .recoveries
+                .get(&game_id)
+                .cloned()
+                .ok_or(RepositoryError::Corrupt)
+        })
+    }
+
+    fn due_timeouts(
+        &self,
+        now: UnixMillis,
+        limit: u32,
+    ) -> BoxFuture<'_, Result<Vec<crate::TimeoutCommand>, RepositoryError>> {
+        Box::pin(async move {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| RepositoryError::Unavailable)?;
+            Ok(state
+                .games
+                .values()
+                .filter_map(|game| {
+                    game.turn_deadline
+                        .filter(|deadline| deadline.deadline_at <= now)
+                        .map(|deadline| crate::TimeoutCommand {
+                            game_id: game.game_id.clone(),
+                            expected_version: deadline.turn,
+                        })
+                })
+                .take(limit as usize)
+                .collect())
+        })
+    }
+}
+
+const fn test_seat_number(seat: word_arena_engine::Seat) -> u8 {
+    match seat {
+        word_arena_engine::Seat::One => 1,
+        word_arena_engine::Seat::Two => 2,
     }
 }
 

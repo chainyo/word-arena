@@ -42,14 +42,17 @@ The repository foundation is in place:
   isolated revocation/rotation, and privacy-safe SQLite audit records
 - Versioned capability-authenticated REST snapshots/actions and reconnectable
   public-only WebSocket invalidations with bounded local server resources
+- Atomic creation/action idempotency, persisted versioned deadline and invalid
+  attempt policies, a restart-safe timeout worker, and finished-game replay
+  fallback ([reliability contract](docs/RELIABILITY.md))
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Durable idempotency/deadlines, MCP tools, agent drivers, and tournament
-orchestration are planned next. The current lexicon/gameplay boundary is
+MCP tools, agent drivers, and tournament orchestration are planned next. The
+current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is
 documented in [`docs/BASELINE_MATCHES.md`](docs/BASELINE_MATCHES.md).

@@ -1,14 +1,25 @@
+use serde::{Deserialize, Serialize};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use word_arena_application::{
-    BoxFuture, GameId, GameRepository, RepositoryError, StoredGame, UnixMillis,
+    ACTION_OUTCOME_SCHEMA_VERSION, ActionCommit, ActionOutcome, BoxFuture,
+    CreationIdempotencyLookup, CreationIdempotencyRecord, GameId, GameRepository,
+    IdempotencyLookup, IdempotencyRecord, InvalidAttemptState, PersistedCreateResult,
+    RecoveryRecord, RepositoryError, StoredGame, TurnDeadline, UnixMillis,
 };
 use word_arena_engine::{
-    GameEvent, GameEventKind, GamePhase, GameSnapshot, PrivateGameEvent, Ruleset,
-    SNAPSHOT_SCHEMA_VERSION,
+    GameEvent, GameEventKind, GamePhase, GameSnapshot, PrivateGameEvent, ReplayBundle, Ruleset,
+    SNAPSHOT_SCHEMA_VERSION, Seat,
 };
 use word_arena_lexicon::PackIdentity;
 
 const EVENT_SCHEMA_VERSION: i64 = 1;
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct OutcomeEnvelope {
+    schema_version: u32,
+    outcome: ActionOutcome,
+}
 
 /// SQLx-backed optimistic game repository.
 #[derive(Clone, Debug)]
@@ -29,7 +40,19 @@ impl SqliteGameRepository {
         &self.pool
     }
 
-    async fn insert_game(&self, record: StoredGame) -> Result<(), RepositoryError> {
+    async fn insert_game(
+        &self,
+        record: StoredGame,
+        creation: Option<CreationIdempotencyRecord>,
+    ) -> Result<(), RepositoryError> {
+        if creation.as_ref().is_some_and(|creation| {
+            creation.result.game_id != record.game_id
+                || creation.result.created_at != record.created_at
+                || creation.result.public.state != record.snapshot.state
+                || creation.result.public.events != record.snapshot.events
+        }) {
+            return Err(RepositoryError::Corrupt);
+        }
         let ruleset = initial_ruleset(&record)?;
         let mut transaction = self.pool.begin().await.map_err(map_transient)?;
         register_ruleset(&mut transaction, ruleset, record.created_at).await?;
@@ -98,6 +121,12 @@ impl SqliteGameRepository {
             record.created_at,
         )
         .await?;
+        if let Some(deadline) = record.turn_deadline {
+            insert_deadline(&mut transaction, record.game_id.as_str(), deadline).await?;
+        }
+        if let Some(creation) = creation {
+            insert_creation_idempotency(&mut transaction, &creation).await?;
+        }
         transaction.commit().await.map_err(map_transient)
     }
 
@@ -160,11 +189,13 @@ impl SqliteGameRepository {
         if events != snapshot.events || private_events != snapshot.private_events {
             return Err(RepositoryError::Corrupt);
         }
+        let turn_deadline = load_deadline(&self.pool, game_id, version).await?;
         Ok(StoredGame {
             game_id: game_id.clone(),
             created_at,
             updated_at,
             snapshot,
+            turn_deadline,
         })
     }
 
@@ -173,98 +204,117 @@ impl SqliteGameRepository {
         expected_version: u64,
         record: StoredGame,
     ) -> Result<(), RepositoryError> {
-        let next_version = expected_version
-            .checked_add(1)
-            .ok_or(RepositoryError::Corrupt)?;
-        if record.snapshot.state.version != next_version
-            || record.updated_at < record.created_at
-            || record.snapshot.state.game_id != record.game_id.as_str()
-        {
-            return Err(RepositoryError::Corrupt);
-        }
-        let next_version_i64 = i64::try_from(next_version).map_err(|_| RepositoryError::Corrupt)?;
-        let expected_i64 = i64::try_from(expected_version).map_err(|_| RepositoryError::Corrupt)?;
-        let status = phase_name(record.snapshot.state.phase);
-        let finished_at =
-            (record.snapshot.state.phase == GamePhase::Finished).then_some(record.updated_at.0);
         let mut transaction = self.pool.begin().await.map_err(map_transient)?;
-        let updated = sqlx::query(
-            "UPDATE games
-             SET version = ?, status = ?, updated_at_ms = ?, finished_at_ms = ?
-             WHERE game_id = ? AND version = ?",
-        )
-        .bind(next_version_i64)
-        .bind(status)
-        .bind(record.updated_at.0)
-        .bind(finished_at)
-        .bind(record.game_id.as_str())
-        .bind(expected_i64)
-        .execute(&mut *transaction)
-        .await
-        .map_err(map_write)?;
-        if updated.rows_affected() == 0 {
+        replace_in_transaction(&mut transaction, expected_version, &record).await?;
+        transaction.commit().await.map_err(map_transient)
+    }
+
+    async fn lookup_idempotency(
+        &self,
+        game_id: &GameId,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> Result<IdempotencyLookup, RepositoryError> {
+        let row = sqlx::query("SELECT payload_sha256, outcome_json FROM idempotency_records WHERE game_id = ? AND key_digest = ?")
+            .bind(game_id.as_str()).bind(key_digest.as_slice()).fetch_optional(&self.pool).await.map_err(map_read)?;
+        let Some(row) = row else {
+            return Ok(IdempotencyLookup::Missing);
+        };
+        let stored_hash: String = row
+            .try_get("payload_sha256")
+            .map_err(|_| RepositoryError::Corrupt)?;
+        if stored_hash != payload_sha256 {
+            return Ok(IdempotencyLookup::PayloadConflict);
+        }
+        let bytes: Vec<u8> = row
+            .try_get("outcome_json")
+            .map_err(|_| RepositoryError::Corrupt)?;
+        let envelope: OutcomeEnvelope =
+            serde_json::from_slice(&bytes).map_err(|_| RepositoryError::Corrupt)?;
+        if envelope.schema_version != ACTION_OUTCOME_SCHEMA_VERSION {
+            return Err(RepositoryError::IncompatibleSchema);
+        }
+        Ok(IdempotencyLookup::Match(envelope.outcome))
+    }
+
+    async fn commit_action_record(&self, commit: ActionCommit) -> Result<(), RepositoryError> {
+        let mut transaction = self.pool.begin().await.map_err(map_transient)?;
+        if let Some(successor) = &commit.successor {
+            replace_in_transaction(&mut transaction, commit.expected_version, successor).await?;
+        } else {
             let exists =
                 sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM games WHERE game_id = ?")
-                    .bind(record.game_id.as_str())
+                    .bind(commit.idempotency.game_id.as_str())
                     .fetch_one(&mut *transaction)
                     .await
                     .map_err(map_read)?;
-            return Err(if exists == 0 {
-                RepositoryError::NotFound
-            } else {
-                RepositoryError::Conflict
-            });
+            if exists == 0 {
+                return Err(RepositoryError::NotFound);
+            }
         }
-
-        let previous_bytes = sqlx::query_scalar::<_, Vec<u8>>(
-            "SELECT payload_json FROM game_snapshots WHERE game_id = ? AND version = ?",
-        )
-        .bind(record.game_id.as_str())
-        .bind(expected_i64)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(map_read)?
-        .ok_or(RepositoryError::Corrupt)?;
-        let previous: GameSnapshot =
-            serde_json::from_slice(&previous_bytes).map_err(|_| RepositoryError::Corrupt)?;
-        let (event, private_events) = validate_successor(&previous, &record.snapshot)?;
-        let event_bytes = serde_json::to_vec(event).map_err(|_| RepositoryError::Corrupt)?;
-        insert_public_event(
-            &mut transaction,
-            record.game_id.as_str(),
-            event,
-            &event_bytes,
-            record.updated_at,
-        )
-        .await?;
-        for private_event in private_events {
-            let bytes = serde_json::to_vec(private_event).map_err(|_| RepositoryError::Corrupt)?;
-            insert_private_event(
-                &mut transaction,
-                record.game_id.as_str(),
-                private_event,
-                &bytes,
-                record.updated_at,
-            )
-            .await?;
+        if let Some(attempt) = commit.invalid_attempt {
+            let updated = sqlx::query("INSERT INTO invalid_attempt_counters (game_id, turn_number, seat_number, policy_version, attempt_count, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (game_id, turn_number, seat_number) DO UPDATE SET policy_version = excluded.policy_version, attempt_count = excluded.attempt_count, updated_at_ms = excluded.updated_at_ms WHERE invalid_attempt_counters.attempt_count = excluded.attempt_count - 1")
+                .bind(commit.idempotency.game_id.as_str())
+                .bind(i64::try_from(attempt.turn).map_err(|_| RepositoryError::Corrupt)?)
+                .bind(seat_number(attempt.seat)).bind(i64::from(attempt.policy_version))
+                .bind(i64::from(attempt.count)).bind(commit.idempotency.created_at.0)
+                .execute(&mut *transaction).await.map_err(map_write)?;
+            if updated.rows_affected() == 0 {
+                return Err(RepositoryError::Conflict);
+            }
         }
-        let snapshot_bytes =
-            serde_json::to_vec(&record.snapshot).map_err(|_| RepositoryError::Corrupt)?;
-        insert_snapshot(
-            &mut transaction,
-            record.game_id.as_str(),
-            &record.snapshot,
-            &snapshot_bytes,
-            record.updated_at,
-        )
-        .await?;
+        if let Some(replay) = &commit.replay {
+            let successor = commit.successor.as_ref().ok_or(RepositoryError::Corrupt)?;
+            let bytes = serde_json::to_vec(replay).map_err(|_| RepositoryError::Corrupt)?;
+            sqlx::query("INSERT INTO game_replays (game_id, version, replay_schema_version, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?)")
+                .bind(successor.game_id.as_str())
+                .bind(i64::try_from(successor.snapshot.state.version).map_err(|_| RepositoryError::Corrupt)?)
+                .bind(i64::from(replay.schema_version)).bind(bytes).bind(successor.updated_at.0)
+                .execute(&mut *transaction).await.map_err(map_write)?;
+        }
+        insert_idempotency(&mut transaction, &commit.idempotency).await?;
         transaction.commit().await.map_err(map_transient)
     }
 }
 
 impl GameRepository for SqliteGameRepository {
     fn insert(&self, game: StoredGame) -> BoxFuture<'_, Result<(), RepositoryError>> {
-        Box::pin(self.insert_game(game))
+        Box::pin(self.insert_game(game, None))
+    }
+
+    fn insert_idempotent(
+        &self,
+        game: StoredGame,
+        idempotency: CreationIdempotencyRecord,
+    ) -> BoxFuture<'_, Result<(), RepositoryError>> {
+        Box::pin(self.insert_game(game, Some(idempotency)))
+    }
+
+    fn load_creation_idempotency(
+        &self,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> BoxFuture<'_, Result<CreationIdempotencyLookup, RepositoryError>> {
+        let payload_sha256 = payload_sha256.to_owned();
+        Box::pin(async move {
+            let row = sqlx::query("SELECT payload_sha256, outcome_json FROM creation_idempotency_records WHERE key_digest = ?")
+                .bind(key_digest.as_slice()).fetch_optional(&self.pool).await.map_err(map_read)?;
+            let Some(row) = row else {
+                return Ok(CreationIdempotencyLookup::Missing);
+            };
+            let stored_hash: String = row
+                .try_get("payload_sha256")
+                .map_err(|_| RepositoryError::Corrupt)?;
+            if stored_hash != payload_sha256 {
+                return Ok(CreationIdempotencyLookup::PayloadConflict);
+            }
+            let bytes: Vec<u8> = row
+                .try_get("outcome_json")
+                .map_err(|_| RepositoryError::Corrupt)?;
+            let result: PersistedCreateResult =
+                serde_json::from_slice(&bytes).map_err(|_| RepositoryError::Corrupt)?;
+            Ok(CreationIdempotencyLookup::Match(Box::new(result)))
+        })
     }
 
     fn load(&self, game_id: &GameId) -> BoxFuture<'_, Result<StoredGame, RepositoryError>> {
@@ -279,6 +329,199 @@ impl GameRepository for SqliteGameRepository {
     ) -> BoxFuture<'_, Result<(), RepositoryError>> {
         Box::pin(self.replace_game(expected_version, game))
     }
+
+    fn load_idempotency(
+        &self,
+        game_id: &GameId,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> BoxFuture<'_, Result<IdempotencyLookup, RepositoryError>> {
+        let game_id = game_id.clone();
+        let payload_sha256 = payload_sha256.to_owned();
+        Box::pin(async move {
+            self.lookup_idempotency(&game_id, key_digest, &payload_sha256)
+                .await
+        })
+    }
+
+    fn load_invalid_attempt(
+        &self,
+        game_id: &GameId,
+        turn: u64,
+        seat: Seat,
+    ) -> BoxFuture<'_, Result<Option<InvalidAttemptState>, RepositoryError>> {
+        let game_id = game_id.clone();
+        Box::pin(async move {
+            let row = sqlx::query("SELECT policy_version, attempt_count FROM invalid_attempt_counters WHERE game_id = ? AND turn_number = ? AND seat_number = ?")
+                .bind(game_id.as_str())
+                .bind(i64::try_from(turn).map_err(|_| RepositoryError::Corrupt)?)
+                .bind(seat_number(seat)).fetch_optional(&self.pool).await.map_err(map_read)?;
+            row.map(|row| {
+                Ok(InvalidAttemptState {
+                    turn,
+                    seat,
+                    policy_version: u32::try_from(
+                        row.try_get::<i64, _>("policy_version")
+                            .map_err(|_| RepositoryError::Corrupt)?,
+                    )
+                    .map_err(|_| RepositoryError::Corrupt)?,
+                    count: u32::try_from(
+                        row.try_get::<i64, _>("attempt_count")
+                            .map_err(|_| RepositoryError::Corrupt)?,
+                    )
+                    .map_err(|_| RepositoryError::Corrupt)?,
+                })
+            })
+            .transpose()
+        })
+    }
+
+    fn commit_action(&self, commit: ActionCommit) -> BoxFuture<'_, Result<(), RepositoryError>> {
+        Box::pin(self.commit_action_record(commit))
+    }
+
+    fn load_recovery(
+        &self,
+        game_id: &GameId,
+    ) -> BoxFuture<'_, Result<RecoveryRecord, RepositoryError>> {
+        let game_id = game_id.clone();
+        Box::pin(async move {
+            let row = sqlx::query("SELECT g.created_at_ms, g.updated_at_ms, g.status, r.payload_json FROM games AS g JOIN game_replays AS r ON r.game_id = g.game_id AND r.version = g.version WHERE g.game_id = ?")
+                .bind(game_id.as_str()).fetch_optional(&self.pool).await.map_err(map_read)?
+                .ok_or(RepositoryError::Corrupt)?;
+            let status: String = row
+                .try_get("status")
+                .map_err(|_| RepositoryError::Corrupt)?;
+            if status != "finished" {
+                return Err(RepositoryError::Corrupt);
+            }
+            let bytes: Vec<u8> = row
+                .try_get("payload_json")
+                .map_err(|_| RepositoryError::Corrupt)?;
+            let replay: ReplayBundle =
+                serde_json::from_slice(&bytes).map_err(|_| RepositoryError::Corrupt)?;
+            Ok(RecoveryRecord {
+                game_id,
+                created_at: nonnegative_time(
+                    row.try_get("created_at_ms")
+                        .map_err(|_| RepositoryError::Corrupt)?,
+                )?,
+                updated_at: nonnegative_time(
+                    row.try_get("updated_at_ms")
+                        .map_err(|_| RepositoryError::Corrupt)?,
+                )?,
+                phase: GamePhase::Finished,
+                replay,
+            })
+        })
+    }
+
+    fn due_timeouts(
+        &self,
+        now: UnixMillis,
+        limit: u32,
+    ) -> BoxFuture<'_, Result<Vec<word_arena_application::TimeoutCommand>, RepositoryError>> {
+        Box::pin(async move {
+            let rows = sqlx::query("SELECT d.game_id, d.turn_number FROM turn_deadlines AS d JOIN games AS g ON g.game_id = d.game_id AND g.version = d.turn_number WHERE g.status = 'active' AND d.deadline_at_ms <= ? ORDER BY d.deadline_at_ms, d.game_id LIMIT ?")
+                .bind(now.0).bind(i64::from(limit)).fetch_all(&self.pool).await.map_err(map_read)?;
+            rows.into_iter()
+                .map(|row| {
+                    let game_id: String = row
+                        .try_get("game_id")
+                        .map_err(|_| RepositoryError::Corrupt)?;
+                    Ok(word_arena_application::TimeoutCommand {
+                        game_id: GameId::new(game_id).map_err(|_| RepositoryError::Corrupt)?,
+                        expected_version: nonnegative_u64(
+                            row.try_get("turn_number")
+                                .map_err(|_| RepositoryError::Corrupt)?,
+                        )?,
+                    })
+                })
+                .collect()
+        })
+    }
+}
+
+async fn replace_in_transaction(
+    transaction: &mut Transaction<'_, Sqlite>,
+    expected_version: u64,
+    record: &StoredGame,
+) -> Result<(), RepositoryError> {
+    let next_version = expected_version
+        .checked_add(1)
+        .ok_or(RepositoryError::Corrupt)?;
+    if record.snapshot.state.version != next_version
+        || record.updated_at < record.created_at
+        || record.snapshot.state.game_id != record.game_id.as_str()
+    {
+        return Err(RepositoryError::Corrupt);
+    }
+    let next_version_i64 = i64::try_from(next_version).map_err(|_| RepositoryError::Corrupt)?;
+    let expected_i64 = i64::try_from(expected_version).map_err(|_| RepositoryError::Corrupt)?;
+    let updated = sqlx::query("UPDATE games SET version = ?, status = ?, updated_at_ms = ?, finished_at_ms = ? WHERE game_id = ? AND version = ?")
+        .bind(next_version_i64).bind(phase_name(record.snapshot.state.phase))
+        .bind(record.updated_at.0)
+        .bind((record.snapshot.state.phase == GamePhase::Finished).then_some(record.updated_at.0))
+        .bind(record.game_id.as_str()).bind(expected_i64)
+        .execute(&mut **transaction).await.map_err(map_write)?;
+    if updated.rows_affected() == 0 {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM games WHERE game_id = ?")
+            .bind(record.game_id.as_str())
+            .fetch_one(&mut **transaction)
+            .await
+            .map_err(map_read)?;
+        return Err(if exists == 0 {
+            RepositoryError::NotFound
+        } else {
+            RepositoryError::Conflict
+        });
+    }
+    let previous_bytes = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT payload_json FROM game_snapshots WHERE game_id = ? AND version = ?",
+    )
+    .bind(record.game_id.as_str())
+    .bind(expected_i64)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(map_read)?
+    .ok_or(RepositoryError::Corrupt)?;
+    let previous: GameSnapshot =
+        serde_json::from_slice(&previous_bytes).map_err(|_| RepositoryError::Corrupt)?;
+    let (event, private_events) = validate_successor(&previous, &record.snapshot)?;
+    let event_bytes = serde_json::to_vec(event).map_err(|_| RepositoryError::Corrupt)?;
+    insert_public_event(
+        transaction,
+        record.game_id.as_str(),
+        event,
+        &event_bytes,
+        record.updated_at,
+    )
+    .await?;
+    for private_event in private_events {
+        let bytes = serde_json::to_vec(private_event).map_err(|_| RepositoryError::Corrupt)?;
+        insert_private_event(
+            transaction,
+            record.game_id.as_str(),
+            private_event,
+            &bytes,
+            record.updated_at,
+        )
+        .await?;
+    }
+    let snapshot_bytes =
+        serde_json::to_vec(&record.snapshot).map_err(|_| RepositoryError::Corrupt)?;
+    insert_snapshot(
+        transaction,
+        record.game_id.as_str(),
+        &record.snapshot,
+        &snapshot_bytes,
+        record.updated_at,
+    )
+    .await?;
+    if let Some(deadline) = record.turn_deadline {
+        insert_deadline(transaction, record.game_id.as_str(), deadline).await?;
+    }
+    Ok(())
 }
 
 fn initial_ruleset(record: &StoredGame) -> Result<&Ruleset, RepositoryError> {
@@ -451,6 +694,90 @@ async fn insert_snapshot(
     Ok(())
 }
 
+async fn insert_deadline(
+    transaction: &mut Transaction<'_, Sqlite>,
+    game_id: &str,
+    deadline: TurnDeadline,
+) -> Result<(), RepositoryError> {
+    sqlx::query("INSERT INTO turn_deadlines (game_id, turn_number, seat_number, deadline_at_ms, policy_version) VALUES (?, ?, ?, ?, ?)")
+        .bind(game_id)
+        .bind(i64::try_from(deadline.turn).map_err(|_| RepositoryError::Corrupt)?)
+        .bind(seat_number(deadline.seat))
+        .bind(deadline.deadline_at.0)
+        .bind(i64::from(deadline.policy_version))
+        .execute(&mut **transaction).await.map_err(map_write)?;
+    Ok(())
+}
+
+async fn load_deadline(
+    pool: &SqlitePool,
+    game_id: &GameId,
+    version: u64,
+) -> Result<Option<TurnDeadline>, RepositoryError> {
+    let row = sqlx::query("SELECT seat_number, deadline_at_ms, policy_version FROM turn_deadlines WHERE game_id = ? AND turn_number = ?")
+        .bind(game_id.as_str())
+        .bind(i64::try_from(version).map_err(|_| RepositoryError::Corrupt)?)
+        .fetch_optional(pool).await.map_err(map_read)?;
+    row.map(|row| {
+        let seat = match row
+            .try_get::<i64, _>("seat_number")
+            .map_err(|_| RepositoryError::Corrupt)?
+        {
+            1 => Seat::One,
+            2 => Seat::Two,
+            _ => return Err(RepositoryError::Corrupt),
+        };
+        Ok(TurnDeadline {
+            turn: version,
+            seat,
+            deadline_at: nonnegative_time(
+                row.try_get("deadline_at_ms")
+                    .map_err(|_| RepositoryError::Corrupt)?,
+            )?,
+            policy_version: u32::try_from(
+                row.try_get::<i64, _>("policy_version")
+                    .map_err(|_| RepositoryError::Corrupt)?,
+            )
+            .map_err(|_| RepositoryError::Corrupt)?,
+        })
+    })
+    .transpose()
+}
+
+async fn insert_idempotency(
+    transaction: &mut Transaction<'_, Sqlite>,
+    record: &IdempotencyRecord,
+) -> Result<(), RepositoryError> {
+    let bytes = serde_json::to_vec(&OutcomeEnvelope {
+        schema_version: ACTION_OUTCOME_SCHEMA_VERSION,
+        outcome: record.outcome.clone(),
+    })
+    .map_err(|_| RepositoryError::Corrupt)?;
+    let outcome_kind = match record.outcome {
+        ActionOutcome::Accepted(_) => "accepted",
+        ActionOutcome::Rejected(_) => "rejected",
+    };
+    sqlx::query("INSERT INTO idempotency_records (game_id, key_digest, digest_version, command_kind, payload_sha256, outcome_kind, outcome_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(record.game_id.as_str()).bind(record.key_digest.as_slice())
+        .bind(i64::from(record.digest_version)).bind(&record.command_kind)
+        .bind(&record.payload_sha256).bind(outcome_kind).bind(bytes).bind(record.created_at.0)
+        .execute(&mut **transaction).await.map_err(map_idempotency_insert)?;
+    Ok(())
+}
+
+async fn insert_creation_idempotency(
+    transaction: &mut Transaction<'_, Sqlite>,
+    record: &CreationIdempotencyRecord,
+) -> Result<(), RepositoryError> {
+    let bytes = serde_json::to_vec(&record.result).map_err(|_| RepositoryError::Corrupt)?;
+    sqlx::query("INSERT INTO creation_idempotency_records (key_digest, digest_version, payload_sha256, game_id, outcome_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(record.key_digest.as_slice()).bind(i64::from(record.digest_version))
+        .bind(&record.payload_sha256).bind(record.result.game_id.as_str())
+        .bind(bytes).bind(record.result.created_at.0)
+        .execute(&mut **transaction).await.map_err(map_idempotency_insert)?;
+    Ok(())
+}
+
 fn validate_successor<'a>(
     previous: &GameSnapshot,
     next: &'a GameSnapshot,
@@ -614,6 +941,14 @@ fn nonnegative_time(value: i64) -> Result<UnixMillis, RepositoryError> {
 fn map_game_insert(error: sqlx::Error) -> RepositoryError {
     if matches!(&error, sqlx::Error::Database(database) if database.is_unique_violation()) {
         RepositoryError::AlreadyExists
+    } else {
+        map_write(error)
+    }
+}
+
+fn map_idempotency_insert(error: sqlx::Error) -> RepositoryError {
+    if matches!(&error, sqlx::Error::Database(database) if database.is_unique_violation()) {
+        RepositoryError::Conflict
     } else {
         map_write(error)
     }

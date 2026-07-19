@@ -8,6 +8,7 @@ mod authority;
 mod capability;
 mod command;
 mod error;
+mod operations;
 mod ports;
 mod service;
 
@@ -28,9 +29,17 @@ pub use capability::{
 pub use command::{
     AdministratorGameQuery, AdministratorGameView, CreateGameCommand, CreatedGame,
     GameActionCommand, GameActionResult, GameId, HumanSpectatorGameQuery, HumanSpectatorGameView,
-    IdempotencyKey, PublicGameQuery, PublicGameView, SeatGameQuery, SeatGameView, UnixMillis,
+    IdempotencyKey, PublicGameQuery, PublicGameView, SeatGameQuery, SeatGameView, TimeoutCommand,
+    UnixMillis,
 };
 pub use error::{ApplicationError, RepositoryError};
+pub use operations::{
+    ACTION_OUTCOME_SCHEMA_VERSION, ActionCommit, ActionOutcome, ActionRejection,
+    CreationIdempotencyLookup, CreationIdempotencyRecord, IDEMPOTENCY_DIGEST_VERSION,
+    IdempotencyLookup, IdempotencyRecord, InvalidAttemptResponse, InvalidAttemptState,
+    OperationalPolicy, PersistedActionResult, PersistedCreateResult, RecoveryRecord,
+    TimeoutResponse, TurnDeadline,
+};
 pub use ports::{
     ApplicationClock, BoxFuture, CapabilityRepository, GameIdSource, GameRepository,
     LexiconResolver, SeedSource, StoredGame,

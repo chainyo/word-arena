@@ -1,19 +1,25 @@
-use std::sync::Arc;
+use std::{fmt::Write as _, sync::Arc};
 
-use word_arena_engine::{Game, Ruleset, RulesetId};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use word_arena_engine::{Game, GameError, GamePhase, Move, Ruleset, RulesetId, Seat, Turn};
 
 use crate::capability::{actor, credential, validate_issue};
 use crate::{
-    AdministratorCredential, AdministratorGameQuery, AdministratorGameView, ApplicationClock,
-    ApplicationError, AuditAction, AuditActor, AuditOutcome, AuditRecord, AuthenticatedCredential,
-    CAPABILITY_DIGEST_VERSION, CapabilityDescriptor, CapabilityDigestKey, CapabilityError,
-    CapabilityId, CapabilityRecord, CapabilityRepository, CapabilityRepositoryError,
-    CapabilityScope, CapabilityToken, CapabilityTokenSource, CompetitiveSeatCredential,
-    CreateGameCommand, CreatedGame, CreatedGameAccess, GameActionCommand, GameActionResult, GameId,
-    GameIdSource, GameRepository, HumanSpectatorCredential, HumanSpectatorGameQuery,
-    HumanSpectatorGameView, IdempotencyKey, IssueCapabilityRequest, IssuedCapability,
-    LexiconResolver, PublicGameQuery, PublicGameView, PublicViewerCredential, RepositoryError,
-    SeatGameQuery, SeatGameView, SeedSource, StoredGame,
+    ActionCommit, ActionOutcome, ActionRejection, AdministratorCredential, AdministratorGameQuery,
+    AdministratorGameView, ApplicationClock, ApplicationError, AuditAction, AuditActor,
+    AuditOutcome, AuditRecord, AuthenticatedCredential, CAPABILITY_DIGEST_VERSION,
+    CapabilityDescriptor, CapabilityDigestKey, CapabilityError, CapabilityId, CapabilityRecord,
+    CapabilityRepository, CapabilityRepositoryError, CapabilityScope, CapabilityToken,
+    CapabilityTokenSource, CompetitiveSeatCredential, CreateGameCommand, CreatedGame,
+    CreatedGameAccess, CreationIdempotencyLookup, CreationIdempotencyRecord, GameActionCommand,
+    GameActionResult, GameId, GameIdSource, GameRepository, HumanSpectatorCredential,
+    HumanSpectatorGameQuery, HumanSpectatorGameView, IDEMPOTENCY_DIGEST_VERSION, IdempotencyKey,
+    IdempotencyLookup, IdempotencyRecord, InvalidAttemptResponse, InvalidAttemptState,
+    IssueCapabilityRequest, IssuedCapability, LexiconResolver, OperationalPolicy,
+    PersistedActionResult, PersistedCreateResult, PublicGameQuery, PublicGameView,
+    PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView, SeedSource, StoredGame,
+    TimeoutCommand, TimeoutResponse, TurnDeadline,
 };
 
 /// Process-bootstrap boundary that owns operator-only credential issuance.
@@ -71,6 +77,13 @@ impl ApplicationRuntime {
             capability_tokens: capability_adapters.tokens,
             capability_digest_key: capability_adapters.digest_key,
         }
+    }
+
+    /// Applies one validated versioned reliability policy at bootstrap.
+    #[must_use]
+    pub fn with_operational_policy(mut self, policy: OperationalPolicy) -> Self {
+        self.service = self.service.with_operational_policy(policy);
+        self
     }
 
     /// Non-operator game use cases safe to give to transport and agent adapters.
@@ -368,6 +381,7 @@ pub struct ApplicationService {
     ids: Arc<dyn GameIdSource>,
     seeds: Arc<dyn SeedSource>,
     clock: Arc<dyn ApplicationClock>,
+    policy: OperationalPolicy,
 }
 
 impl ApplicationService {
@@ -386,7 +400,28 @@ impl ApplicationService {
             ids,
             seeds,
             clock,
+            policy: OperationalPolicy::default(),
         }
+    }
+
+    /// Overrides the versioned reliability policy during process bootstrap.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a version, duration, or attempt limit is zero or negative.
+    #[must_use]
+    pub fn with_operational_policy(mut self, policy: OperationalPolicy) -> Self {
+        assert!(policy.version > 0, "policy version must be positive");
+        assert!(
+            policy.turn_duration_ms > 0,
+            "turn duration must be positive"
+        );
+        assert!(
+            policy.invalid_attempt_limit > 0,
+            "attempt limit must be positive"
+        );
+        self.policy = policy;
+        self
     }
 
     /// Allocates a fully identified create command from the injected ID source.
@@ -413,6 +448,23 @@ impl ApplicationService {
         &self,
         command: CreateGameCommand,
     ) -> Result<CreatedGame, ApplicationError> {
+        let key_digest = digest_key(&command.idempotency_key);
+        let payload_sha256 = payload_sha256(&CreatePayload {
+            language: command.language,
+        })?;
+        match self
+            .repository
+            .load_creation_idempotency(key_digest, &payload_sha256)
+            .await?
+        {
+            CreationIdempotencyLookup::Match(result) => return Ok(created_game(*result)),
+            CreationIdempotencyLookup::PayloadConflict => {
+                return Err(ApplicationError::ActionRejected(
+                    ActionRejection::IdempotencyConflict,
+                ));
+            }
+            CreationIdempotencyLookup::Missing => {}
+        }
         let ruleset = Ruleset::for_language(command.language)?;
         let lexicon = self.lexicons.resolve(&ruleset.lexicon).ok_or_else(|| {
             ApplicationError::MissingLexicon {
@@ -431,14 +483,41 @@ impl ApplicationService {
             created_at,
             updated_at: created_at,
             snapshot: game.snapshot(),
+            turn_deadline: self.next_deadline(&game, created_at),
         };
-        self.repository.insert(record).await?;
-        Ok(CreatedGame {
-            access: CreatedGameAccess::new(&command.game_id),
+        let result = PersistedCreateResult {
             game_id: command.game_id,
             created_at,
             public: game.public_projection(),
-        })
+        };
+        let creation = CreationIdempotencyRecord {
+            key_digest,
+            digest_version: IDEMPOTENCY_DIGEST_VERSION,
+            payload_sha256: payload_sha256.clone(),
+            result: result.clone(),
+        };
+        if let Err(error) = self.repository.insert_idempotent(record, creation).await {
+            if matches!(
+                error,
+                RepositoryError::Conflict | RepositoryError::AlreadyExists
+            ) {
+                match self
+                    .repository
+                    .load_creation_idempotency(key_digest, &payload_sha256)
+                    .await?
+                {
+                    CreationIdempotencyLookup::Match(cached) => return Ok(created_game(*cached)),
+                    CreationIdempotencyLookup::PayloadConflict => {
+                        return Err(ApplicationError::ActionRejected(
+                            ActionRejection::IdempotencyConflict,
+                        ));
+                    }
+                    CreationIdempotencyLookup::Missing => {}
+                }
+            }
+            return Err(error.into());
+        }
+        Ok(created_game(result))
     }
 
     /// Loads the public-only projection for a game-bound observer.
@@ -540,29 +619,291 @@ impl ApplicationService {
                 expected_version: command.expected_version,
             });
         }
-        let record = self.repository.load(&command.game_id).await?;
-        validate_record(&record, &command.game_id)?;
-        let mut game = self.resume(&record)?;
-        let event = game.apply_move(credential.seat(), command.expected_version, command.action)?;
-        let committed_at = self.clock.now();
-        let updated = StoredGame {
-            game_id: record.game_id,
-            created_at: record.created_at,
-            updated_at: committed_at,
-            snapshot: game.snapshot(),
+        let payload_sha256 = payload_sha256(&ActionPayload {
+            game_id: &command.game_id,
+            expected_version: command.expected_version,
+            turn: command.turn,
+            action: &command.action,
+        })?;
+        let key_digest = digest_key(&command.idempotency_key);
+        if let Some(result) = self
+            .cached_outcome(&command.game_id, key_digest, &payload_sha256)
+            .await?
+        {
+            return result;
+        }
+        self.execute_action(
+            &command.game_id,
+            command.expected_version,
+            credential.seat(),
+            command.action,
+            "game_action",
+            key_digest,
+            payload_sha256,
+            true,
+        )
+        .await
+    }
+
+    /// Resolves one due turn using the injected timeout policy.
+    ///
+    /// Concurrent player actions and timeout workers share the same optimistic
+    /// version, so exactly one transition can commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable deadline rejection, engine rejection, or repository
+    /// failure without partially committing a transition.
+    pub async fn resolve_timeout(
+        &self,
+        command: TimeoutCommand,
+    ) -> Result<GameActionResult, ApplicationError> {
+        let key = crate::IdempotencyKey::new(format!(
+            "timeout:{}:{}:{}",
+            command.game_id, command.expected_version, self.policy.version
+        ))?;
+        let payload_sha256 = payload_sha256(&TimeoutPayload {
+            game_id: &command.game_id,
+            expected_version: command.expected_version,
+            policy_version: self.policy.version,
+        })?;
+        let key_digest = digest_key(&key);
+        if let Some(result) = self
+            .cached_outcome(&command.game_id, key_digest, &payload_sha256)
+            .await?
+        {
+            return result;
+        }
+        let record = self.load_record(&command.game_id).await?;
+        let deadline = record
+            .turn_deadline
+            .ok_or(ApplicationError::ActionRejected(
+                ActionRejection::DeadlineNotReached,
+            ))?;
+        if deadline.turn != command.expected_version || self.clock.now() < deadline.deadline_at {
+            return Err(ApplicationError::ActionRejected(
+                ActionRejection::DeadlineNotReached,
+            ));
+        }
+        let move_to_apply = match self.policy.timeout_response {
+            TimeoutResponse::Pass => Move::Pass,
+            TimeoutResponse::Resign => Move::Resign,
         };
-        self.repository
-            .replace(command.expected_version, updated)
+        self.execute_action(
+            &command.game_id,
+            command.expected_version,
+            deadline.seat,
+            move_to_apply,
+            "turn_timeout",
+            key_digest,
+            payload_sha256,
+            false,
+        )
+        .await
+    }
+
+    /// Resolves a bounded batch of persisted deadlines for a restart-safe worker.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first non-race repository or deterministic application
+    /// failure. Expected timeout/action races are ignored.
+    pub async fn resolve_due_timeouts(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<TimeoutCommand>, ApplicationError> {
+        let commands = self
+            .repository
+            .due_timeouts(self.clock.now(), limit)
             .await?;
-        Ok(GameActionResult {
-            committed_at,
-            event,
-            game: game.seat_projection(credential.seat()),
+        let mut committed = Vec::new();
+        for command in commands {
+            match self.resolve_timeout(command.clone()).await {
+                Ok(_) => committed.push(command),
+                Err(
+                    ApplicationError::Repository(RepositoryError::Conflict)
+                    | ApplicationError::ActionRejected(
+                        ActionRejection::VersionConflict | ActionRejection::DeadlineNotReached,
+                    ),
+                ) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(committed)
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    async fn execute_action(
+        &self,
+        game_id: &GameId,
+        expected_version: u64,
+        seat: Seat,
+        action: Move,
+        command_kind: &str,
+        key_digest: [u8; 32],
+        payload_sha256: String,
+        count_invalid: bool,
+    ) -> Result<GameActionResult, ApplicationError> {
+        let record = self.load_record(game_id).await?;
+        let mut game = self.resume(&record)?;
+        let committed_at = self.clock.now();
+        let attempted = game.apply_move(seat, expected_version, action);
+        let (outcome, successor, invalid_attempt, replay) = match attempted {
+            Ok(event) => {
+                let result = PersistedActionResult {
+                    committed_at,
+                    event,
+                    game: game.seat_projection(seat),
+                };
+                let replay = game.replay_bundle();
+                let successor = StoredGame {
+                    game_id: record.game_id.clone(),
+                    created_at: record.created_at,
+                    updated_at: committed_at,
+                    snapshot: game.snapshot(),
+                    turn_deadline: self.next_deadline(&game, committed_at),
+                };
+                (
+                    ActionOutcome::Accepted(Box::new(result)),
+                    Some(successor),
+                    None,
+                    replay,
+                )
+            }
+            Err(error) => {
+                let rejection = rejection_from_engine(&error);
+                let mut successor = None;
+                let mut replay = None;
+                let invalid_attempt =
+                    if count_invalid && !matches!(rejection, ActionRejection::VersionConflict) {
+                        let prior = self
+                            .repository
+                            .load_invalid_attempt(game_id, expected_version, seat)
+                            .await?
+                            .map_or(0, |state| state.count);
+                        let count = prior.saturating_add(1);
+                        if count >= self.policy.invalid_attempt_limit
+                            && self.policy.invalid_attempt_response
+                                != InvalidAttemptResponse::RejectOnly
+                        {
+                            let mut policy_game = self.resume(&record)?;
+                            let response = match self.policy.invalid_attempt_response {
+                                InvalidAttemptResponse::Pass => Move::Pass,
+                                InvalidAttemptResponse::Resign => Move::Resign,
+                                InvalidAttemptResponse::RejectOnly => unreachable!(),
+                            };
+                            policy_game.apply_move(seat, expected_version, response)?;
+                            replay = policy_game.replay_bundle();
+                            successor = Some(StoredGame {
+                                game_id: record.game_id.clone(),
+                                created_at: record.created_at,
+                                updated_at: committed_at,
+                                snapshot: policy_game.snapshot(),
+                                turn_deadline: self.next_deadline(&policy_game, committed_at),
+                            });
+                        }
+                        Some(InvalidAttemptState {
+                            turn: expected_version,
+                            seat,
+                            policy_version: self.policy.version,
+                            count,
+                        })
+                    } else {
+                        None
+                    };
+                (
+                    ActionOutcome::Rejected(rejection),
+                    successor,
+                    invalid_attempt,
+                    replay,
+                )
+            }
+        };
+        let record = IdempotencyRecord {
+            game_id: game_id.clone(),
+            key_digest,
+            digest_version: IDEMPOTENCY_DIGEST_VERSION,
+            command_kind: command_kind.to_owned(),
+            payload_sha256: payload_sha256.clone(),
+            outcome: outcome.clone(),
+            created_at: committed_at,
+        };
+        let commit = ActionCommit {
+            expected_version,
+            successor,
+            idempotency: record,
+            invalid_attempt,
+            replay,
+        };
+        if let Err(error) = self.repository.commit_action(commit).await {
+            if error == RepositoryError::Conflict
+                && let Some(result) = self
+                    .cached_outcome(game_id, key_digest, &payload_sha256)
+                    .await?
+            {
+                return result;
+            }
+            return Err(error.into());
+        }
+        outcome_result(outcome)
+    }
+
+    async fn cached_outcome(
+        &self,
+        game_id: &GameId,
+        key_digest: [u8; 32],
+        payload_sha256: &str,
+    ) -> Result<Option<Result<GameActionResult, ApplicationError>>, ApplicationError> {
+        Ok(
+            match self
+                .repository
+                .load_idempotency(game_id, key_digest, payload_sha256)
+                .await?
+            {
+                IdempotencyLookup::Missing => None,
+                IdempotencyLookup::PayloadConflict => Some(Err(ApplicationError::ActionRejected(
+                    ActionRejection::IdempotencyConflict,
+                ))),
+                IdempotencyLookup::Match(outcome) => Some(outcome_result(outcome)),
+            },
+        )
+    }
+
+    fn next_deadline(&self, game: &Game, from: crate::UnixMillis) -> Option<TurnDeadline> {
+        (game.public_projection().state.phase == GamePhase::Active).then(|| TurnDeadline {
+            turn: game.public_projection().state.version,
+            seat: game.public_projection().state.current_player,
+            deadline_at: crate::UnixMillis(from.0.saturating_add(self.policy.turn_duration_ms)),
+            policy_version: self.policy.version,
         })
     }
 
+    async fn load_record(&self, game_id: &GameId) -> Result<StoredGame, ApplicationError> {
+        match self.repository.load(game_id).await {
+            Ok(record) => Ok(record),
+            Err(RepositoryError::Corrupt) => {
+                let recovery = self.repository.load_recovery(game_id).await?;
+                let lexicon = self
+                    .lexicons
+                    .resolve(&recovery.replay.lexicon)
+                    .ok_or_else(|| ApplicationError::MissingLexicon {
+                        game_id: game_id.clone(),
+                    })?;
+                let game = Game::replay(&recovery.replay, Some(lexicon))?;
+                Ok(StoredGame {
+                    game_id: recovery.game_id,
+                    created_at: recovery.created_at,
+                    updated_at: recovery.updated_at,
+                    snapshot: game.snapshot(),
+                    turn_deadline: None,
+                })
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
     async fn load_game(&self, game_id: &crate::GameId) -> Result<Game, ApplicationError> {
-        let record = self.repository.load(game_id).await?;
+        let record = self.load_record(game_id).await?;
         validate_record(&record, game_id)?;
         self.resume(&record)
     }
@@ -600,6 +941,70 @@ fn validate_record(record: &StoredGame, requested: &crate::GameId) -> Result<(),
         Ok(())
     } else {
         Err(RepositoryError::Corrupt.into())
+    }
+}
+
+#[derive(Serialize)]
+struct ActionPayload<'a> {
+    game_id: &'a GameId,
+    expected_version: u64,
+    turn: Turn,
+    action: &'a Move,
+}
+
+#[derive(Serialize)]
+struct CreatePayload {
+    language: word_arena_engine::Language,
+}
+
+#[derive(Serialize)]
+struct TimeoutPayload<'a> {
+    game_id: &'a GameId,
+    expected_version: u64,
+    policy_version: u32,
+}
+
+fn digest_key(key: &IdempotencyKey) -> [u8; 32] {
+    Sha256::digest(key.as_str().as_bytes()).into()
+}
+
+fn payload_sha256(payload: &impl Serialize) -> Result<String, ApplicationError> {
+    let bytes = serde_json::to_vec(payload).map_err(|_| RepositoryError::Corrupt)?;
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(encoded)
+}
+
+fn rejection_from_engine(error: &GameError) -> ActionRejection {
+    if matches!(error, GameError::StaleVersion { .. }) {
+        ActionRejection::VersionConflict
+    } else {
+        ActionRejection::IllegalAction {
+            message: error.to_string(),
+        }
+    }
+}
+
+fn outcome_result(outcome: ActionOutcome) -> Result<GameActionResult, ApplicationError> {
+    match outcome {
+        ActionOutcome::Accepted(result) => Ok(GameActionResult {
+            committed_at: result.committed_at,
+            event: result.event,
+            game: result.game,
+        }),
+        ActionOutcome::Rejected(rejection) => Err(ApplicationError::ActionRejected(rejection)),
+    }
+}
+
+fn created_game(result: PersistedCreateResult) -> CreatedGame {
+    CreatedGame {
+        access: CreatedGameAccess::new(&result.game_id),
+        game_id: result.game_id,
+        created_at: result.created_at,
+        public: result.public,
     }
 }
 

@@ -104,3 +104,15 @@ current marker when behind. A cursor ahead of the server returns HTTP 409.
 The local process handles SIGINT/Ctrl-C with graceful Axum shutdown. Runtime
 SQLite data and the persistent 32-byte capability HMAC key live under the Word
 Arena data directory; the key is created with mode `0600` on Unix.
+
+## Mutation reliability
+
+Create and action idempotency keys are mandatory. Repeating a key with the same
+canonical payload returns the original game or exact action outcome; reusing it
+with another payload returns HTTP 409. The server persists only key digests.
+Accepted action state and its retry outcome commit atomically.
+
+Active turns have persisted deadlines. A restart-safe worker resolves due turns
+with the configured pass-or-resign policy. Player actions and timeouts compete
+on the same expected version, so only one commits. See
+[`RELIABILITY.md`](RELIABILITY.md) for the storage and recovery contract.

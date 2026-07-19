@@ -1,7 +1,7 @@
 use thiserror::Error;
 use word_arena_engine::{GameError, Seat};
 
-use crate::GameId;
+use crate::{ActionRejection, GameId};
 
 /// Stable storage error categories safe for application matching.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -66,6 +66,9 @@ pub enum ApplicationError {
         /// Command expected version.
         expected_version: u64,
     },
+    /// Stable deterministic mutation rejection, including cached retries.
+    #[error("action rejected: {0:?}")]
+    ActionRejected(ActionRejection),
     /// Repository failure mapped to a stable category.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

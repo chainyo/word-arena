@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use tempfile::TempDir;
-use word_arena_application::{GameId, GameRepository, RepositoryError, StoredGame, UnixMillis};
+use word_arena_application::{
+    ActionCommit, ActionOutcome, CreationIdempotencyLookup, CreationIdempotencyRecord, GameId,
+    GameRepository, IdempotencyLookup, IdempotencyRecord, PersistedActionResult,
+    PersistedCreateResult, RepositoryError, StoredGame, TurnDeadline, UnixMillis,
+};
 use word_arena_engine::{
     Coordinate, Game, GamePhase, GameSeed, Move, PhysicalTile, Placement, Ruleset, Seat, Tile,
     TileFace, WordValidator,
@@ -63,6 +67,94 @@ async fn insert_load_and_metadata_are_exact() {
         serde_json::from_slice::<PackIdentity>(&identity_bytes).unwrap(),
         game.public_state().lexicon
     );
+}
+
+#[tokio::test]
+async fn creation_key_and_game_insert_are_one_global_transaction() {
+    let database = Database::open("create-idempotency").await;
+    let (_ruleset, _lexicon, game, initial) = fixture("created-once");
+    let first_result = PersistedCreateResult {
+        game_id: initial.game_id.clone(),
+        created_at: initial.created_at,
+        public: game.public_projection(),
+    };
+    database
+        .repository
+        .insert_idempotent(
+            initial.clone(),
+            CreationIdempotencyRecord {
+                key_digest: [9; 32],
+                digest_version: 1,
+                payload_sha256: "b".repeat(64),
+                result: first_result.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .repository
+            .load_creation_idempotency([9; 32], &"b".repeat(64))
+            .await
+            .unwrap(),
+        CreationIdempotencyLookup::Match(Box::new(first_result))
+    );
+
+    let (_ruleset, _lexicon, other_game, other) = fixture("must-rollback");
+    let duplicate = CreationIdempotencyRecord {
+        key_digest: [9; 32],
+        digest_version: 1,
+        payload_sha256: "b".repeat(64),
+        result: PersistedCreateResult {
+            game_id: other.game_id.clone(),
+            created_at: other.created_at,
+            public: other_game.public_projection(),
+        },
+    };
+    assert_eq!(
+        database
+            .repository
+            .insert_idempotent(other.clone(), duplicate)
+            .await,
+        Err(RepositoryError::Conflict)
+    );
+    assert_eq!(
+        database.repository.load(&other.game_id).await,
+        Err(RepositoryError::NotFound)
+    );
+}
+
+#[tokio::test]
+async fn persisted_deadline_is_discovered_after_repository_restart() {
+    let database = Database::open("deadline-restart").await;
+    let (_ruleset, _lexicon, _game, mut initial) = fixture("deadline-restart");
+    initial.turn_deadline = Some(TurnDeadline {
+        turn: 0,
+        seat: Seat::One,
+        deadline_at: UnixMillis(1_500),
+        policy_version: 4,
+    });
+    database.repository.insert(initial.clone()).await.unwrap();
+    let restarted = SqliteGameRepository::new(database.repository.pool().clone());
+    assert_eq!(
+        restarted
+            .load(&initial.game_id)
+            .await
+            .unwrap()
+            .turn_deadline,
+        initial.turn_deadline
+    );
+    assert!(
+        restarted
+            .due_timeouts(UnixMillis(1_499), 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let due = restarted.due_timeouts(UnixMillis(1_500), 10).await.unwrap();
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].game_id, initial.game_id);
+    assert_eq!(due[0].expected_version, 0);
 }
 
 #[tokio::test]
@@ -141,6 +233,131 @@ async fn failed_event_append_rolls_back_version_and_snapshot() {
     .await
     .unwrap();
     assert_eq!(future_snapshots, 0);
+}
+
+#[tokio::test]
+async fn action_commit_is_atomic_idempotent_and_crash_safe() {
+    let database = Database::open("action-atomic").await;
+    let (ruleset, lexicon, game, initial) = fixture("action-atomic");
+    database.repository.insert(initial.clone()).await.unwrap();
+    let mut passed = Game::resume(game.snapshot(), ruleset, Some(lexicon)).unwrap();
+    let event = passed.pass(Seat::One, 0).unwrap();
+    let successor = record(&passed, &initial.game_id, UnixMillis(1_001));
+    let outcome = ActionOutcome::Accepted(Box::new(PersistedActionResult {
+        committed_at: UnixMillis(1_001),
+        event,
+        game: passed.seat_projection(Seat::One),
+    }));
+    let commit = action_commit(successor, outcome.clone(), 1);
+    database
+        .repository
+        .commit_action(commit.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .repository
+            .load_idempotency(&initial.game_id, [1; 32], &"a".repeat(64))
+            .await
+            .unwrap(),
+        IdempotencyLookup::Match(outcome)
+    );
+    assert_eq!(
+        database.repository.commit_action(commit).await,
+        Err(RepositoryError::Conflict)
+    );
+    assert_eq!(
+        database
+            .repository
+            .load(&initial.game_id)
+            .await
+            .unwrap()
+            .snapshot
+            .state
+            .version,
+        1
+    );
+
+    let (ruleset, lexicon, game, crash_initial) = fixture("action-crash");
+    database
+        .repository
+        .insert(crash_initial.clone())
+        .await
+        .unwrap();
+    let mut candidate = Game::resume(game.snapshot(), ruleset, Some(lexicon)).unwrap();
+    let event = candidate.pass(Seat::One, 0).unwrap();
+    let successor = record(&candidate, &crash_initial.game_id, UnixMillis(1_001));
+    let event_bytes = serde_json::to_vec(&event).unwrap();
+    sqlx::query("INSERT INTO public_events (game_id, sequence, event_schema_version, payload_json, committed_at_ms) VALUES (?, 1, 1, ?, 1001)")
+        .bind(crash_initial.game_id.as_str()).bind(event_bytes)
+        .execute(database.repository.pool()).await.unwrap();
+    let failed = action_commit(
+        successor,
+        ActionOutcome::Accepted(Box::new(PersistedActionResult {
+            committed_at: UnixMillis(1_001),
+            event,
+            game: candidate.seat_projection(Seat::One),
+        })),
+        2,
+    );
+    assert_eq!(
+        database.repository.commit_action(failed).await,
+        Err(RepositoryError::Corrupt)
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT version FROM games WHERE game_id = ?")
+            .bind(crash_initial.game_id.as_str())
+            .fetch_one(database.repository.pool())
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        database
+            .repository
+            .load_idempotency(&crash_initial.game_id, [2; 32], &"a".repeat(64))
+            .await
+            .unwrap(),
+        IdempotencyLookup::Missing
+    );
+}
+
+#[tokio::test]
+async fn corrupt_finished_snapshot_recovers_from_private_replay_record() {
+    let database = Database::open("recovery").await;
+    let (ruleset, lexicon, game, initial) = fixture("recovery");
+    database.repository.insert(initial.clone()).await.unwrap();
+    let mut finished = Game::resume(game.snapshot(), ruleset, Some(Arc::clone(&lexicon))).unwrap();
+    let event = finished.resign(Seat::One, 0).unwrap();
+    let replay = finished.replay_bundle().unwrap();
+    let successor = record(&finished, &initial.game_id, UnixMillis(1_001));
+    let mut commit = action_commit(
+        successor,
+        ActionOutcome::Accepted(Box::new(PersistedActionResult {
+            committed_at: UnixMillis(1_001),
+            event,
+            game: finished.seat_projection(Seat::One),
+        })),
+        3,
+    );
+    commit.replay = Some(replay);
+    database.repository.commit_action(commit).await.unwrap();
+    sqlx::query("UPDATE game_snapshots SET payload_json = X'00' WHERE game_id = ? AND version = 1")
+        .bind(initial.game_id.as_str())
+        .execute(database.repository.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        database.repository.load(&initial.game_id).await,
+        Err(RepositoryError::Corrupt)
+    );
+    let recovery = database
+        .repository
+        .load_recovery(&initial.game_id)
+        .await
+        .unwrap();
+    let replayed = Game::replay(&recovery.replay, Some(lexicon)).unwrap();
+    assert_eq!(replayed.snapshot(), finished.snapshot());
 }
 
 #[tokio::test]
@@ -320,6 +537,7 @@ fn fixture(id: &str) -> (Ruleset, Arc<dyn WordValidator>, Game, StoredGame) {
         created_at: UnixMillis(1_000),
         updated_at: UnixMillis(1_000),
         snapshot: game.snapshot(),
+        turn_deadline: None,
     };
     (ruleset, lexicon, game, record)
 }
@@ -330,6 +548,25 @@ fn record(game: &Game, game_id: &GameId, updated_at: UnixMillis) -> StoredGame {
         created_at: UnixMillis(1_000),
         updated_at,
         snapshot: game.snapshot(),
+        turn_deadline: None,
+    }
+}
+
+fn action_commit(successor: StoredGame, outcome: ActionOutcome, digest_byte: u8) -> ActionCommit {
+    ActionCommit {
+        expected_version: successor.snapshot.state.version - 1,
+        idempotency: IdempotencyRecord {
+            game_id: successor.game_id.clone(),
+            key_digest: [digest_byte; 32],
+            digest_version: 1,
+            command_kind: "test_action".to_owned(),
+            payload_sha256: "a".repeat(64),
+            outcome,
+            created_at: successor.updated_at,
+        },
+        successor: Some(successor),
+        invalid_attempt: None,
+        replay: None,
     }
 }
 

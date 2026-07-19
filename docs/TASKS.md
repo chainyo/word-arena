@@ -116,13 +116,13 @@ from a known version, and converge on the authoritative REST snapshot.
 
 ### APP-007: Add idempotency, deadlines, invalid-attempt policy, and recovery
 
-- [ ] Make idempotency keys mandatory for mutations and atomically persist the
+- [x] Make idempotency keys mandatory for mutations and atomically persist the
   exact response/error outcome with command identity and payload hash.
-- [ ] Define injected turn deadlines and a deterministic timeout policy that can
+- [x] Define injected turn deadlines and a deterministic timeout policy that can
   pass or resign a seat exactly once.
-- [ ] Persist invalid-attempt counters and a versioned configurable response
+- [x] Persist invalid-attempt counters and a versioned configurable response
   policy without allowing rejected actions to mutate engine state.
-- [ ] Add crash-point, restart, duplicate retry, stale retry, timeout race, and
+- [x] Add crash-point, restart, duplicate retry, stale retry, timeout race, and
   corrupted-snapshot recovery tests with replay fallback.
 
 Verification: retries never double-commit, timeout/action races have one winner,
