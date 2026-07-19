@@ -1,0 +1,19 @@
+{
+  "kind": "word_arena_agent_run_telemetry_contract",
+  "schema_version": 1,
+  "redaction_policy_version": 1,
+  "availability": ["exact", "estimated", "unavailable"],
+  "source_labels": ["transcripts", "tool_calls", "timings", "retries", "failures", "usage_metrics"],
+  "correlation": ["tournament_id", "match_id", "game_id", "run_id", "seat_number", "turn_id"],
+  "private_fields": ["visible_input", "visible_output", "tool_arguments", "tool_result", "diagnostic_text"],
+  "public_fields": ["correlation", "manifest", "timings", "retry_count", "usage", "tool_names", "failure_codes", "privacy"],
+  "public_content_fields_omitted": true,
+  "limits": {
+    "text_bytes": 16384,
+    "json_bytes": 65536,
+    "turns": 1024,
+    "tool_calls_per_turn": 256,
+    "diagnostics": 2048,
+    "lifecycle_events": 4096
+  }
+}

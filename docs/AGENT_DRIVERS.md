@@ -64,6 +64,10 @@ restart count, visible turn inputs and outputs, visible tool calls, timings, and
 structured diagnostics. Raw partial stdout and invalid frame content are
 discarded and never copied into diagnostics.
 
+Driver telemetry is an in-memory input, not the durable/public format. At run
+completion it passes through the bounded secret-aware capture described in
+`docs/AGENT_TELEMETRY.md`; raw telemetry must not be persisted or logged.
+
 ## Verification
 
 Run the focused contract suite with:

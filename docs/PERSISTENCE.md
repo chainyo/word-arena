@@ -57,6 +57,12 @@ its run is terminal. The row repeats the exact manifest identity and both
 budget schema versions; strict loading reparses the typed JSON and rejects
 schema or ordered-limit-event drift.
 
+Migration 7 stores one final sanitized run-telemetry archive after terminal
+result creation. Repeated columns and the insert query bind tournament, match,
+game, run, seat, and manifest identity. The typed archive carries explicit
+retention; expiry transactionally removes detailed and budget telemetry. Public
+reads return the content-free analytics projection, never the private JSON.
+
 Run them with:
 
 ```bash

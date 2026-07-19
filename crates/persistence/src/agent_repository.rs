@@ -3,7 +3,8 @@ use thiserror::Error;
 use word_arena_agent_runtime::{
     AGENT_MANIFEST_SCHEMA_VERSION, AGENT_RUN_RESULT_SCHEMA_VERSION, AgentManifestIdentity,
     BUDGET_CAPABILITY_SCHEMA_VERSION, BUDGET_TELEMETRY_SCHEMA_VERSION, BudgetTelemetry,
-    MANIFEST_HASH_ALGORITHM, ValidatedAgentManifest,
+    MANIFEST_HASH_ALGORITHM, PublicRunTelemetry, RUN_TELEMETRY_SCHEMA_VERSION, RunTelemetryArchive,
+    TELEMETRY_REDACTION_POLICY_VERSION, TelemetryRetentionKind, ValidatedAgentManifest,
 };
 use word_arena_engine::Seat;
 
@@ -311,6 +312,181 @@ impl SqliteAgentAttributionRepository {
         Ok(telemetry)
     }
 
+    /// Persists one final sanitized, bounded telemetry archive for a terminal run.
+    ///
+    /// # Errors
+    ///
+    /// Rejects invalid schemas, retention, ordering, exact run/manifest/game/
+    /// seat/match/tournament correlation drift, duplicates, or unavailable storage.
+    pub async fn record_run_telemetry(
+        &self,
+        telemetry: &RunTelemetryArchive,
+        recorded_at_ms: i64,
+    ) -> Result<(), AgentAttributionError> {
+        validate_run_telemetry(telemetry)?;
+        if recorded_at_ms < telemetry.captured_at_unix_ms
+            || telemetry
+                .retention
+                .expires_at_unix_ms
+                .is_some_and(|expires| expires < recorded_at_ms)
+        {
+            return Err(AgentAttributionError::Invalid);
+        }
+        let bytes = serde_json::to_vec(telemetry).map_err(|_| AgentAttributionError::Invalid)?;
+        let retention = match telemetry.retention.kind {
+            TelemetryRetentionKind::Retain => "retain",
+            TelemetryRetentionKind::Expire => "expire",
+        };
+        let correlation = &telemetry.correlation;
+        let inserted = sqlx::query(
+            "INSERT INTO agent_run_telemetry (
+                run_id, manifest_sha256, telemetry_schema_version,
+                redaction_policy_version, tournament_id, match_id, game_id,
+                seat_number, telemetry_json, retention_kind, expires_at_ms,
+                recorded_at_ms
+             )
+             SELECT r.run_id, r.manifest_sha256, ?, ?, ?, ?, r.game_id,
+                    r.seat_number, ?, ?, ?, ?
+             FROM agent_runs AS r
+             JOIN agent_run_results AS result
+               ON result.run_id = r.run_id
+              AND result.manifest_sha256 = r.manifest_sha256
+             LEFT JOIN matches AS m ON m.match_id = r.match_id
+             WHERE r.run_id = ? AND r.manifest_sha256 = ?
+               AND r.game_id = ? AND r.seat_number = ?
+               AND r.match_id IS ? AND m.tournament_id IS ?
+               AND result.completed_at_ms <= ?",
+        )
+        .bind(i64::from(RUN_TELEMETRY_SCHEMA_VERSION))
+        .bind(i64::from(TELEMETRY_REDACTION_POLICY_VERSION))
+        .bind(&correlation.tournament_id)
+        .bind(&correlation.match_id)
+        .bind(bytes)
+        .bind(retention)
+        .bind(telemetry.retention.expires_at_unix_ms)
+        .bind(recorded_at_ms)
+        .bind(&correlation.run_id)
+        .bind(&telemetry.manifest.manifest_sha256)
+        .bind(&correlation.game_id)
+        .bind(i64::from(correlation.seat_number))
+        .bind(&correlation.match_id)
+        .bind(&correlation.tournament_id)
+        .bind(recorded_at_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(map_insert)?;
+        if inserted.rows_affected() == 1 {
+            Ok(())
+        } else {
+            Err(AgentAttributionError::Conflict)
+        }
+    }
+
+    /// Loads and revalidates a private run telemetry archive.
+    ///
+    /// # Errors
+    ///
+    /// Rejects missing, malformed, schema-drifted, or column-substituted rows.
+    pub async fn load_run_telemetry(
+        &self,
+        run_id: &str,
+    ) -> Result<RunTelemetryArchive, AgentAttributionError> {
+        validate_text(run_id)?;
+        let row = sqlx::query(
+            "SELECT manifest_sha256, telemetry_schema_version,
+                    redaction_policy_version, tournament_id, match_id, game_id,
+                    seat_number, telemetry_json, retention_kind, expires_at_ms
+             FROM agent_run_telemetry WHERE run_id = ?",
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_storage)?
+        .ok_or(AgentAttributionError::NotFound)?;
+        let bytes: Vec<u8> = row
+            .try_get("telemetry_json")
+            .map_err(|_| AgentAttributionError::Corrupt)?;
+        let telemetry: RunTelemetryArchive =
+            serde_json::from_slice(&bytes).map_err(|_| AgentAttributionError::Corrupt)?;
+        validate_run_telemetry(&telemetry).map_err(|_| AgentAttributionError::Corrupt)?;
+        let retention = match telemetry.retention.kind {
+            TelemetryRetentionKind::Retain => "retain",
+            TelemetryRetentionKind::Expire => "expire",
+        };
+        let correlation = &telemetry.correlation;
+        let matches_columns = row.try_get::<String, _>("manifest_sha256").ok()
+            == Some(telemetry.manifest.manifest_sha256.clone())
+            && row.try_get::<i64, _>("telemetry_schema_version").ok()
+                == Some(i64::from(RUN_TELEMETRY_SCHEMA_VERSION))
+            && row.try_get::<i64, _>("redaction_policy_version").ok()
+                == Some(i64::from(TELEMETRY_REDACTION_POLICY_VERSION))
+            && row.try_get::<Option<String>, _>("tournament_id").ok()
+                == Some(correlation.tournament_id.clone())
+            && row.try_get::<Option<String>, _>("match_id").ok()
+                == Some(correlation.match_id.clone())
+            && row.try_get::<String, _>("game_id").ok() == Some(correlation.game_id.clone())
+            && row.try_get::<i64, _>("seat_number").ok()
+                == Some(i64::from(correlation.seat_number))
+            && row.try_get::<String, _>("retention_kind").ok() == Some(retention.to_owned())
+            && row.try_get::<Option<i64>, _>("expires_at_ms").ok()
+                == Some(telemetry.retention.expires_at_unix_ms);
+        if !matches_columns || correlation.run_id != run_id {
+            return Err(AgentAttributionError::Corrupt);
+        }
+        Ok(telemetry)
+    }
+
+    /// Loads the structurally content-free public analytics projection.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same strict storage errors as [`Self::load_run_telemetry`].
+    pub async fn public_run_telemetry(
+        &self,
+        run_id: &str,
+    ) -> Result<PublicRunTelemetry, AgentAttributionError> {
+        self.load_run_telemetry(run_id)
+            .await
+            .map(|telemetry| telemetry.public_projection())
+    }
+
+    /// Deletes detailed and budget telemetry whose explicit retention expired.
+    ///
+    /// # Errors
+    ///
+    /// Rejects a negative clock value or unavailable transactional storage.
+    pub async fn purge_expired_run_telemetry(
+        &self,
+        now_ms: i64,
+    ) -> Result<u64, AgentAttributionError> {
+        if now_ms < 0 {
+            return Err(AgentAttributionError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(map_storage)?;
+        sqlx::query(
+            "DELETE FROM agent_run_budget_telemetry
+             WHERE run_id IN (
+                 SELECT run_id FROM agent_run_telemetry
+                 WHERE expires_at_ms IS NOT NULL AND expires_at_ms <= ?
+             )",
+        )
+        .bind(now_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_storage)?;
+        let deleted = sqlx::query(
+            "DELETE FROM agent_run_telemetry
+             WHERE expires_at_ms IS NOT NULL AND expires_at_ms <= ?",
+        )
+        .bind(now_ms)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_storage)?
+        .rows_affected();
+        transaction.commit().await.map_err(map_storage)?;
+        Ok(deleted)
+    }
+
     /// Attaches a terminal replay to the exact run and manifest for one seat.
     ///
     /// # Errors
@@ -479,6 +655,13 @@ fn validate_budget_telemetry(telemetry: &BudgetTelemetry) -> Result<(), AgentAtt
     } else {
         Ok(())
     }
+}
+
+fn validate_run_telemetry(telemetry: &RunTelemetryArchive) -> Result<(), AgentAttributionError> {
+    validate_identity(&telemetry.manifest)?;
+    telemetry
+        .validate()
+        .map_err(|_| AgentAttributionError::Invalid)
 }
 
 fn validate_text(value: &str) -> Result<(), AgentAttributionError> {

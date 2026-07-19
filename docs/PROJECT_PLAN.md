@@ -181,7 +181,7 @@ game without using the command line.
 - [x] Keep human-spectator credentials outside every agent workspace and process
   environment.
 - [x] Enforce wall-clock, CPU, memory, network, token, attempt, and tool budgets.
-- [ ] Record visible transcripts, tool calls, timings, usage, failures, and cost
+- [x] Record visible transcripts, tool calls, timings, usage, failures, and cost
   when exposed; never depend on hidden chain-of-thought.
 
 Exit criterion: each supported harness can play under the same tool and budget

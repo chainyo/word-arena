@@ -61,6 +61,10 @@ schema-pinned snapshot under the same run and manifest identity. Foreign keys
 reject nonterminal or substituted runs; loading reparses the strict JSON and
 revalidates schema versions and limit-event ordering.
 
+The final privacy-safe run archive records exposed usage/cost availability and
+retention separately. Expiring a detailed archive also removes its budget
+snapshot transactionally; see `docs/AGENT_TELEMETRY.md`.
+
 ## Verification
 
 ```bash

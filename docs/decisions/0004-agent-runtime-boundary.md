@@ -49,6 +49,13 @@ versioned input to the run. Operators either accept explicitly reported weaker
 dimensions or require all-hard support and fail before launch. Direct children
 own a process group so every termination path targets descendants as well.
 
+Durable run telemetry is a second typed boundary after driver normalization.
+It applies trusted secret material, token/key redaction, content/count limits,
+source and availability labels, then binds the result to immutable tournament,
+match, game, run, seat, turn, and manifest identities. Private transcript and
+tool/diagnostic content remains in the retained archive only. The public type
+omits every content-bearing field structurally instead of filtering at export.
+
 The manifest can identify provider/model/harness versions but cannot represent
 provider secrets, game capabilities, operator authority, assigned paths, or
 process state. The persistence adapter stores canonical bytes and repeats their
@@ -79,5 +86,8 @@ the engine.
   leak-detection fingerprints may be retained by the startup guard.
 - CPU, memory, token, cost, and network-byte limits must never be presented as
   hard unless a reviewed platform/provider adapter actually supplies them.
+- Raw driver telemetry is neither a persistence nor logging format. Sanitize it
+  once at terminal capture and use only the content-free public projection for
+  analytics and exports.
 - Export code must explicitly join agent attribution when producing tournament
   results or public replay bundles.

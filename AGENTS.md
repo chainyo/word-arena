@@ -210,6 +210,10 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Use one run-scoped `BudgetController` for both `BudgetedAgentDriver` and the
   seat's `budgeted_process_adapter`. Persist its capability/telemetry snapshot;
   never claim hard enforcement for a conditional or unenforced dimension.
+- Build terminal telemetry only with `RunTelemetryArchive::capture`, supplying
+  every in-memory secret known to orchestration. Store private archives through
+  the SQLx adapter and expose only `PublicRunTelemetry` to analytics/exports;
+  never log raw driver telemetry, transcripts, diagnostics, or tool payloads.
 
 ## Documentation and dependencies
 

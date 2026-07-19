@@ -53,6 +53,9 @@ The repository foundation is in place:
 - Shared per-run budget enforcement for wall time, attempts, tool calls, raw
   output, and process trees, with versioned reporting for conditional or
   unavailable platform/provider limits ([budget contract](docs/AGENT_BUDGETS.md))
+- Versioned, source-labelled private run telemetry with bounded redaction,
+  explicit usage availability, SQLx retention, and a structurally content-free
+  public analytics projection ([telemetry contract](docs/AGENT_TELEMETRY.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
@@ -172,6 +175,8 @@ in [`docs/AGENT_WORKSPACES.md`](docs/AGENT_WORKSPACES.md).
 Resource enforcement, platform capability states, process-tree termination,
 and normalized limit telemetry are documented in
 [`docs/AGENT_BUDGETS.md`](docs/AGENT_BUDGETS.md).
+Private run capture, redaction, retention, and public analytics boundaries are
+documented in [`docs/AGENT_TELEMETRY.md`](docs/AGENT_TELEMETRY.md).
 The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 The credential and bearer-capability security contract is documented in

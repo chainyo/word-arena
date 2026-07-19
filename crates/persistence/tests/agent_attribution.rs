@@ -3,8 +3,11 @@ use std::{fs, path::PathBuf, sync::Arc};
 use serde_json::Value;
 use tempfile::TempDir;
 use word_arena_agent_runtime::{
-    BudgetController, DriverClock, NetworkPolicy, PlatformBudgetCapabilities,
-    UnenforcedBudgetPolicy, ValidatedAgentManifest,
+    BudgetController, DiagnosticRecord, DiagnosticStream, DriverClock, DriverLifecycleState,
+    DriverTelemetry, LifecycleTransition, NetworkPolicy, PlatformBudgetCapabilities,
+    RunTelemetryArchive, RunTelemetryCorrelation, RunUsageTelemetry, TelemetryRetentionPolicy,
+    TelemetrySanitizer, TurnTelemetry, UnenforcedBudgetPolicy, ValidatedAgentManifest,
+    VisibleToolCall,
 };
 use word_arena_engine::Seat;
 use word_arena_persistence::{
@@ -209,6 +212,102 @@ async fn terminal_budget_telemetry_round_trips_with_exact_run_identity() {
 }
 
 #[tokio::test]
+async fn sanitized_run_telemetry_round_trips_restarts_exports_and_expires() {
+    let database = Database::open("run-telemetry").await;
+    seed_match(&database.pool, "tournament-one", "match-one", "game-one").await;
+    let manifest = manifest("Codex telemetry");
+    let mut attribution = run("run-one", Seat::One);
+    attribution.match_id = Some("match-one".to_owned());
+    database
+        .repository
+        .create_run(&manifest, &attribution)
+        .await
+        .unwrap();
+    let secret = "synthetic-seat-secret";
+    let archive = run_telemetry(manifest.identity(), secret);
+    assert_eq!(
+        database.repository.record_run_telemetry(&archive, 21).await,
+        Err(AgentAttributionError::Conflict),
+        "nonterminal runs cannot accept final telemetry"
+    );
+    database
+        .repository
+        .record_result(
+            "run-one",
+            manifest.identity(),
+            AgentRunOutcome::Finished,
+            20,
+        )
+        .await
+        .unwrap();
+
+    let budget_controller = BudgetController::new(
+        manifest.manifest().budgets.clone(),
+        PlatformBudgetCapabilities::detect(&NetworkPolicy::Deny),
+        UnenforcedBudgetPolicy::AllowReported,
+        Arc::new(BudgetClock),
+    )
+    .unwrap();
+    database
+        .repository
+        .record_budget_telemetry(
+            "run-one",
+            manifest.identity(),
+            &budget_controller.snapshot().unwrap(),
+            20,
+        )
+        .await
+        .unwrap();
+
+    database
+        .repository
+        .record_run_telemetry(&archive, 21)
+        .await
+        .unwrap();
+    let stored = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT telemetry_json FROM agent_run_telemetry WHERE run_id = 'run-one'",
+    )
+    .fetch_one(&database.pool)
+    .await
+    .unwrap();
+    assert!(!String::from_utf8(stored).unwrap().contains(secret));
+    assert_eq!(
+        database.repository.record_run_telemetry(&archive, 21).await,
+        Err(AgentAttributionError::AlreadyExists)
+    );
+
+    let restarted = SqliteAgentAttributionRepository::new(database.pool.clone());
+    let loaded = restarted.load_run_telemetry("run-one").await.unwrap();
+    assert_eq!(loaded, archive);
+    assert_telemetry_column_drift_is_rejected(&database.pool, &restarted).await;
+
+    let public_json =
+        serde_json::to_string(&restarted.public_run_telemetry("run-one").await.unwrap()).unwrap();
+    assert_private_and_public_telemetry_privacy(&loaded, &public_json, secret);
+
+    let mut substituted = archive.clone();
+    substituted.correlation.game_id = "other-game".to_owned();
+    assert_eq!(
+        database
+            .repository
+            .record_run_telemetry(&substituted, 21)
+            .await,
+        Err(AgentAttributionError::Conflict)
+    );
+
+    assert_eq!(restarted.purge_expired_run_telemetry(49).await.unwrap(), 0);
+    assert_eq!(restarted.purge_expired_run_telemetry(50).await.unwrap(), 1);
+    assert_eq!(
+        restarted.load_run_telemetry("run-one").await,
+        Err(AgentAttributionError::NotFound)
+    );
+    assert_eq!(
+        restarted.load_budget_telemetry("run-one").await,
+        Err(AgentAttributionError::NotFound)
+    );
+}
+
+#[tokio::test]
 async fn identity_cross_run_seat_and_replay_substitution_fail_closed() {
     let database = Database::open("substitution").await;
     let first = manifest("Codex one");
@@ -309,6 +408,60 @@ async fn stored_manifest_drift_is_detected_on_load() {
     );
 }
 
+async fn assert_telemetry_column_drift_is_rejected(
+    pool: &sqlx::SqlitePool,
+    repository: &SqliteAgentAttributionRepository,
+) {
+    sqlx::query(
+        "UPDATE agent_run_telemetry SET redaction_policy_version = 99
+         WHERE run_id = 'run-one'",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        repository.load_run_telemetry("run-one").await,
+        Err(AgentAttributionError::Corrupt)
+    );
+    sqlx::query(
+        "UPDATE agent_run_telemetry SET redaction_policy_version = 1
+         WHERE run_id = 'run-one'",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+fn assert_private_and_public_telemetry_privacy(
+    private: &RunTelemetryArchive,
+    public_json: &str,
+    secret: &str,
+) {
+    let private_json = serde_json::to_string(private).unwrap();
+    assert!(!private_json.contains(secret));
+    assert!(private_json.contains("Private rack ETE"));
+    for forbidden in [
+        secret,
+        "Private rack ETE",
+        "visible_input",
+        "visible_output",
+        "arguments",
+        "result",
+        "visible_text",
+    ] {
+        assert!(!public_json.contains(forbidden));
+    }
+    for correlation in [
+        "tournament-one",
+        "match-one",
+        "game-one",
+        "run-one",
+        "turn-one",
+    ] {
+        assert!(public_json.contains(correlation));
+    }
+}
+
 async fn seed_game(pool: &sqlx::SqlitePool, game_id: &str) {
     let ruleset_sha = "c".repeat(64);
     let lexicon_sha = "d".repeat(64);
@@ -358,6 +511,89 @@ async fn seed_game(pool: &sqlx::SqlitePool, game_id: &str) {
         .await
         .unwrap();
     }
+}
+
+fn run_telemetry(
+    manifest: &word_arena_agent_runtime::AgentManifestIdentity,
+    secret: &str,
+) -> RunTelemetryArchive {
+    let driver = DriverTelemetry {
+        schema_version: 1,
+        run_id: "run-one".to_owned(),
+        manifest: manifest.clone(),
+        restarts: 1,
+        lifecycle: vec![LifecycleTransition {
+            sequence: 0,
+            at_unix_ms: 10,
+            state: DriverLifecycleState::Ready,
+        }],
+        turns: vec![TurnTelemetry {
+            turn_id: "turn-one".to_owned(),
+            started_at_unix_ms: 11,
+            completed_at_unix_ms: 15,
+            visible_input: format!("Private rack ETE {secret}"),
+            visible_output: "Placed ETE".to_owned(),
+            tool_calls: vec![VisibleToolCall {
+                tool: "word_arena.place_tiles".to_owned(),
+                arguments: serde_json::json!({"token": secret, "tiles": "ETE"}),
+                result: serde_json::json!({"accepted": true}),
+            }],
+        }],
+        diagnostics: vec![DiagnosticRecord {
+            sequence: 0,
+            at_unix_ms: 16,
+            stream: DiagnosticStream::Driver,
+            code: "retry".to_owned(),
+            visible_text: secret.to_owned(),
+        }],
+    };
+    RunTelemetryArchive::capture(
+        RunTelemetryCorrelation {
+            tournament_id: Some("tournament-one".to_owned()),
+            match_id: Some("match-one".to_owned()),
+            game_id: "game-one".to_owned(),
+            run_id: "run-one".to_owned(),
+            seat_number: 1,
+        },
+        manifest.clone(),
+        &driver,
+        RunUsageTelemetry::unavailable("provider_omitted").unwrap(),
+        TelemetryRetentionPolicy::expire_at(50),
+        20,
+        &TelemetrySanitizer::new([secret.as_bytes().to_vec()]),
+    )
+    .unwrap()
+}
+
+async fn seed_match(pool: &sqlx::SqlitePool, tournament_id: &str, match_id: &str, game_id: &str) {
+    sqlx::query(
+        "INSERT INTO tournaments (
+            tournament_id, schema_version, format_kind, status, config_json,
+            created_at_ms, updated_at_ms
+         ) VALUES (?, 1, 'round_robin', 'finished', x'7b7d', 1, 2)",
+    )
+    .bind(tournament_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO matches (
+            match_id, tournament_id, sequence, game_id, language,
+            ruleset_id, ruleset_sha256, lexicon_pack_id,
+            lexicon_pack_version, lexicon_content_sha256, status,
+            scheduled_at_ms, started_at_ms, finished_at_ms, created_at_ms
+         )
+         SELECT ?, ?, 0, ?, 'en', 'english-v1', ruleset_sha256,
+                'pack', '1.0.0', lexicon_content_sha256, 'finished', 1, 1, 2, 1
+         FROM games WHERE game_id = ?",
+    )
+    .bind(match_id)
+    .bind(tournament_id)
+    .bind(game_id)
+    .bind(game_id)
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 async fn insert_replay(pool: &sqlx::SqlitePool, game_id: &str, version: i64) {

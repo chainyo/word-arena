@@ -102,3 +102,19 @@ Platform pressure reporting can be repeated explicitly with
 `WORD_ARENA_RUN_PLATFORM_BUDGET_SMOKE=1 scripts/agents/smoke-budgets.sh`.
 Unenforced CPU, memory, and non-denied network-byte dimensions are a reviewed
 capability result, never an implicit pass.
+
+## Agent run telemetry privacy
+
+The capture suite validates the published schema/limits, generated secret
+corpora, token and sensitive-key redaction, invalid UTF-8/control handling,
+truncation, exact/estimated/unavailable metrics, checked cost arithmetic,
+ordering, and structurally content-free public projections:
+
+```bash
+cargo test -p word-arena-agent-runtime --all-features --test telemetry
+cargo test -p word-arena-persistence --all-features
+```
+
+The SQLx suite additionally proves exact tournament-to-turn correlation,
+terminal-only writes, restart loading, column drift rejection, and transactional
+retention of detailed and budget telemetry.

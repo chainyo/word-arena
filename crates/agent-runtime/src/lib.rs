@@ -8,6 +8,7 @@ mod authority;
 mod budget;
 mod driver;
 mod harness;
+mod telemetry;
 mod workspace;
 
 pub use authority::{
@@ -34,6 +35,16 @@ pub use harness::{
     CLAUDE_CODE_MINIMUM_VERSION, CLINE_MINIMUM_VERSION, CODEX_MINIMUM_VERSION, HarnessExecutables,
     HarnessPolicyTranslation, HarnessRuntimeConfig, NativeHarnessCheckpoint, NativeHarnessDriver,
     NativeHarnessKind, PI_MINIMUM_VERSION, SupportedAgentDriver, SupportedDriverCheckpoint,
+};
+pub use telemetry::{
+    ArchivedDiagnostic, ArchivedToolCall, ArchivedTurnTelemetry, MAX_TELEMETRY_DIAGNOSTICS,
+    MAX_TELEMETRY_JSON_BYTES, MAX_TELEMETRY_LIFECYCLE_EVENTS, MAX_TELEMETRY_TEXT_BYTES,
+    MAX_TELEMETRY_TOOL_CALLS_PER_TURN, MAX_TELEMETRY_TURNS, PublicRunTelemetry,
+    PublicTelemetryPrivacy, PublicTurnTelemetry, REDACTION_MARKER, RUN_TELEMETRY_SCHEMA_VERSION,
+    RunTelemetryArchive, RunTelemetryCorrelation, RunTelemetryError, RunTelemetrySources,
+    RunUsageTelemetry, SourcedU64, TELEMETRY_REDACTION_POLICY_VERSION, TRUNCATION_MARKER,
+    TelemetryAvailability, TelemetryRetentionKind, TelemetryRetentionPolicy, TelemetrySanitization,
+    TelemetrySanitizer,
 };
 pub use workspace::{
     AuthorityBoundaryConfig, MAX_SEAT_CAPABILITY_TTL_MS, SEAT_CAPABILITY_ENV,

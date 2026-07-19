@@ -375,13 +375,13 @@ post-termination process retains credentials or keeps emitting output.
 
 ### RUN-007: Record privacy-safe run telemetry
 
-- [ ] Persist visible transcripts, MCP/tool calls, timings, usage, retries,
+- [x] Persist visible transcripts, MCP/tool calls, timings, usage, retries,
   failures, and cost when exposed, with versioned schemas and source labels.
-- [ ] Apply size limits, secret/token redaction, binary/control-character
+- [x] Apply size limits, secret/token redaction, binary/control-character
   handling, retention policy, and explicit unavailable/estimated markers.
-- [ ] Correlate telemetry to tournament/match/game/run/turn without placing
+- [x] Correlate telemetry to tournament/match/game/run/turn without placing
   private rack content in public analytics or exports.
-- [ ] Add redaction fuzz/property tests, truncation, cost arithmetic, ordering,
+- [x] Add redaction fuzz/property tests, truncation, cost arithmetic, ordering,
   restart, retention, and public-export privacy tests.
 
 Verification: synthetic secret corpora never appear in stored/logged/exported
