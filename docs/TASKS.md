@@ -97,17 +97,17 @@ Verification:
 
 ### GAME-004: Implement non-placement actions and endgame scoring
 
-- [ ] Implement pass as an atomic turn action with no tile or score mutation.
-- [ ] Implement exchange by validating owned tile IDs and the configured minimum
+- [x] Implement pass as an atomic turn action with no tile or score mutation.
+- [x] Implement exchange by validating owned tile IDs and the configured minimum
   bag size, returning exchanged tiles through the deterministic shuffle policy,
   drawing replacements atomically, and preserving conservation.
-- [ ] Implement resignation with an explicit terminal reason and immutable
+- [x] Implement resignation with an explicit terminal reason and immutable
   winner/result.
-- [ ] Track consecutive scoreless turns and finish at the configured limit.
-- [ ] Finish when a rack becomes empty after the bag is exhausted; subtract
+- [x] Track consecutive scoreless turns and finish at the configured limit.
+- [x] Finish when a rack becomes empty after the bag is exhausted; subtract
   remaining rack values and award the outgoing player the opponents' deductions
   according to the ruleset.
-- [ ] Reject every action after completion and make finish/result events exactly
+- [x] Reject every action after completion and make finish/result events exactly
   replayable.
 
 Verification:

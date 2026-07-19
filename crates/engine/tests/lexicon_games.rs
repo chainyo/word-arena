@@ -3,7 +3,8 @@ use std::{collections::BTreeSet, sync::Arc};
 use proptest::prelude::*;
 use word_arena_engine::{
     Bag, BoardTile, Coordinate, Game, GameError, GameEventKind, GameSeed, Language, PhysicalTile,
-    Placement, Player, Ruleset, Seat, Tile, TileFace, TileId, WordValidator, prepare_initial_deal,
+    Placement, Player, Ruleset, Score, Seat, Tile, TileFace, TileId, WordValidator,
+    prepare_initial_deal,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 
@@ -143,7 +144,7 @@ fn english_golden_game_scores_premiums_cross_words_refills_and_replays() {
         [("ABE", 7), ("AC", 5), ("ET", 3)]
     );
     assert_eq!(*score, 15);
-    assert_eq!(game.public_state().scores, [25, 5]);
+    assert_eq!(game.public_state().scores, [Score::new(25), Score::new(5)]);
     assert_eq!(game.public_state().bag_count, 79);
     assert_eq!(game.public_state().rack_counts, [7, 7]);
     assert_eq!(game.private_events(Seat::One).count(), 2);
@@ -158,7 +159,7 @@ fn english_golden_game_scores_premiums_cross_words_refills_and_replays() {
     assert_eq!(resumed.public_state(), game.public_state());
     assert_eq!(resumed.rack(Seat::One), game.rack(Seat::One));
 
-    game.finish().unwrap();
+    game.resign(Seat::Two, 3).unwrap();
     let bundle = game.replay_bundle().expect("finished replay");
     let replayed = Game::replay(
         &serde_json::from_slice(&serde_json::to_vec(&bundle).unwrap()).unwrap(),
@@ -538,7 +539,7 @@ fn invalid_cross_word_and_overflows_leave_authoritative_state_unchanged() {
     )
     .unwrap();
     let mut score_snapshot = base.snapshot();
-    score_snapshot.state.scores[0] = u32::MAX;
+    score_snapshot.state.scores[0] = Score::new(i32::MAX);
     let mut score_game = Game::resume(
         score_snapshot,
         ruleset.clone(),
@@ -594,7 +595,7 @@ fn missing_or_substituted_pack_fails_before_create_resume_or_replay() {
         numbered_seed(9_106),
     )
     .unwrap();
-    game.finish().unwrap();
+    game.resign(Seat::One, 0).unwrap();
     let snapshot = game.snapshot();
     let bundle = game.replay_bundle().unwrap();
 

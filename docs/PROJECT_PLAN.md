@@ -106,9 +106,8 @@ workspace foundation, and pass every command documented in `AGENTS.md`.
 - [x] Define a static ruleset schema and validation command.
 - [x] Add initial English and French tile/board fixtures. German and Spanish
   remain Phase 7 work alongside their separately reviewed lexicon packs.
-- [ ] Implement placement, connectivity, word construction, premiums, blanks,
-  bingo bonuses, pass, exchange, resignation, and endgame scoring. Placement is
-  complete; non-placement actions and terminal scoring remain.
+- [x] Implement placement, connectivity, word construction, premiums, blanks,
+  bingo bonuses, pass, exchange, resignation, and endgame scoring.
 - [x] Define the deterministic exact-membership lexicon boundary and immutable
   pack manifest model.
 - [x] Add the reproducible English and French pack builders, reviewed curation

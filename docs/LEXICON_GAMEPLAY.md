@@ -63,8 +63,17 @@ snapshot and both event streams byte-for-byte unchanged.
 Public move events contain placed tile IDs, score decomposition, draw count,
 rack counts, and bag count. A separate seat-private event contains the acting
 seat's exact played tiles, exact draws, and resulting rack; it is not included
-in another seat's live projection. Pass, exchange, resignation, and endgame
-scoring remain the next Phase 1 rules slice.
+in another seat's live projection.
+
+Pass and exchange are scoreless atomic turns. Exchange validates unique owned
+IDs and the minimum pre-exchange bag size, draws replacements before returning
+the selected tiles, and applies the versioned deterministic reshuffle contract.
+Resignation ends immediately with the opposing seat as winner and leaves scores
+unchanged. Six consecutive scoreless turns end the game and subtract each rack's
+value. When a player empties a rack after the bag is exhausted, the opponent's
+rack value is subtracted and awarded to the outgoing player; blanks deduct zero.
+Scores are signed and checked. Every terminal reason is stored in public state
+and in the triggering action event, and all later actions are rejected.
 
 ## Persisted identity
 

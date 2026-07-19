@@ -24,15 +24,17 @@ versioned configuration.
 The repository foundation is in place:
 
 - Rust 2024 workspace with a minimal Axum server and pure engine crate
-- Immutable English/French ruleset pins with atomic main/cross-word validation
-- Pack-bound snapshots, results, events, and byte-deterministic replay
+- Immutable English/French rules with deterministic bags, private racks, atomic
+  placement/exchange/pass/resignation, premiums, bingos, and endgame scoring
+- Pack-bound authoritative snapshots, terminal results, public/private events,
+  and byte-deterministic replay
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Full tile/rack/bag rules, persistence, MCP tools, agent drivers, and tournament
+Role-safe projections, persistence, MCP tools, agent drivers, and tournament
 orchestration are planned next. The current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 

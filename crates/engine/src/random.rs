@@ -174,6 +174,19 @@ pub fn prepare_initial_deal(
     Ok(deal)
 }
 
+pub(crate) fn return_tiles_to_bag(
+    bag: &mut Bag,
+    mut returned: Vec<PhysicalTile>,
+    seed: &GameSeed,
+    transition: u64,
+) {
+    returned.sort_unstable_by_key(|tile| tile.id);
+    let mut tiles = bag.tiles().to_vec();
+    tiles.extend(returned);
+    DeterministicRng::for_exchange(seed, transition).shuffle(&mut tiles);
+    *bag = Bag::new(tiles);
+}
+
 /// Verifies exact physical ownership across every authoritative location.
 ///
 /// # Errors
@@ -298,6 +311,22 @@ impl DeterministicRng {
         Self { state }
     }
 
+    fn for_exchange(seed: &GameSeed, transition: u64) -> Self {
+        let mut digest = Sha256::new();
+        digest.update(b"word-arena-exchange-xoshiro256-star-star-v1\0");
+        digest.update(seed.as_bytes());
+        digest.update(transition.to_be_bytes());
+        let bytes = digest.finalize();
+        let mut state = [0_u64; 4];
+        for (index, chunk) in bytes.chunks_exact(8).enumerate() {
+            state[index] = u64::from_be_bytes(chunk.try_into().expect("eight-byte chunk"));
+        }
+        if state == [0; 4] {
+            state[0] = 0x9e37_79b9_7f4a_7c15;
+        }
+        Self { state }
+    }
+
     fn next_u64(&mut self) -> u64 {
         let result = self.state[1].wrapping_mul(5).rotate_left(7).wrapping_mul(9);
         let shifted = self.state[1] << 17;
@@ -372,8 +401,8 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use crate::{
-        Bag, GamePhase, PhysicalTile, PublicGameState, Rack, Ruleset, Seat, TileFace, TileId,
-        TileToken,
+        Bag, GamePhase, PhysicalTile, PublicGameState, Rack, Ruleset, Score, Seat, TileFace,
+        TileId, TileToken,
     };
 
     use super::{
@@ -507,13 +536,14 @@ mod tests {
             seed_commitment: GameSeed::from_bytes([0; 32])
                 .commitment(RngAlgorithm::Xoshiro256StarStarV1),
             board: vec![None; 225],
-            scores: [0, 0],
+            scores: [Score::ZERO, Score::ZERO],
             current_player: Seat::One,
             version: 0,
             scoreless_turns: 0,
             rack_counts: [7, 7],
             bag_count: 86,
             phase: GamePhase::Active,
+            result: None,
         };
         let value = serde_json::to_value(state).unwrap();
         let object = value.as_object().unwrap();

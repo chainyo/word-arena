@@ -103,6 +103,19 @@ pub enum GameError {
         tile_id: TileId,
     },
 
+    /// An exchange contains no tiles.
+    #[error("an exchange must contain at least one tile")]
+    EmptyExchange,
+
+    /// The bag is below the immutable exchange threshold.
+    #[error("exchange requires at least {required} bag tiles; found {actual}")]
+    ExchangeBagTooSmall {
+        /// Ruleset threshold.
+        required: u16,
+        /// Current bag count.
+        actual: u16,
+    },
+
     /// No tiles were placed.
     #[error("a tile placement must contain at least one tile")]
     EmptyPlacement,

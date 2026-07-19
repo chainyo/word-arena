@@ -22,10 +22,16 @@ disclosure.
    modulo bias.
 5. Shuffle stable physical tile IDs once with descending Fisher-Yates. The bag
    draws from the end, dealing seat one and then seat two in stable rack order.
+6. An exchange draws replacements before returned tiles re-enter the bag.
+   Returned tiles are sorted by stable ID, appended to the remaining bag, and
+   the whole bag is Fisher-Yates shuffled from a SHA-256-derived exchange state
+   domain-separated by the private seed and committed transition version. This
+   prevents caller-supplied tile order from changing the result and prevents an
+   exchanged tile from being redrawn in the same action.
 
 Any change to seed expansion, byte order, generator, bounded sampling, shuffle,
-tile construction order, draw end, or seat order requires a new algorithm ID.
-Authoritative artifacts must record that ID.
+tile construction order, draw end, seat order, or exchange derivation requires
+a new algorithm ID. Authoritative artifacts must record that ID.
 
 ## Commitment and reveal
 

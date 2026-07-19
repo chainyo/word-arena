@@ -6,9 +6,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use word_arena_lexicon::{CompatibilityContext, PackIdentity, normalize_key};
 
+use crate::random::return_tiles_to_bag;
 use crate::{
     Bag, Coordinate, GameError, GameSeed, PhysicalTile, Player, Premium, Rack, RngAlgorithm,
-    Ruleset, RulesetId, Seat, SeedCommitment, TileFace, TileId, TileToken, WordValidator,
+    Ruleset, RulesetId, Score, Seat, SeedCommitment, TileFace, TileId, TileToken, WordValidator,
     prepare_initial_deal, verify_tile_conservation,
 };
 
@@ -16,8 +17,8 @@ use crate::{
 pub const BOARD_SIZE: u8 = 15;
 const BOARD_SQUARES: usize = BOARD_SIZE as usize * BOARD_SIZE as usize;
 const CENTER: Coordinate = Coordinate { row: 7, column: 7 };
-const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
-const REPLAY_SCHEMA_VERSION: u32 = 2;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
+const REPLAY_SCHEMA_VERSION: u32 = 3;
 
 /// A tile assignment supplied by a player.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -115,6 +116,24 @@ pub enum GamePhase {
     Finished,
 }
 
+/// Immutable reason a game stopped accepting actions.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TerminalReason {
+    /// One seat conceded.
+    Resignation {
+        /// Seat that resigned.
+        resigned: Seat,
+    },
+    /// The configured consecutive scoreless-turn limit was reached.
+    ScorelessTurns,
+    /// One seat emptied its rack after exhausting the bag.
+    RackEmptied {
+        /// Seat that went out.
+        outgoing: Seat,
+    },
+}
+
 /// One main or cross word validated and scored atomically.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -148,7 +167,7 @@ pub struct PublicGameState {
     /// Row-major 15x15 public board.
     pub board: Vec<Option<BoardTile>>,
     /// Scores for seats one and two.
-    pub scores: [u32; 2],
+    pub scores: [Score; 2],
     /// Seat allowed to play next.
     pub current_player: Player,
     /// Number of committed post-creation mutations.
@@ -161,6 +180,8 @@ pub struct PublicGameState {
     pub bag_count: u16,
     /// Active or finished lifecycle.
     pub phase: GamePhase,
+    /// Immutable completion data after a terminal transition.
+    pub result: Option<GameResult>,
 }
 
 impl PublicGameState {
@@ -218,11 +239,13 @@ pub struct GameResult {
     /// Exact lexicon used by every move.
     pub lexicon: PackIdentity,
     /// Final scores.
-    pub scores: [u32; 2],
+    pub scores: [Score; 2],
     /// Winning seat, or `None` for a tie.
     pub winner: Option<Player>,
     /// Final state version.
     pub final_version: u64,
+    /// Exact terminal rule that ended the game.
+    pub reason: TerminalReason,
 }
 
 /// Public event payload emitted only after an atomic transition succeeds.
@@ -263,15 +286,47 @@ pub enum GameEventKind {
         /// Remaining bag count after commit.
         bag_count_after: u16,
         /// Scores after commit.
-        scores_after: [u32; 2],
+        scores_after: [Score; 2],
         /// Scoreless counter after commit.
         scoreless_turns_after: u8,
         /// Next active seat.
         next_player: Player,
+        /// Completion produced by this placement, if any.
+        result: Option<GameResult>,
     },
-    /// Explicit immutable completion.
-    Finished {
-        /// Final result, including the exact pack identity.
+    /// One scoreless pass.
+    Passed {
+        /// Acting seat.
+        player: Player,
+        /// Scoreless counter after commit.
+        scoreless_turns_after: u8,
+        /// Next seat when still active.
+        next_player: Player,
+        /// Completion produced by this pass, if any.
+        result: Option<GameResult>,
+    },
+    /// One deterministic tile exchange.
+    Exchanged {
+        /// Acting seat.
+        player: Player,
+        /// Canonically ordered returned physical IDs.
+        tile_ids: Vec<TileId>,
+        /// Public ownership counts after commit.
+        rack_counts_after: [u8; 2],
+        /// Bag count after commit.
+        bag_count_after: u16,
+        /// Scoreless counter after commit.
+        scoreless_turns_after: u8,
+        /// Next seat when still active.
+        next_player: Player,
+        /// Completion produced by this exchange, if any.
+        result: Option<GameResult>,
+    },
+    /// One seat conceded and ended the game immediately.
+    Resigned {
+        /// Resigning seat.
+        player: Player,
+        /// Immutable terminal result.
         result: GameResult,
     },
 }
@@ -297,7 +352,7 @@ pub struct PrivateGameEvent {
     /// Only this seat may receive the projection during live play.
     pub seat: Seat,
     /// Exact owned physical tiles removed by the move.
-    pub played: Vec<PhysicalTile>,
+    pub removed: Vec<PhysicalTile>,
     /// Exact replacement tiles received from the bag.
     pub drawn: Vec<PhysicalTile>,
     /// Acting seat's complete rack after the transition.
@@ -382,13 +437,14 @@ impl Game {
             lexicon: identity.clone(),
             seed_commitment: commitment.clone(),
             board: vec![None; BOARD_SQUARES],
-            scores: [0, 0],
+            scores: [Score::ZERO, Score::ZERO],
             current_player: Player::One,
             version: 0,
             scoreless_turns: 0,
             rack_counts,
             bag_count,
             phase: GamePhase::Active,
+            result: None,
         };
         let event = GameEvent {
             sequence: 0,
@@ -478,6 +534,26 @@ impl Game {
                 reason: "public ownership counts differ from authoritative locations".to_owned(),
             });
         }
+        match (snapshot.state.phase, &snapshot.state.result) {
+            (GamePhase::Active, None) => {}
+            (GamePhase::Finished, Some(result))
+                if result.game_id == snapshot.state.game_id
+                    && result.ruleset_id == snapshot.state.ruleset_id
+                    && result.lexicon == snapshot.state.lexicon
+                    && result.scores == snapshot.state.scores
+                    && result.final_version == snapshot.state.version
+                    && terminal_result_is_consistent(
+                        result,
+                        &snapshot.state,
+                        &snapshot.racks,
+                        ruleset.game.scoreless_turn_limit,
+                    ) => {}
+            _ => {
+                return Err(GameError::InvalidTileState {
+                    reason: "completion data differs from authoritative public state".to_owned(),
+                });
+            }
+        }
         Ok(Self {
             ruleset,
             lexicon,
@@ -502,38 +578,18 @@ impl Game {
         expected_version: u64,
         placements: Vec<Placement>,
     ) -> Result<GameEvent, GameError> {
-        if self.state.phase == GamePhase::Finished {
-            return Err(GameError::GameFinished);
-        }
-        if player != self.state.current_player {
-            return Err(GameError::WrongPlayer {
-                expected: self.state.current_player,
-                actual: player,
-            });
-        }
-        if expected_version != self.state.version {
-            return Err(GameError::StaleVersion {
-                expected: self.state.version,
-                actual: expected_version,
-            });
-        }
+        self.validate_action(player, expected_version)?;
         let prepared = self.prepare_placement(player, placements)?;
+        let score_delta = i32::try_from(prepared.score).map_err(|_| GameError::ScoreOverflow)?;
         let updated_score = self.state.scores[player.index()]
-            .checked_add(prepared.score)
+            .checked_add(score_delta)
             .ok_or(GameError::ScoreOverflow)?;
         let updated_version = self
             .state
             .version
             .checked_add(1)
             .ok_or(GameError::VersionOverflow)?;
-        let scoreless_turns = if prepared.score == 0 {
-            self.state
-                .scoreless_turns
-                .checked_add(1)
-                .ok_or(GameError::ScorelessTurnOverflow)?
-        } else {
-            0
-        };
+        let scoreless_turns = next_scoreless(self.state.scoreless_turns, prepared.score)?;
 
         let played_ids = prepared
             .placements
@@ -575,6 +631,21 @@ impl Game {
         let board = physical_board(&next_state, &self.ruleset)?;
         verify_tile_conservation(&self.ruleset, &next_bag, &next_racks, &board)
             .map_err(tile_state_error)?;
+        let result = if next_bag.is_empty() && next_racks[player.index()].is_empty() {
+            Some(self.complete_state(
+                &mut next_state,
+                &next_racks,
+                TerminalReason::RackEmptied { outgoing: player },
+            )?)
+        } else if next_state.scoreless_turns >= self.ruleset.game.scoreless_turn_limit {
+            Some(self.complete_state(
+                &mut next_state,
+                &next_racks,
+                TerminalReason::ScorelessTurns,
+            )?)
+        } else {
+            None
+        };
 
         let event = GameEvent {
             sequence: updated_version,
@@ -591,12 +662,13 @@ impl Game {
                 scores_after: next_state.scores,
                 scoreless_turns_after: next_state.scoreless_turns,
                 next_player: next_state.current_player,
+                result,
             },
         };
         let private_event = PrivateGameEvent {
             sequence: updated_version,
             seat: player,
-            played: prepared.played,
+            removed: prepared.played,
             drawn,
             rack_after: next_racks[player.index()].clone(),
         };
@@ -609,31 +681,212 @@ impl Game {
         Ok(event)
     }
 
-    /// Explicitly finalizes the game and records an immutable result event.
+    /// Applies one typed action through the same atomic transition methods.
     ///
     /// # Errors
     ///
-    /// Returns [`GameError::GameFinished`] when already finalized.
-    pub fn finish(&mut self) -> Result<GameResult, GameError> {
-        if self.state.phase == GamePhase::Finished {
-            return Err(GameError::GameFinished);
+    /// Returns the action-specific deterministic validation error without
+    /// mutation.
+    pub fn apply_move(
+        &mut self,
+        player: Player,
+        expected_version: u64,
+        action: Move,
+    ) -> Result<GameEvent, GameError> {
+        match action {
+            Move::Place { placements } => self.play_tiles(player, expected_version, placements),
+            Move::Exchange { tile_ids } => self.exchange_tiles(player, expected_version, tile_ids),
+            Move::Pass => self.pass(player, expected_version),
+            Move::Resign => self.resign(player, expected_version),
         }
+    }
+
+    /// Commits one scoreless pass and advances or completes the game.
+    ///
+    /// # Errors
+    ///
+    /// Wrong-seat, stale, finished, counter, version, or end-score failures are
+    /// returned without mutation.
+    pub fn pass(&mut self, player: Player, expected_version: u64) -> Result<GameEvent, GameError> {
+        self.validate_action(player, expected_version)?;
         let updated_version = self
             .state
             .version
             .checked_add(1)
             .ok_or(GameError::VersionOverflow)?;
-        self.state.phase = GamePhase::Finished;
-        self.state.version = updated_version;
-        let result = self.current_result();
-        self.events.push(GameEvent {
+        let mut next_state = self.state.clone();
+        next_state.version = updated_version;
+        next_state.current_player = player.opponent();
+        next_state.scoreless_turns = next_state
+            .scoreless_turns
+            .checked_add(1)
+            .ok_or(GameError::ScorelessTurnOverflow)?;
+        let result = if next_state.scoreless_turns >= self.ruleset.game.scoreless_turn_limit {
+            Some(self.complete_state(
+                &mut next_state,
+                &self.racks,
+                TerminalReason::ScorelessTurns,
+            )?)
+        } else {
+            None
+        };
+        let event = GameEvent {
             sequence: updated_version,
-            lexicon: self.state.lexicon.clone(),
-            kind: GameEventKind::Finished {
+            lexicon: next_state.lexicon.clone(),
+            kind: GameEventKind::Passed {
+                player,
+                scoreless_turns_after: next_state.scoreless_turns,
+                next_player: next_state.current_player,
+                result,
+            },
+        };
+        self.state = next_state;
+        self.events.push(event.clone());
+        Ok(event)
+    }
+
+    /// Exchanges owned tiles through the versioned deterministic bag policy.
+    ///
+    /// # Errors
+    ///
+    /// Empty, duplicate, unowned, undersized-bag, stale, overflow, or
+    /// conservation failures leave every authoritative field unchanged.
+    pub fn exchange_tiles(
+        &mut self,
+        player: Player,
+        expected_version: u64,
+        mut tile_ids: Vec<TileId>,
+    ) -> Result<GameEvent, GameError> {
+        self.validate_action(player, expected_version)?;
+        if tile_ids.is_empty() {
+            return Err(GameError::EmptyExchange);
+        }
+        tile_ids.sort_unstable();
+        if let Some(duplicate) = tile_ids.windows(2).find(|pair| pair[0] == pair[1]) {
+            return Err(GameError::DuplicatePlacementTile {
+                tile_id: duplicate[0],
+            });
+        }
+        let bag_count = count_u16(self.bag.len())?;
+        if bag_count < self.ruleset.game.exchange_minimum {
+            return Err(GameError::ExchangeBagTooSmall {
+                required: self.ruleset.game.exchange_minimum,
+                actual: bag_count,
+            });
+        }
+        let rack = &self.racks[player.index()];
+        let returned = tile_ids
+            .iter()
+            .map(|tile_id| {
+                rack.tiles()
+                    .iter()
+                    .find(|tile| tile.id == *tile_id)
+                    .cloned()
+                    .ok_or(GameError::TileNotOwned { tile_id: *tile_id })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let updated_version = self
+            .state
+            .version
+            .checked_add(1)
+            .ok_or(GameError::VersionOverflow)?;
+        let selected = tile_ids.iter().copied().collect::<BTreeSet<_>>();
+        let retained = rack
+            .tiles()
+            .iter()
+            .filter(|tile| !selected.contains(&tile.id))
+            .cloned()
+            .collect();
+        let mut next_racks = self.racks.clone();
+        next_racks[player.index()] = Rack::new(retained);
+        let mut next_bag = self.bag.clone();
+        let drawn = next_bag.draw_up_to(returned.len());
+        next_racks[player.index()].extend(drawn.iter().cloned());
+        return_tiles_to_bag(&mut next_bag, returned.clone(), &self.seed, updated_version);
+
+        let mut next_state = self.state.clone();
+        next_state.version = updated_version;
+        next_state.current_player = player.opponent();
+        next_state.scoreless_turns = next_state
+            .scoreless_turns
+            .checked_add(1)
+            .ok_or(GameError::ScorelessTurnOverflow)?;
+        next_state.rack_counts = rack_counts(&next_racks)?;
+        next_state.bag_count = count_u16(next_bag.len())?;
+        let board = physical_board(&next_state, &self.ruleset)?;
+        verify_tile_conservation(&self.ruleset, &next_bag, &next_racks, &board)
+            .map_err(tile_state_error)?;
+        let result = if next_state.scoreless_turns >= self.ruleset.game.scoreless_turn_limit {
+            Some(self.complete_state(
+                &mut next_state,
+                &next_racks,
+                TerminalReason::ScorelessTurns,
+            )?)
+        } else {
+            None
+        };
+        let event = GameEvent {
+            sequence: updated_version,
+            lexicon: next_state.lexicon.clone(),
+            kind: GameEventKind::Exchanged {
+                player,
+                tile_ids,
+                rack_counts_after: next_state.rack_counts,
+                bag_count_after: next_state.bag_count,
+                scoreless_turns_after: next_state.scoreless_turns,
+                next_player: next_state.current_player,
+                result,
+            },
+        };
+        let private_event = PrivateGameEvent {
+            sequence: updated_version,
+            seat: player,
+            removed: returned,
+            drawn,
+            rack_after: next_racks[player.index()].clone(),
+        };
+        self.bag = next_bag;
+        self.racks = next_racks;
+        self.state = next_state;
+        self.events.push(event.clone());
+        self.private_events.push(private_event);
+        Ok(event)
+    }
+
+    /// Ends the game immediately with the opposing seat as winner.
+    ///
+    /// # Errors
+    ///
+    /// Finished, wrong-seat, stale, or version failures leave state unchanged.
+    pub fn resign(
+        &mut self,
+        player: Player,
+        expected_version: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.validate_action(player, expected_version)?;
+        let updated_version = self
+            .state
+            .version
+            .checked_add(1)
+            .ok_or(GameError::VersionOverflow)?;
+        let mut next_state = self.state.clone();
+        next_state.version = updated_version;
+        let result = self.complete_state(
+            &mut next_state,
+            &self.racks,
+            TerminalReason::Resignation { resigned: player },
+        )?;
+        let event = GameEvent {
+            sequence: updated_version,
+            lexicon: next_state.lexicon.clone(),
+            kind: GameEventKind::Resigned {
+                player,
                 result: result.clone(),
             },
-        });
-        Ok(result)
+        };
+        self.state = next_state;
+        self.events.push(event.clone());
+        Ok(event)
     }
 
     /// Replays every public and private transition from a post-game seed reveal.
@@ -699,45 +952,7 @@ impl Game {
             return Err(GameError::ReplayEventMismatch { sequence: 0 });
         }
         for expected in &bundle.events[1..] {
-            if expected.lexicon != bundle.lexicon {
-                return Err(GameError::ReplayEventMismatch {
-                    sequence: expected.sequence,
-                });
-            }
-            match &expected.kind {
-                GameEventKind::Created { .. } => {
-                    return Err(GameError::InvalidReplayEvent {
-                        sequence: expected.sequence,
-                        reason: "creation may occur only once",
-                    });
-                }
-                GameEventKind::MovePlayed {
-                    player, placements, ..
-                } => {
-                    game.play_tiles(*player, game.state.version, placements.clone())?;
-                    let expected_private = bundle
-                        .private_events
-                        .iter()
-                        .find(|event| event.sequence == expected.sequence)
-                        .ok_or(GameError::InvalidReplayEvent {
-                            sequence: expected.sequence,
-                            reason: "placement requires one private transition",
-                        })?;
-                    if game.private_events.last() != Some(expected_private) {
-                        return Err(GameError::ReplayEventMismatch {
-                            sequence: expected.sequence,
-                        });
-                    }
-                }
-                GameEventKind::Finished { .. } => {
-                    game.finish()?;
-                }
-            }
-            if game.events.last() != Some(expected) {
-                return Err(GameError::ReplayEventMismatch {
-                    sequence: expected.sequence,
-                });
-            }
+            game.replay_event(bundle, expected)?;
         }
         if game.private_events.len() != bundle.private_events.len() {
             return Err(GameError::InvalidReplayEvent {
@@ -746,6 +961,67 @@ impl Game {
             });
         }
         Ok(game)
+    }
+
+    fn replay_event(
+        &mut self,
+        bundle: &ReplayBundle,
+        expected: &GameEvent,
+    ) -> Result<(), GameError> {
+        if expected.lexicon != bundle.lexicon {
+            return Err(GameError::ReplayEventMismatch {
+                sequence: expected.sequence,
+            });
+        }
+        let expects_private = match &expected.kind {
+            GameEventKind::Created { .. } => {
+                return Err(GameError::InvalidReplayEvent {
+                    sequence: expected.sequence,
+                    reason: "creation may occur only once",
+                });
+            }
+            GameEventKind::MovePlayed {
+                player, placements, ..
+            } => {
+                self.play_tiles(*player, self.state.version, placements.clone())?;
+                Some("placement requires one private transition")
+            }
+            GameEventKind::Passed { player, .. } => {
+                self.pass(*player, self.state.version)?;
+                None
+            }
+            GameEventKind::Exchanged {
+                player, tile_ids, ..
+            } => {
+                self.exchange_tiles(*player, self.state.version, tile_ids.clone())?;
+                Some("exchange requires one private transition")
+            }
+            GameEventKind::Resigned { player, .. } => {
+                self.resign(*player, self.state.version)?;
+                None
+            }
+        };
+        if let Some(reason) = expects_private {
+            let expected_private = bundle
+                .private_events
+                .iter()
+                .find(|event| event.sequence == expected.sequence)
+                .ok_or(GameError::InvalidReplayEvent {
+                    sequence: expected.sequence,
+                    reason,
+                })?;
+            if self.private_events.last() != Some(expected_private) {
+                return Err(GameError::ReplayEventMismatch {
+                    sequence: expected.sequence,
+                });
+            }
+        }
+        if self.events.last() != Some(expected) {
+            return Err(GameError::ReplayEventMismatch {
+                sequence: expected.sequence,
+            });
+        }
+        Ok(())
     }
 
     /// Current immutable public state.
@@ -803,26 +1079,92 @@ impl Game {
         })
     }
 
-    /// Returns a result only after explicit completion.
+    /// Returns the immutable result after completion.
     #[must_use]
     pub fn result(&self) -> Option<GameResult> {
-        (self.state.phase == GamePhase::Finished).then(|| self.current_result())
+        self.state.result.clone()
     }
 
-    fn current_result(&self) -> GameResult {
-        let winner = match self.state.scores[0].cmp(&self.state.scores[1]) {
-            std::cmp::Ordering::Greater => Some(Player::One),
-            std::cmp::Ordering::Less => Some(Player::Two),
-            std::cmp::Ordering::Equal => None,
-        };
-        GameResult {
-            game_id: self.state.game_id.clone(),
-            ruleset_id: self.state.ruleset_id,
-            lexicon: self.state.lexicon.clone(),
-            scores: self.state.scores,
-            winner,
-            final_version: self.state.version,
+    fn validate_action(&self, player: Player, expected_version: u64) -> Result<(), GameError> {
+        if self.state.phase == GamePhase::Finished {
+            return Err(GameError::GameFinished);
         }
+        if player != self.state.current_player {
+            return Err(GameError::WrongPlayer {
+                expected: self.state.current_player,
+                actual: player,
+            });
+        }
+        if expected_version != self.state.version {
+            return Err(GameError::StaleVersion {
+                expected: self.state.version,
+                actual: expected_version,
+            });
+        }
+        Ok(())
+    }
+
+    fn complete_state(
+        &self,
+        state: &mut PublicGameState,
+        racks: &[Rack; 2],
+        reason: TerminalReason,
+    ) -> Result<GameResult, GameError> {
+        match reason {
+            TerminalReason::Resignation { .. } => {}
+            TerminalReason::ScorelessTurns => {
+                for seat in Seat::ALL {
+                    let deduction = self.rack_value(&racks[seat.index()])?;
+                    state.scores[seat.index()] = state.scores[seat.index()]
+                        .checked_add(-deduction)
+                        .ok_or(GameError::ScoreOverflow)?;
+                }
+            }
+            TerminalReason::RackEmptied { outgoing } => {
+                let opponent = outgoing.opponent();
+                let deduction = self.rack_value(&racks[opponent.index()])?;
+                state.scores[opponent.index()] = state.scores[opponent.index()]
+                    .checked_add(-deduction)
+                    .ok_or(GameError::ScoreOverflow)?;
+                state.scores[outgoing.index()] = state.scores[outgoing.index()]
+                    .checked_add(deduction)
+                    .ok_or(GameError::ScoreOverflow)?;
+            }
+        }
+        state.phase = GamePhase::Finished;
+        let winner = match reason {
+            TerminalReason::Resignation { resigned } => Some(resigned.opponent()),
+            TerminalReason::ScorelessTurns | TerminalReason::RackEmptied { .. } => {
+                match state.scores[0].cmp(&state.scores[1]) {
+                    std::cmp::Ordering::Greater => Some(Player::One),
+                    std::cmp::Ordering::Less => Some(Player::Two),
+                    std::cmp::Ordering::Equal => None,
+                }
+            }
+        };
+        let result = GameResult {
+            game_id: self.state.game_id.clone(),
+            ruleset_id: state.ruleset_id,
+            lexicon: state.lexicon.clone(),
+            scores: state.scores,
+            winner,
+            final_version: state.version,
+            reason,
+        };
+        state.result = Some(result.clone());
+        Ok(result)
+    }
+
+    fn rack_value(&self, rack: &Rack) -> Result<i32, GameError> {
+        rack.tiles().iter().try_fold(0_i32, |total, tile| {
+            let value = match &tile.face {
+                TileFace::Letter(token) => {
+                    i32::from(self.ruleset.letter_value(token.as_str()).unwrap_or(0))
+                }
+                TileFace::Blank => 0,
+            };
+            total.checked_add(value).ok_or(GameError::ScoreOverflow)
+        })
     }
 
     fn prepare_placement(
@@ -1278,6 +1620,42 @@ fn tile_state_error(error: impl std::fmt::Display) -> GameError {
     GameError::InvalidTileState {
         reason: error.to_string(),
     }
+}
+
+fn next_scoreless(current: u8, score: u32) -> Result<u8, GameError> {
+    if score == 0 {
+        current
+            .checked_add(1)
+            .ok_or(GameError::ScorelessTurnOverflow)
+    } else {
+        Ok(0)
+    }
+}
+
+fn terminal_result_is_consistent(
+    result: &GameResult,
+    state: &PublicGameState,
+    racks: &[Rack; 2],
+    scoreless_limit: u8,
+) -> bool {
+    let expected_winner = match result.reason {
+        TerminalReason::Resignation { resigned } => Some(resigned.opponent()),
+        TerminalReason::ScorelessTurns | TerminalReason::RackEmptied { .. } => {
+            match result.scores[0].cmp(&result.scores[1]) {
+                std::cmp::Ordering::Greater => Some(Seat::One),
+                std::cmp::Ordering::Less => Some(Seat::Two),
+                std::cmp::Ordering::Equal => None,
+            }
+        }
+    };
+    let reason_is_possible = match result.reason {
+        TerminalReason::Resignation { .. } => true,
+        TerminalReason::ScorelessTurns => state.scoreless_turns >= scoreless_limit,
+        TerminalReason::RackEmptied { outgoing } => {
+            state.bag_count == 0 && racks[outgoing.index()].is_empty()
+        }
+    };
+    result.winner == expected_winner && reason_is_possible
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
