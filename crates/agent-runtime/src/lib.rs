@@ -5,6 +5,7 @@
 //! rules.
 
 mod driver;
+mod harness;
 
 pub use driver::{
     AgentDriver, DRIVER_CHECKPOINT_SCHEMA_VERSION, DRIVER_TELEMETRY_SCHEMA_VERSION,
@@ -13,6 +14,11 @@ pub use driver::{
     ProcessAdapter, ProcessError, ProcessEvent, ProcessHandle, ProcessInstance, ProcessSpec,
     SystemDriverClock, TURN_PROTOCOL_SCHEMA_VERSION, TerminationReason, TokioProcessAdapter,
     TurnRequest, TurnTelemetry, VisibleToolCall, VisibleTurnOutput,
+};
+pub use harness::{
+    CLAUDE_CODE_MINIMUM_VERSION, CLINE_MINIMUM_VERSION, CODEX_MINIMUM_VERSION, HarnessExecutables,
+    HarnessPolicyTranslation, HarnessRuntimeConfig, NativeHarnessCheckpoint, NativeHarnessDriver,
+    NativeHarnessKind, PI_MINIMUM_VERSION, SupportedAgentDriver, SupportedDriverCheckpoint,
 };
 
 use std::collections::{BTreeMap, BTreeSet};

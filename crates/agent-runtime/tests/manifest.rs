@@ -155,6 +155,6 @@ fn codex_example_has_a_golden_content_identity() {
     let manifest = ValidatedAgentManifest::from_json(&example("codex-v1.json")).unwrap();
     assert_eq!(
         manifest.identity().manifest_sha256,
-        "64ca9d1878cbdde38da913a0b04e972b7d8fcbe0e32a17ec1b7d5d35824fc2d3"
+        "c437633ae3f13a93cc95e13141d142e8409a0ff848400cb287c6e14eb590ee31"
     );
 }

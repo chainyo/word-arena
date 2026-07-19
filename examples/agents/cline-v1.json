@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Cline example",
-  "harness": { "kind": "cline", "version": "1.0.0" },
+  "harness": { "kind": "cline", "version": "3.0.46" },
   "model": { "id": "openrouter/model", "source": { "kind": "provider", "provider": "open_router" } },
   "prompt": {
     "format_version": 1,

@@ -318,13 +318,13 @@ match and reconstruct its lifecycle/telemetry after restart.
 
 ### RUN-003: Add supported harness integrations
 
-- [ ] Add Codex, Claude Code, Cline, and Pi adapters plus the generic command
+- [x] Add Codex, Claude Code, Cline, and Pi adapters plus the generic command
   adapter behind the common driver contract.
-- [ ] Pin documented minimum versions and translate manifest/tool/workspace
+- [x] Pin documented minimum versions and translate manifest/tool/workspace
   settings without provider-specific behavior entering game rules.
-- [ ] Detect unavailable or incompatible executables with actionable errors and
+- [x] Detect unavailable or incompatible executables with actionable errors and
   redact environment/config secrets from commands, logs, and telemetry.
-- [ ] Add offline fake-binary contract tests and opt-in local smoke scripts for
+- [x] Add offline fake-binary contract tests and opt-in local smoke scripts for
   every adapter without requiring paid credentials in CI.
 
 Verification: each harness completes the same scripted turn lifecycle and emits

@@ -175,7 +175,7 @@ game without using the command line.
   environment image, budgets, and driver version.
 - [x] Implement a process-driver contract for start, request turn, resume,
   terminate, and telemetry collection.
-- [ ] Add Codex, Claude Code, Cline, and Pi integrations plus a generic command
+- [x] Add Codex, Claude Code, Cline, and Pi integrations plus a generic command
   adapter.
 - [ ] Give every seat an isolated persistent workspace and separate credentials.
 - [ ] Keep human-spectator credentials outside every agent workspace and process

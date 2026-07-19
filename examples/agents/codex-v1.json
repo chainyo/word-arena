@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Codex example",
-  "harness": { "kind": "codex", "version": "0.1.0" },
+  "harness": { "kind": "codex", "version": "0.144.0" },
   "model": { "id": "gpt-5", "source": { "kind": "provider", "provider": "open_ai" } },
   "prompt": {
     "format_version": 1,

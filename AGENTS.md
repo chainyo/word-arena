@@ -69,6 +69,7 @@ cargo test --workspace --all-features
 cargo build --workspace --all-features
 cargo test -p word-arena-persistence --all-features
 cargo test -p word-arena-agent-runtime --all-features
+scripts/agents/smoke-harnesses.sh versions
 cargo run -p word-arena-server
 cargo run -p word-arena-cli -- --help
 scripts/mcp/verify-contract.sh
@@ -194,6 +195,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   commands use direct execution, an empty inherited environment, bounded strict
   JSON-lines frames, stable checkpoints, and visible-only telemetry. Never add
   hidden reasoning fields to the driver protocol.
+- Native Codex, Claude Code, Cline, and Pi adapters use reviewed exact-version
+  probes and one structured headless process per turn. Discard reasoning events
+  and redact native stderr, prompts, configuration paths, and command arguments.
 
 ## Documentation and dependencies
 

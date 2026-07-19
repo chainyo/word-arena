@@ -6,9 +6,11 @@ application decides when a seat has a turn and supplies only the visible turn
 input; the engine and MCP boundary remain the authoritative referee.
 
 The versioned public constants and the reviewed summary in
-`contracts/agent-driver-v1.json` define V1. `GenericCommandDriver` is the first
-implementation. Later harness adapters translate Codex, Claude Code, Cline,
-and Pi into this same lifecycle rather than adding game-specific behavior.
+`contracts/agent-driver-v1.json` define V1. `GenericCommandDriver` owns the
+persistent Word Arena JSON-lines protocol. `SupportedAgentDriver` also
+normalizes Codex, Claude Code, Cline, and Pi native headless modes into this
+same lifecycle without adding game-specific behavior. See
+`docs/AGENT_HARNESSES.md`.
 
 ## Lifecycle
 

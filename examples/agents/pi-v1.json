@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Pi example",
-  "harness": { "kind": "pi", "version": "0.1.0" },
+  "harness": { "kind": "pi", "version": "0.73.1" },
   "model": { "id": "gemini-pro", "source": { "kind": "provider", "provider": "google" } },
   "prompt": {
     "format_version": 1,

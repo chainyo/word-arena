@@ -41,6 +41,9 @@ The repository foundation is in place:
 - A typed generic-command process lifecycle with strict JSON-lines framing,
   restart checkpoints, deterministic cancellation, and visible-only telemetry
   ([driver contract](docs/AGENT_DRIVERS.md))
+- Version-pinned Codex, Claude Code, Cline, Pi, and generic adapters with
+  offline fake-binary coverage and normalized privacy-safe output
+  ([harness contract](docs/AGENT_HARNESSES.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
@@ -153,6 +156,8 @@ The application command/query boundary is documented in
 [`docs/APPLICATION.md`](docs/APPLICATION.md).
 The autonomous process lifecycle and visible telemetry boundary is documented
 in [`docs/AGENT_DRIVERS.md`](docs/AGENT_DRIVERS.md).
+Supported coding-agent versions, commands, and local smoke checks are documented
+in [`docs/AGENT_HARNESSES.md`](docs/AGENT_HARNESSES.md).
 The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 The credential and bearer-capability security contract is documented in

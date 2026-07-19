@@ -46,12 +46,26 @@ impl DriverClock for SystemDriverClock {
 
 /// Direct-exec process input. It contains no shell string or inherited
 /// environment.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessSpec {
     pub executable: String,
     pub arguments: Vec<String>,
     pub working_directory: Option<PathBuf>,
+}
+
+impl fmt::Debug for ProcessSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProcessSpec")
+            .field("executable", &self.executable)
+            .field("argument_count", &self.arguments.len())
+            .field(
+                "working_directory",
+                &self.working_directory.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -385,6 +399,34 @@ pub enum DriverError {
     InvalidCheckpoint,
     #[error("driver protocol serialization failed")]
     Serialization,
+    #[error("{harness} executable is unavailable: {executable}")]
+    HarnessUnavailable {
+        harness: &'static str,
+        executable: String,
+    },
+    #[error("{harness} did not report a semantic version")]
+    HarnessVersionUnparseable { harness: &'static str },
+    #[error("{harness} version {installed} is below supported minimum {minimum}")]
+    HarnessVersionUnsupported {
+        harness: &'static str,
+        installed: String,
+        minimum: &'static str,
+    },
+    #[error("{harness} version mismatch: manifest requires {expected}, installed {installed}")]
+    HarnessVersionMismatch {
+        harness: &'static str,
+        expected: String,
+        installed: String,
+    },
+    #[error("{harness} exited before producing a successful turn: {exit:?}")]
+    HarnessExit {
+        harness: &'static str,
+        exit: ExitStatus,
+    },
+    #[error("{harness} structured output is invalid or incomplete")]
+    HarnessOutput { harness: &'static str },
+    #[error("trusted harness runtime paths or executable overrides are invalid")]
+    InvalidHarnessRuntime,
 }
 
 pub trait AgentDriver {
@@ -491,6 +533,24 @@ impl GenericCommandDriver {
         })
     }
 
+    pub(crate) fn new_with_process_spec(
+        run_id: impl Into<String>,
+        manifest: &ValidatedAgentManifest,
+        process_spec: ProcessSpec,
+        adapter: Arc<dyn ProcessAdapter>,
+        clock: Arc<dyn DriverClock>,
+    ) -> Result<Self, DriverError> {
+        let mut driver = Self::new(
+            run_id,
+            manifest,
+            process_spec.working_directory.clone(),
+            adapter,
+            clock,
+        )?;
+        driver.process_spec = process_spec;
+        Ok(driver)
+    }
+
     /// Reconstructs a stopped in-memory driver from a durable checkpoint.
     ///
     /// # Errors
@@ -511,6 +571,33 @@ impl GenericCommandDriver {
         else {
             return Err(DriverError::UnsupportedHarness);
         };
+        let expected_process_spec = ProcessSpec {
+            executable: executable.clone(),
+            arguments: arguments.clone(),
+            working_directory: checkpoint.process_spec.working_directory.clone(),
+        };
+        Self::restore_with_process_spec(
+            manifest,
+            checkpoint,
+            &expected_process_spec,
+            adapter,
+            clock,
+        )
+    }
+
+    pub(crate) fn restore_with_process_spec(
+        manifest: &ValidatedAgentManifest,
+        checkpoint: DriverCheckpoint,
+        expected_process_spec: &ProcessSpec,
+        adapter: Arc<dyn ProcessAdapter>,
+        clock: Arc<dyn DriverClock>,
+    ) -> Result<Self, DriverError> {
+        if !matches!(
+            manifest.manifest().harness,
+            HarnessConfig::GenericCommand { .. }
+        ) {
+            return Err(DriverError::UnsupportedHarness);
+        }
         let lifecycle_is_valid = !checkpoint.telemetry.lifecycle.is_empty()
             && checkpoint
                 .telemetry
@@ -536,8 +623,7 @@ impl GenericCommandDriver {
             || checkpoint.telemetry.manifest != checkpoint.manifest
             || checkpoint.run_id.is_empty()
             || checkpoint.run_id.chars().any(char::is_control)
-            || checkpoint.process_spec.executable != *executable
-            || checkpoint.process_spec.arguments != *arguments
+            || checkpoint.process_spec != *expected_process_spec
             || !lifecycle_is_valid
             || !diagnostics_are_valid
             || matches!(

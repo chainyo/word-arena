@@ -66,8 +66,10 @@ Reviewed examples for all supported harnesses are under `examples/agents/`:
 - `pi-v1.json`
 - `generic-command-v1.json`
 
-They are configuration examples, not minimum-version claims; adapter version
-support is pinned by RUN-003. Validate the contract and persistence boundary:
+The native examples pin the reviewed minimum adapter versions; production
+manifests must pin the exact installed version. Adapter support and native
+command behavior are documented in `docs/AGENT_HARNESSES.md`. Validate the
+contract and persistence boundary:
 
 ```bash
 cargo test -p word-arena-agent-runtime --all-features

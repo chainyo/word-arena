@@ -1,0 +1,41 @@
+{
+  "kind": "word_arena_agent_harness_contract",
+  "schema_version": 1,
+  "reviewed_on": "2026-07-19",
+  "harnesses": {
+    "codex": {
+      "minimum_version": "0.144.0",
+      "version_arguments": ["--version"],
+      "execution_mode": "exec-jsonl",
+      "documentation": "https://developers.openai.com/codex/non-interactive"
+    },
+    "claude_code": {
+      "minimum_version": "2.1.205",
+      "version_arguments": ["--version"],
+      "execution_mode": "print-stream-json",
+      "documentation": "https://code.claude.com/docs/en/cli-usage"
+    },
+    "cline": {
+      "minimum_version": "3.0.46",
+      "version_arguments": ["--version"],
+      "execution_mode": "headless-jsonl",
+      "documentation": "https://docs.cline.bot/cli/cli-reference"
+    },
+    "pi": {
+      "minimum_version": "0.73.1",
+      "version_arguments": ["--version"],
+      "execution_mode": "print-json-events",
+      "documentation": "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/quickstart.md"
+    },
+    "generic_command": {
+      "minimum_version": null,
+      "version_arguments": null,
+      "execution_mode": "word-arena-jsonl",
+      "documentation": "docs/AGENT_DRIVERS.md"
+    }
+  },
+  "native_output_policy": {
+    "persisted": ["visible_messages", "visible_tool_calls", "redacted_diagnostics"],
+    "discarded": ["reasoning", "thinking", "partial_output", "raw_stderr", "raw_commands"]
+  }
+}

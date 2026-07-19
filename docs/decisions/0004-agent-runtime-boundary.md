@@ -21,7 +21,10 @@ process contract adds typed async lifecycle operations, injected process/time
 adapters, stable checkpoints, and privacy-safe normalized telemetry. The first
 generic adapter directly executes an argument vector with an empty inherited
 environment and uses strict bounded JSON-lines framing. Platform-specific
-adapters remain behind the same boundary.
+adapters remain behind the same boundary. Native coding harnesses execute one
+structured headless process per turn, after an exact version probe, because
+their upstream wire formats differ from the persistent generic protocol. Their
+parsers normalize only visible messages and tool calls.
 
 The manifest can identify provider/model/harness versions but cannot represent
 provider secrets, game capabilities, operator authority, assigned paths, or
@@ -41,5 +44,7 @@ the engine.
   supervised process or record and start a clean replacement.
 - Hidden reasoning is neither requested nor representable in turn telemetry;
   stderr is explicitly an operator-visible diagnostic channel.
+- Native harness stderr and raw commands are redacted rather than treated as
+  generic operator-visible protocol output.
 - Export code must explicitly join agent attribution when producing tournament
   results or public replay bundles.

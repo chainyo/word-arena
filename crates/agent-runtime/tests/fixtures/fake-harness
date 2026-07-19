@@ -1,0 +1,69 @@
+#!/bin/sh
+set -eu
+
+name=${0##*/}
+
+case " $* " in
+  *" --version "*)
+    case "$name" in
+      codex) printf '%s\n' 'codex-cli 0.144.0' ;;
+      codex-old) printf '%s\n' 'codex-cli 0.143.0' ;;
+      claude) printf '%s\n' '2.1.205 (Claude Code)' ;;
+      cline) printf '%s\n' '3.0.46' ;;
+      pi) printf '%s\n' 'pi 0.73.1' ;;
+      *) exit 64 ;;
+    esac
+    exit 0
+    ;;
+esac
+
+case "$name" in
+  codex)
+    case " $* " in *" exec "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --json "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --ephemeral "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --model "*) ;; *) exit 65 ;; esac
+    printf '%s\n' \
+      '{"type":"item.completed","item":{"type":"reasoning","text":"hidden-codex-reasoning"}}' \
+      '{"type":"item.completed","item":{"type":"mcp_tool_call","name":"word_arena.observe","arguments":{"seat":"self"},"result":{"turn":1}}}' \
+      '{"type":"item.completed","item":{"type":"agent_message","text":"Placed ETE."}}' \
+      '{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":4}}'
+    ;;
+  claude)
+    case " $* " in *" --print "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --output-format stream-json "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --mcp-config "*) ;; *) exit 65 ;; esac
+    printf '%s\n' \
+      '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hidden-claude-reasoning"},{"type":"tool_use","name":"word_arena.observe","input":{"seat":"self"}},{"type":"text","text":"Placed ETE."}]}}' \
+      '{"type":"result","is_error":false,"result":"Placed ETE."}'
+    ;;
+  cline)
+    case " $* " in *" --json "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --auto-approve true "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --data-dir "*) ;; *) exit 65 ;; esac
+    printf '%s\n' \
+      '{"type":"say","say":"reasoning","reasoning":"hidden-cline-reasoning","text":"not visible","partial":false}' \
+      '{"type":"say","say":"use_mcp_server","text":"word_arena.observe","result":{"turn":1},"partial":false}' \
+      '{"type":"say","say":"completion_result","text":"Placed ETE.","partial":false}'
+    ;;
+  pi)
+    case " $* " in *" --mode json "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --session-dir "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --print "*) ;; *) exit 65 ;; esac
+    printf '%s\n' \
+      '{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hidden-pi-reasoning"},{"type":"toolCall","name":"word_arena.observe","arguments":{"seat":"self"}},{"type":"text","text":"Placed ETE."}]}}' \
+      '{"type":"agent_end","messages":[]}'
+    ;;
+  generic-agent)
+    case " $* " in *'{'*|*'}'*) exit 65 ;; *) ;; esac
+    while IFS= read -r request; do
+      case "$request" in *'"turn_id":"turn-1"'*) ;; *) exit 66 ;; esac
+      printf '%s\n' '{"schema_version":1,"turn_id":"turn-1","visible_output":"Placed ETE.","tool_calls":[{"tool":"word_arena.observe","arguments":{"seat":"self"},"result":{"turn":1}}]}'
+    done
+    ;;
+  *)
+    exit 64
+    ;;
+esac
+
+printf '%s\n' 'credential=must-be-redacted' >&2
