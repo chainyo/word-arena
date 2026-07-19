@@ -48,17 +48,17 @@ Verification:
 
 ### GAME-002: Add deterministic bag randomness and initial deal
 
-- [ ] Define and document a fixed, independently versioned pseudo-random
+- [x] Define and document a fixed, independently versioned pseudo-random
   algorithm and unbiased shuffle procedure; never depend on a platform RNG.
-- [ ] Represent a game seed as fixed bytes, record a pre-game SHA-256 commitment,
+- [x] Represent a game seed as fixed bytes, record a pre-game SHA-256 commitment,
   and support reveal/verification without exposing the seed or bag order during
   live play.
-- [ ] Construct stable tile identities from the selected ruleset, shuffle once,
+- [x] Construct stable tile identities from the selected ruleset, shuffle once,
   and deal both opening racks deterministically.
-- [ ] Draw only through an engine-internal bag operation and preserve the exact
+- [x] Draw only through an engine-internal bag operation and preserve the exact
   order across snapshots and replay. Do not expose a standalone player draw
   action.
-- [ ] Enforce tile conservation across bag, racks, and board with duplicate-ID
+- [x] Enforce tile conservation across bag, racks, and board with duplicate-ID
   detection and checked arithmetic.
 
 Verification:

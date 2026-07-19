@@ -177,6 +177,10 @@ impl Rack {
     pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    pub(crate) fn extend(&mut self, tiles: impl IntoIterator<Item = PhysicalTile>) {
+        self.0.extend(tiles);
+    }
 }
 
 /// Private ordered future tile source.
@@ -201,6 +205,17 @@ impl Bag {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub(crate) fn tiles(&self) -> &[PhysicalTile] {
+        &self.0
+    }
+
+    pub(crate) fn draw_up_to(&mut self, count: usize) -> Vec<PhysicalTile> {
+        let draw_count = count.min(self.0.len());
+        let mut drawn = self.0.split_off(self.0.len() - draw_count);
+        drawn.reverse();
+        drawn
     }
 }
 

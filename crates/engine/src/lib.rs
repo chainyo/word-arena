@@ -9,6 +9,7 @@ mod game;
 mod language;
 mod lexicon;
 mod model;
+mod random;
 mod ruleset;
 
 pub use error::GameError;
@@ -21,6 +22,10 @@ pub use lexicon::WordValidator;
 pub use model::{
     Bag, BoardDefinition, BoardSquare, Coordinate, PhysicalTile, Player, Premium, Rack, Score,
     Seat, TileFace, TileId, TileToken, TileTokenError, Turn, Violation,
+};
+pub use random::{
+    ConservationError, GameSeed, InitialDeal, RandomError, RngAlgorithm, SeedCommitment,
+    prepare_initial_deal, verify_tile_conservation,
 };
 pub use ruleset::{
     GameRules, RULESET_SCHEMA_VERSION, Ruleset, RulesetDefinitionError, RulesetFixtureError,
