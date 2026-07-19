@@ -361,13 +361,13 @@ detected, audited without disclosure, and prevents the run from starting.
 
 ### RUN-006: Enforce resource and tool budgets
 
-- [ ] Define versioned wall-clock, CPU, memory, network, token, attempt, tool,
+- [x] Define versioned wall-clock, CPU, memory, network, token, attempt, tool,
   output, and cost budgets with platform capability reporting.
-- [ ] Enforce hard limits where supported and fail closed or explicitly mark
+- [x] Enforce hard limits where supported and fail closed or explicitly mark
   unenforced dimensions according to operator policy.
-- [ ] Cancel/terminate complete process trees on limit, timeout, game end, or
+- [x] Cancel/terminate complete process trees on limit, timeout, game end, or
   operator cancellation and persist normalized limit telemetry.
-- [ ] Add deterministic limit/race tests and opt-in platform integration tests
+- [x] Add deterministic limit/race tests and opt-in platform integration tests
   for process trees, memory/CPU pressure, output floods, and network policy.
 
 Verification: runaway fixture agents terminate within bounded tolerance and no

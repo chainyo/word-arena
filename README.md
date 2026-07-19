@@ -50,6 +50,9 @@ The repository foundation is in place:
 - Digest-only human-authority leak detection across agent manifests,
   environments, arguments, and workspace files, with mandatory privacy-safe
   startup-denial audits
+- Shared per-run budget enforcement for wall time, attempts, tool calls, raw
+  output, and process trees, with versioned reporting for conditional or
+  unavailable platform/provider limits ([budget contract](docs/AGENT_BUDGETS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
@@ -166,6 +169,9 @@ Supported coding-agent versions, commands, and local smoke checks are documented
 in [`docs/AGENT_HARNESSES.md`](docs/AGENT_HARNESSES.md).
 Seat workspace layout, credentials, retention, and OS sandboxing are documented
 in [`docs/AGENT_WORKSPACES.md`](docs/AGENT_WORKSPACES.md).
+Resource enforcement, platform capability states, process-tree termination,
+and normalized limit telemetry are documented in
+[`docs/AGENT_BUDGETS.md`](docs/AGENT_BUDGETS.md).
 The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 The credential and bearer-capability security contract is documented in

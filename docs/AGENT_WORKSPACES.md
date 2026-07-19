@@ -72,7 +72,9 @@ local user. Word Arena therefore launches through a fail-closed OS sandbox:
 
 The manifest network policy is translated at the sandbox boundary. `deny`
 keeps the network namespace closed. Detailed endpoint and resource enforcement
-is completed by RUN-006.
+and the explicit byte-meter capability state are documented in
+`docs/AGENT_BUDGETS.md`. Use `budgeted_process_adapter` with the same controller
+that decorates the harness driver.
 
 Before every process spawn, the adapter canonicalizes the working directory
 inside its seat and verifies hashes for every managed configuration file.

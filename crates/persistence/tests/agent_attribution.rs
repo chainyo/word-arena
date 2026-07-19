@@ -1,8 +1,11 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use serde_json::Value;
 use tempfile::TempDir;
-use word_arena_agent_runtime::ValidatedAgentManifest;
+use word_arena_agent_runtime::{
+    BudgetController, DriverClock, NetworkPolicy, PlatformBudgetCapabilities,
+    UnenforcedBudgetPolicy, ValidatedAgentManifest,
+};
 use word_arena_engine::Seat;
 use word_arena_persistence::{
     AgentAttributionError, AgentRunAttribution, AgentRunOutcome, SqliteAgentAttributionRepository,
@@ -13,6 +16,15 @@ struct Database {
     _directory: TempDir,
     pool: sqlx::SqlitePool,
     repository: SqliteAgentAttributionRepository,
+}
+
+#[derive(Debug)]
+struct BudgetClock;
+
+impl DriverClock for BudgetClock {
+    fn now_unix_ms(&self) -> i64 {
+        19
+    }
 }
 
 impl Database {
@@ -122,6 +134,77 @@ async fn run_result_and_replay_repeat_the_exact_manifest_identity() {
             run_id: "run-one".into(),
             manifest: manifest.identity().clone(),
         }]
+    );
+}
+
+#[tokio::test]
+async fn terminal_budget_telemetry_round_trips_with_exact_run_identity() {
+    let database = Database::open("budget-telemetry").await;
+    let manifest = manifest("Codex budget");
+    database
+        .repository
+        .create_run(&manifest, &run("run-one", Seat::One))
+        .await
+        .unwrap();
+    let controller = BudgetController::new(
+        manifest.manifest().budgets.clone(),
+        PlatformBudgetCapabilities::detect(&NetworkPolicy::Deny),
+        UnenforcedBudgetPolicy::AllowReported,
+        Arc::new(BudgetClock),
+    )
+    .unwrap();
+    controller.begin_attempt().unwrap();
+    controller.record_tool_calls(1).unwrap();
+    let telemetry = controller.snapshot().unwrap();
+    assert_eq!(
+        database
+            .repository
+            .record_budget_telemetry("run-one", manifest.identity(), &telemetry, 20,)
+            .await,
+        Err(AgentAttributionError::Conflict),
+        "a nonterminal run cannot accept final budget telemetry"
+    );
+    database
+        .repository
+        .record_result(
+            "run-one",
+            manifest.identity(),
+            AgentRunOutcome::Finished,
+            20,
+        )
+        .await
+        .unwrap();
+    database
+        .repository
+        .record_budget_telemetry("run-one", manifest.identity(), &telemetry, 20)
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .repository
+            .load_budget_telemetry("run-one")
+            .await
+            .unwrap(),
+        telemetry
+    );
+    assert_eq!(
+        database
+            .repository
+            .record_budget_telemetry("run-one", manifest.identity(), &telemetry, 21)
+            .await,
+        Err(AgentAttributionError::AlreadyExists)
+    );
+
+    sqlx::query(
+        "UPDATE agent_run_budget_telemetry SET telemetry_schema_version = 99
+         WHERE run_id = 'run-one'",
+    )
+    .execute(&database.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        database.repository.load_budget_telemetry("run-one").await,
+        Err(AgentAttributionError::Corrupt)
     );
 }
 

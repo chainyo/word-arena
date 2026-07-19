@@ -52,6 +52,11 @@ keys reject cross-run, cross-game, cross-seat, or changed-manifest attachment;
 provider secrets are not representable in the validated manifest bytes stored
 by the adapter.
 
+Migration 6 stores one final normalized budget-telemetry snapshot only after
+its run is terminal. The row repeats the exact manifest identity and both
+budget schema versions; strict loading reparses the typed JSON and rejects
+schema or ordered-limit-event drift.
+
 Run them with:
 
 ```bash

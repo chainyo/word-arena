@@ -5,6 +5,7 @@
 //! rules.
 
 mod authority;
+mod budget;
 mod driver;
 mod harness;
 mod workspace;
@@ -14,6 +15,12 @@ pub use authority::{
     AuthorityBoundaryAuditSink, AuthorityBoundaryOutcome, AuthorityBoundarySurface,
     AuthorityPolicyError, ForbiddenAuthorityFingerprint, ForbiddenAuthorityKind,
     ForbiddenAuthorityPolicy,
+};
+pub use budget::{
+    BUDGET_CAPABILITY_SCHEMA_VERSION, BUDGET_TELEMETRY_SCHEMA_VERSION, BudgetCapability,
+    BudgetConsumption, BudgetController, BudgetDimension, BudgetEnforcementStatus, BudgetError,
+    BudgetLimitEvent, BudgetTelemetry, BudgetedAgentDriver, BudgetedProcessAdapter,
+    PlatformBudgetCapabilities, UnenforcedBudgetPolicy,
 };
 pub use driver::{
     AgentDriver, DRIVER_CHECKPOINT_SCHEMA_VERSION, DRIVER_TELEMETRY_SCHEMA_VERSION,

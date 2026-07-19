@@ -619,6 +619,18 @@ impl SeatWorkspaceLease {
         })
     }
 
+    /// Wraps the isolated seat adapter with the run's shared budget controller.
+    #[must_use]
+    pub fn budgeted_process_adapter(
+        &self,
+        controller: Arc<crate::BudgetController>,
+    ) -> Arc<dyn ProcessAdapter> {
+        Arc::new(crate::BudgetedProcessAdapter::new(
+            self.process_adapter(),
+            controller,
+        ))
+    }
+
     /// Applies the manifest retention policy to a completed or failed run.
     ///
     /// # Errors

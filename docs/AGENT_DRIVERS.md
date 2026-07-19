@@ -77,3 +77,8 @@ round-trip and reattachment, every stable transition, cancellation races,
 partial frames, stderr, process exit mapping, crash recovery, strict privacy,
 frame bounds, and idempotent termination. A Unix smoke test also exercises the
 Tokio direct-process adapter without network or credentials.
+
+Production drivers are decorated by `BudgetedAgentDriver` and use a
+`BudgetedProcessAdapter` around the isolated seat adapter. This keeps budget
+semantics uniform across persistent generic and one-shot native harnesses. See
+`docs/AGENT_BUDGETS.md` for platform support and normalized limit telemetry.

@@ -42,6 +42,13 @@ spawn scan all untyped agent inputs against this registry and emit a mandatory
 privacy-safe denial audit before failing closed. The registry is only a leak
 detector; application credential types remain the authorization boundary.
 
+Resource enforcement is composed as two decorators sharing one controller: a
+driver boundary for attempts, normalized tool calls, and deadlines, and a
+process boundary for raw output and deadlines. Platform/provider support is a
+versioned input to the run. Operators either accept explicitly reported weaker
+dimensions or require all-hard support and fail before launch. Direct children
+own a process group so every termination path targets descendants as well.
+
 The manifest can identify provider/model/harness versions but cannot represent
 provider secrets, game capabilities, operator authority, assigned paths, or
 process state. The persistence adapter stores canonical bytes and repeats their
@@ -70,5 +77,7 @@ the engine.
   agent processes can start.
 - Operator credentials are not driver configuration or state; only one-way
   leak-detection fingerprints may be retained by the startup guard.
+- CPU, memory, token, cost, and network-byte limits must never be presented as
+  hard unless a reviewed platform/provider adapter actually supplies them.
 - Export code must explicitly join agent attribution when producing tournament
   results or public replay bundles.

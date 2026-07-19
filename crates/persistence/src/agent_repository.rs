@@ -2,6 +2,7 @@ use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use thiserror::Error;
 use word_arena_agent_runtime::{
     AGENT_MANIFEST_SCHEMA_VERSION, AGENT_RUN_RESULT_SCHEMA_VERSION, AgentManifestIdentity,
+    BUDGET_CAPABILITY_SCHEMA_VERSION, BUDGET_TELEMETRY_SCHEMA_VERSION, BudgetTelemetry,
     MANIFEST_HASH_ALGORITHM, ValidatedAgentManifest,
 };
 use word_arena_engine::Seat;
@@ -222,6 +223,94 @@ impl SqliteAgentAttributionRepository {
         transaction.commit().await.map_err(map_storage)
     }
 
+    /// Persists one final normalized budget snapshot for a terminal run.
+    ///
+    /// # Errors
+    ///
+    /// Rejects incompatible schemas, malformed event ordering, identity drift,
+    /// nonterminal/missing runs, duplicate snapshots, or unavailable storage.
+    pub async fn record_budget_telemetry(
+        &self,
+        run_id: &str,
+        manifest: &AgentManifestIdentity,
+        telemetry: &BudgetTelemetry,
+        recorded_at_ms: i64,
+    ) -> Result<(), AgentAttributionError> {
+        validate_text(run_id)?;
+        validate_identity(manifest)?;
+        validate_budget_telemetry(telemetry)?;
+        if recorded_at_ms < 0 {
+            return Err(AgentAttributionError::Invalid);
+        }
+        let bytes = serde_json::to_vec(telemetry).map_err(|_| AgentAttributionError::Invalid)?;
+        let inserted = sqlx::query(
+            "INSERT INTO agent_run_budget_telemetry (
+                run_id, manifest_sha256, capability_schema_version,
+                telemetry_schema_version, telemetry_json, recorded_at_ms
+             )
+             SELECT ?, ?, ?, ?, ?, ?
+             FROM agent_run_results
+             WHERE run_id = ? AND manifest_sha256 = ? AND completed_at_ms <= ?",
+        )
+        .bind(run_id)
+        .bind(&manifest.manifest_sha256)
+        .bind(i64::from(BUDGET_CAPABILITY_SCHEMA_VERSION))
+        .bind(i64::from(BUDGET_TELEMETRY_SCHEMA_VERSION))
+        .bind(bytes)
+        .bind(recorded_at_ms)
+        .bind(run_id)
+        .bind(&manifest.manifest_sha256)
+        .bind(recorded_at_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(map_insert)?;
+        if inserted.rows_affected() == 1 {
+            Ok(())
+        } else {
+            Err(AgentAttributionError::Conflict)
+        }
+    }
+
+    /// Loads and revalidates a terminal run's normalized budget snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Rejects invalid run IDs, missing rows, schema drift, malformed JSON, or
+    /// corrupt limit-event ordering.
+    pub async fn load_budget_telemetry(
+        &self,
+        run_id: &str,
+    ) -> Result<BudgetTelemetry, AgentAttributionError> {
+        validate_text(run_id)?;
+        let row = sqlx::query(
+            "SELECT capability_schema_version, telemetry_schema_version, telemetry_json
+             FROM agent_run_budget_telemetry WHERE run_id = ?",
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_storage)?
+        .ok_or(AgentAttributionError::NotFound)?;
+        let capability_version: i64 = row
+            .try_get("capability_schema_version")
+            .map_err(|_| AgentAttributionError::Corrupt)?;
+        let telemetry_version: i64 = row
+            .try_get("telemetry_schema_version")
+            .map_err(|_| AgentAttributionError::Corrupt)?;
+        let bytes: Vec<u8> = row
+            .try_get("telemetry_json")
+            .map_err(|_| AgentAttributionError::Corrupt)?;
+        let telemetry: BudgetTelemetry =
+            serde_json::from_slice(&bytes).map_err(|_| AgentAttributionError::Corrupt)?;
+        if capability_version != i64::from(BUDGET_CAPABILITY_SCHEMA_VERSION)
+            || telemetry_version != i64::from(BUDGET_TELEMETRY_SCHEMA_VERSION)
+        {
+            return Err(AgentAttributionError::Corrupt);
+        }
+        validate_budget_telemetry(&telemetry).map_err(|_| AgentAttributionError::Corrupt)?;
+        Ok(telemetry)
+    }
+
     /// Attaches a terminal replay to the exact run and manifest for one seat.
     ///
     /// # Errors
@@ -368,6 +457,23 @@ fn validate_identity(identity: &AgentManifestIdentity) -> Result<(), AgentAttrib
             .manifest_sha256
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Err(AgentAttributionError::Invalid)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_budget_telemetry(telemetry: &BudgetTelemetry) -> Result<(), AgentAttributionError> {
+    if telemetry.schema_version != BUDGET_TELEMETRY_SCHEMA_VERSION
+        || telemetry.capabilities.schema_version != BUDGET_CAPABILITY_SCHEMA_VERSION
+        || telemetry
+            .limit_events
+            .iter()
+            .enumerate()
+            .any(|(sequence, event)| {
+                event.sequence != sequence as u64 || event.observed <= event.limit
+            })
     {
         Err(AgentAttributionError::Invalid)
     } else {

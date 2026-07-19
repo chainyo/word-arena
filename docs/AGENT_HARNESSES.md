@@ -36,7 +36,8 @@ credential injection, and fail-closed OS sandbox are described in
 The runtime translates model, provider, workspace, state, MCP configuration,
 and tool/network policy from the validated manifest plus trusted per-seat
 paths. The exact `HarnessPolicyTranslation` is retained for budget enforcement
-added in RUN-006. Commands already select non-interactive structured
+through the common driver/process decorators documented in
+`docs/AGENT_BUDGETS.md`. Commands already select non-interactive structured
 output and the strictest applicable built-in network/permission settings. The
 generic adapter replaces only the exact `{workspace}`, `{mcp_config}`, and
 `{state_directory}` argument placeholders and never invokes a shell.

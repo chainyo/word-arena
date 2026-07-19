@@ -21,5 +21,12 @@
   },
   "stderr": "visible_structured_diagnostics",
   "records_hidden_chain_of_thought": false,
-  "stable_checkpoint_states": ["pending", "ready", "crashed", "terminated"]
+  "stable_checkpoint_states": ["pending", "ready", "crashed", "terminated"],
+  "termination_reasons": [
+    "completed",
+    "cancelled",
+    "game_ended",
+    "operator",
+    "budget_exceeded"
+  ]
 }

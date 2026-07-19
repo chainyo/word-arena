@@ -101,6 +101,8 @@ pub enum ProcessError {
     ReattachUnsupported,
     #[error("process handle no longer exists")]
     Missing,
+    #[error("process resource budget was exceeded")]
+    LimitExceeded,
 }
 
 pub trait ProcessInstance: fmt::Debug + Send {
@@ -155,6 +157,8 @@ pub(crate) async fn spawn_tokio_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
     if let Some(directory) = &spec.working_directory {
         command.current_dir(directory);
     }
@@ -245,6 +249,30 @@ impl ProcessInstance for TokioProcess {
 
     fn terminate(&mut self) -> DriverFuture<'_, Result<ExitStatus, ProcessError>> {
         Box::pin(async move {
+            #[cfg(unix)]
+            if let Some(pid) = self.child.id() {
+                let group_killed = Command::new("/bin/kill")
+                    .arg("-KILL")
+                    .arg(format!("-{pid}"))
+                    .env_clear()
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .await
+                    .is_ok_and(|status| status.success());
+                if !group_killed {
+                    self.child
+                        .start_kill()
+                        .map_err(|_| ProcessError::Terminate)?;
+                }
+                return self
+                    .child
+                    .wait()
+                    .await
+                    .map(exit_status)
+                    .map_err(|_| ProcessError::Terminate);
+            }
             self.child
                 .start_kill()
                 .map_err(|_| ProcessError::Terminate)?;
@@ -291,6 +319,7 @@ pub enum TerminationReason {
     Cancelled,
     GameEnded,
     Operator,
+    BudgetExceeded,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -433,6 +462,8 @@ pub enum DriverError {
     HarnessOutput { harness: &'static str },
     #[error("trusted harness runtime paths or executable overrides are invalid")]
     InvalidHarnessRuntime,
+    #[error("agent resource budget was exceeded")]
+    BudgetExceeded,
 }
 
 pub trait AgentDriver {

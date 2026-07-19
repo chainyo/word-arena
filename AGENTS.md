@@ -207,6 +207,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   `ForbiddenAuthorityFingerprint` values with the workspace manager, provide a
   mandatory audit sink, and treat every boundary denial or audit failure as a
   startup failure.
+- Use one run-scoped `BudgetController` for both `BudgetedAgentDriver` and the
+  seat's `budgeted_process_adapter`. Persist its capability/telemetry snapshot;
+  never claim hard enforcement for a conditional or unenforced dimension.
 
 ## Documentation and dependencies
 

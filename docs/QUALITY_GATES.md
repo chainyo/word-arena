@@ -86,3 +86,19 @@ The authority suite additionally injects known human-spectator and administrator
 tokens into each untyped startup surface, requires a non-disclosing V1 audit,
 and proves execution and allocation fail when authority or audit persistence is
 unsafe.
+
+## Agent resource budgets
+
+The deterministic budget suite validates the V1 capability/telemetry contract,
+strict rejection of weaker platform support, saturating accounting, deadline
+races, output floods, semantic attempt/tool limits, and complete process-group
+termination:
+
+```bash
+cargo test -p word-arena-agent-runtime --all-features --test budget
+```
+
+Platform pressure reporting can be repeated explicitly with
+`WORD_ARENA_RUN_PLATFORM_BUDGET_SMOKE=1 scripts/agents/smoke-budgets.sh`.
+Unenforced CPU, memory, and non-denied network-byte dimensions are a reviewed
+capability result, never an implicit pass.

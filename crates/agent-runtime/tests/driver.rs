@@ -226,6 +226,16 @@ fn published_driver_contract_matches_runtime() {
     );
     assert_eq!(contract["records_hidden_chain_of_thought"], false);
     assert_eq!(contract["output_frame"]["unknown_fields"], "rejected");
+    assert_eq!(
+        contract["termination_reasons"],
+        serde_json::json!([
+            "completed",
+            "cancelled",
+            "game_ended",
+            "operator",
+            "budget_exceeded"
+        ])
+    );
 }
 
 #[tokio::test]
