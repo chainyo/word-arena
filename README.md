@@ -38,6 +38,9 @@ The repository foundation is in place:
   game, credential, tournament, match, agent-run, idempotency, and audit schema
 - Strict secret-free agent manifests with canonical SHA-256 identities and
   run/result/replay attribution ([manifest contract](docs/AGENT_MANIFESTS.md))
+- A typed generic-command process lifecycle with strict JSON-lines framing,
+  restart checkpoints, deterministic cancellation, and visible-only telemetry
+  ([driver contract](docs/AGENT_DRIVERS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
@@ -148,6 +151,8 @@ Physical English/French rules and their deterministic identities are documented
 in [`docs/RULESETS.md`](docs/RULESETS.md).
 The application command/query boundary is documented in
 [`docs/APPLICATION.md`](docs/APPLICATION.md).
+The autonomous process lifecycle and visible telemetry boundary is documented
+in [`docs/AGENT_DRIVERS.md`](docs/AGENT_DRIVERS.md).
 The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 The credential and bearer-capability security contract is documented in

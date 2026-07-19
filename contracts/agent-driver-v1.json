@@ -1,0 +1,25 @@
+{
+  "checkpoint_schema_version": 1,
+  "telemetry_schema_version": 1,
+  "turn_protocol_schema_version": 1,
+  "transport": "newline-delimited-json-over-stdio",
+  "maximum_stdout_frame_bytes": 1048576,
+  "input_frame": {
+    "required_fields": [
+      "schema_version",
+      "type",
+      "run_id",
+      "turn_id",
+      "visible_input"
+    ],
+    "type": "turn"
+  },
+  "output_frame": {
+    "required_fields": ["schema_version", "turn_id", "visible_output"],
+    "optional_fields": ["tool_calls"],
+    "unknown_fields": "rejected"
+  },
+  "stderr": "visible_structured_diagnostics",
+  "records_hidden_chain_of_thought": false,
+  "stable_checkpoint_states": ["pending", "ready", "crashed", "terminated"]
+}

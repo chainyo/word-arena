@@ -190,6 +190,10 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Agent manifests may identify a provider and model but cannot contain secret
   values, credential references, operator capabilities, shell commands, or
   workspace paths. Those are trusted runtime inputs outside the manifest.
+- Keep process drivers behind injected process and clock adapters. Generic
+  commands use direct execution, an empty inherited environment, bounded strict
+  JSON-lines frames, stable checkpoints, and visible-only telemetry. Never add
+  hidden reasoning fields to the driver protocol.
 
 ## Documentation and dependencies
 

@@ -1,7 +1,19 @@
 //! Versioned, privacy-safe contracts for autonomous agent execution.
 //!
-//! This crate owns immutable agent manifests and their content identities. It
-//! does not start processes, read provider credentials, or know game rules.
+//! This crate owns immutable agent manifests, direct process lifecycles, and
+//! privacy-safe telemetry. It does not read provider credentials or know game
+//! rules.
+
+mod driver;
+
+pub use driver::{
+    AgentDriver, DRIVER_CHECKPOINT_SCHEMA_VERSION, DRIVER_TELEMETRY_SCHEMA_VERSION,
+    DiagnosticRecord, DiagnosticStream, DriverCheckpoint, DriverClock, DriverError, DriverFuture,
+    DriverLifecycleState, DriverTelemetry, ExitStatus, GenericCommandDriver, LifecycleTransition,
+    ProcessAdapter, ProcessError, ProcessEvent, ProcessHandle, ProcessInstance, ProcessSpec,
+    SystemDriverClock, TURN_PROTOCOL_SCHEMA_VERSION, TerminationReason, TokioProcessAdapter,
+    TurnRequest, TurnTelemetry, VisibleToolCall, VisibleTurnOutput,
+};
 
 use std::collections::{BTreeMap, BTreeSet};
 

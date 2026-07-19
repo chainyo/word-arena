@@ -3049,6 +3049,8 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "thiserror",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

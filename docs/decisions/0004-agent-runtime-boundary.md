@@ -16,9 +16,12 @@ manifest and lifecycle contract.
 ## Decision
 
 Create `word-arena-agent-runtime` as a game-agnostic crate. Its first public
-contract is the strict V1 agent manifest and canonical content identity. Later
-Phase 5 tasks add process-driver, sandbox, budget, and telemetry contracts here
-while platform-specific adapters remain behind injected boundaries.
+contract is the strict V1 agent manifest and canonical content identity. The V1
+process contract adds typed async lifecycle operations, injected process/time
+adapters, stable checkpoints, and privacy-safe normalized telemetry. The first
+generic adapter directly executes an argument vector with an empty inherited
+environment and uses strict bounded JSON-lines framing. Platform-specific
+adapters remain behind the same boundary.
 
 The manifest can identify provider/model/harness versions but cannot represent
 provider secrets, game capabilities, operator authority, assigned paths, or
@@ -34,5 +37,9 @@ the engine.
 - Unknown, unsafe, or secret-bearing configuration fails before execution.
 - Process lifecycle and enforcement logic can evolve without widening MCP or
   game-domain APIs.
+- Application restart can validate a stable checkpoint and either reattach a
+  supervised process or record and start a clean replacement.
+- Hidden reasoning is neither requested nor representable in turn telemetry;
+  stderr is explicitly an operator-visible diagnostic channel.
 - Export code must explicitly join agent attribution when producing tournament
   results or public replay bundles.

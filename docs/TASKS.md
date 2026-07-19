@@ -304,13 +304,13 @@ and malformed or secret-bearing manifests fail before a process starts.
 
 ### RUN-002: Implement the process-driver contract
 
-- [ ] Define async start, request-turn, resume, terminate, and telemetry methods
+- [x] Define async start, request-turn, resume, terminate, and telemetry methods
   with typed lifecycle states, cancellation, and injected process/time adapters.
-- [ ] Implement the generic command driver first with stdout/stderr framing,
+- [x] Implement the generic command driver first with stdout/stderr framing,
   structured diagnostics, exit mapping, and crash recovery.
-- [ ] Ensure only visible outputs/tool calls are recorded and never request or
+- [x] Ensure only visible outputs/tool calls are recorded and never request or
   persist hidden chain-of-thought.
-- [ ] Add fake-process state-machine tests for every transition, signal race,
+- [x] Add fake-process state-machine tests for every transition, signal race,
   partial output, crash, resume, and idempotent termination.
 
 Verification: the application can drive a synthetic agent through a complete

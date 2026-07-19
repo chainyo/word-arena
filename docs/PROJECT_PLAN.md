@@ -173,7 +173,7 @@ game without using the command line.
 
 - [x] Define a versioned agent manifest: harness, model, prompt hash, tool policy,
   environment image, budgets, and driver version.
-- [ ] Implement a process-driver contract for start, request turn, resume,
+- [x] Implement a process-driver contract for start, request turn, resume,
   terminate, and telemetry collection.
 - [ ] Add Codex, Claude Code, Cline, and Pi integrations plus a generic command
   adapter.
