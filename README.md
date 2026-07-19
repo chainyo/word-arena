@@ -40,13 +40,15 @@ The repository foundation is in place:
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
   isolated revocation/rotation, and privacy-safe SQLite audit records
+- Versioned capability-authenticated REST snapshots/actions and reconnectable
+  public-only WebSocket invalidations with bounded local server resources
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Persistence adapters, role credentials, MCP tools, agent drivers, and tournament
+Durable idempotency/deadlines, MCP tools, agent drivers, and tournament
 orchestration are planned next. The current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is
@@ -99,7 +101,7 @@ bun run --cwd web check
 ## Repository layout
 
 ```text
-apps/server/     Axum application and future HTTP, WebSocket, and MCP adapters
+apps/server/     Axum REST/WebSocket application and future MCP adapter
 crates/engine/   Deterministic game domain and rules engine
 crates/application/  Typed application commands, queries, and adapter ports
 crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks
@@ -132,6 +134,8 @@ The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 The credential and bearer-capability security contract is documented in
 [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
+The V1 REST/WebSocket contract is documented in
+[`docs/API_V1.md`](docs/API_V1.md).
 
 ## License
 

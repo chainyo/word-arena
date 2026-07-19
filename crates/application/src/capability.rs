@@ -344,6 +344,25 @@ pub enum AuthenticatedCredential {
     Administrator(AdministratorCredential),
 }
 
+impl AuthenticatedCredential {
+    /// Bound game identifier shared by every authenticated role.
+    #[must_use]
+    pub const fn game_id(&self) -> &GameId {
+        match self {
+            Self::Public(credential) => credential.game_id(),
+            Self::Seat(credential) => credential.game_id(),
+            Self::HumanSpectator(credential) => credential.game_id(),
+            Self::Administrator(credential) => credential.game_id(),
+        }
+    }
+
+    /// Derives the public-view credential after a public scope was verified.
+    #[must_use]
+    pub fn public_viewer(&self) -> PublicViewerCredential {
+        PublicViewerCredential::new(self.game_id())
+    }
+}
+
 /// Privacy-safe actor stored in the audit log.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "seat")]

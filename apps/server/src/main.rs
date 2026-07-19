@@ -4,7 +4,7 @@ use tokio::net::TcpListener;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 use word_arena_lexicon::WordArenaPaths;
-use word_arena_server::{RuntimeLexicons, serve};
+use word_arena_server::{RuntimeLexicons, build_production_state, serve_application};
 
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:3000";
 
@@ -16,14 +16,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .compact()
         .init();
 
-    let lexicons = std::sync::Arc::new(RuntimeLexicons::load(&WordArenaPaths::discover()?)?);
+    let paths = WordArenaPaths::discover()?;
+    let lexicons = std::sync::Arc::new(RuntimeLexicons::load(&paths)?);
+    let state = build_production_state(&paths, std::sync::Arc::clone(&lexicons)).await?;
     let bind_address = env::var("WORD_ARENA_BIND")
         .unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_owned())
         .parse::<SocketAddr>()?;
     let listener = TcpListener::bind(bind_address).await?;
 
     info!(address = %bind_address, "Word Arena server listening");
-    serve(listener, lexicons).await?;
+    serve_application(listener, lexicons, state).await?;
 
     Ok(())
 }

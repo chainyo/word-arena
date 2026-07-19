@@ -5,9 +5,19 @@ use std::sync::Arc;
 use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tokio::net::TcpListener;
+use word_arena_application::LexiconResolver;
 use word_arena_engine::{Language, Ruleset, WordValidator};
 use word_arena_lexicon::{
     InstalledPackError, LoadedLexicon, PackIdentity, WordArenaPaths, load_installed_lexicon_exact,
+};
+
+mod runtime;
+mod transport;
+
+pub use runtime::{ProductionRuntimeError, build_production_state};
+pub use transport::{
+    API_SCHEMA_VERSION, ApiEnvelope, ApiErrorBody, CreateGameRequest, CreateGameResponse,
+    GameActionRequest, GameInvalidation, ServerState, api_app, application_app, serve_application,
 };
 
 /// Fully verified immutable indexes retained for the server lifetime.
@@ -70,6 +80,18 @@ impl RuntimeLexicons {
             Language::German | Language::Spanish => return None,
         };
         Some(lexicon)
+    }
+}
+
+impl LexiconResolver for RuntimeLexicons {
+    fn resolve(&self, identity: &PackIdentity) -> Option<Arc<dyn WordValidator>> {
+        for lexicon in [&self.english, &self.french] {
+            if lexicon.identity() == identity {
+                let validator: Arc<LoadedLexicon> = Arc::clone(lexicon);
+                return Some(validator);
+            }
+        }
+        None
     }
 }
 

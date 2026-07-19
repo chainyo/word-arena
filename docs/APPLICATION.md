@@ -68,6 +68,11 @@ The feature-gated `test_support` module supplies optimistic in-memory storage,
 an exact fixture lexicon resolver, sequence IDs/seeds, and a fixed clock. It is
 not compiled into default production builds.
 
+The V1 Axum adapter authenticates headers into these credential types, derives
+the acting seat server-side, and returns typed projections. Its WebSocket path
+publishes only public version invalidations; clients always refresh from the
+authoritative REST query. See [`API_V1.md`](API_V1.md).
+
 ## Verification
 
 `crates/application/tests/application.rs` covers complete English/French games,

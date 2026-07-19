@@ -42,7 +42,10 @@ the downloaded artifact cache. Running `setup` again restores a missing pinned
 identity from that verified cache without downloading it again.
 
 After setup, the server validates and retains both complete offline indexes
-before opening its HTTP listener:
+before opening its HTTP listener. It also migrates `word-arena.sqlite3` and
+creates or reuses the 32-byte `server-capability-hmac.key` beneath the durable
+data directory. On Unix, a new key is created with mode `0600`; malformed key
+files fail startup rather than silently invalidating existing capabilities.
 
 ```bash
 cargo run -p word-arena-server
@@ -68,17 +71,21 @@ stored under its `cache/` child:
 
 ```bash
 WORD_ARENA_DATA_DIR=/absolute/path/to/word-arena-data cargo xtask setup
+WORD_ARENA_DATA_DIR=/absolute/path/to/word-arena-data cargo run -p word-arena-server
 ```
 
 Installed identities use this immutable layout:
 
 ```text
 lexicons/<pack-id>/<pack-version>/<content-sha256>/
+word-arena.sqlite3
+server-capability-hmac.key
 ```
 
 Downloaded archives use content-addressed cache names. Upstream archives,
 compiled packs, caches, and build outputs are ignored by Git and must never be
-committed.
+committed. The capability key is a local secret and must never be copied into an
+agent workspace, browser response, log, or repository.
 
 ## Updates and rollback
 

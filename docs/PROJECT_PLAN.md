@@ -134,7 +134,7 @@ without network access after setup.
   administrator projections to separate application credential types. Never
   grant spectator credentials to an agent process.
 - [x] Add capability-style seat tokens, expiry, revocation, and audit logging.
-- [ ] Add REST snapshots and WebSocket invalidation/event streams.
+- [x] Add REST snapshots and WebSocket invalidation/event streams.
 - [ ] Add idempotency, turn deadlines, invalid-attempt policy, and recovery tests.
 
 Exit criterion: concurrent or retried actions cannot double-commit or disclose

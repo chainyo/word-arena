@@ -102,13 +102,13 @@ wrong-scope capabilities fail closed; audit tests prove secrets never serialize.
 
 ### APP-006: Add REST snapshots and WebSocket invalidation streams
 
-- [ ] Record the versioned HTTP/WebSocket transport decision and publish strict
+- [x] Record the versioned HTTP/WebSocket transport decision and publish strict
   request/response/error schemas for create, observe, rules, and game actions.
-- [ ] Authenticate capabilities from headers and derive authority server-side;
+- [x] Authenticate capabilities from headers and derive authority server-side;
   never accept a role or seat as authorization input.
-- [ ] Serve role-appropriate snapshots and a reconnectable WebSocket stream of
+- [x] Serve role-appropriate snapshots and a reconnectable WebSocket stream of
   public invalidations/version markers, not a competing state store.
-- [ ] Add body/connection limits, origin policy, structured tracing, graceful
+- [x] Add body/connection limits, origin policy, structured tracing, graceful
   shutdown, and Axum integration tests for auth, privacy, reconnect, and errors.
 
 Verification: separate clients observe only their permitted state, reconnect
