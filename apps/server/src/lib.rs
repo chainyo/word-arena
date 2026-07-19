@@ -11,8 +11,11 @@ use word_arena_lexicon::{
     InstalledPackError, LoadedLexicon, PackIdentity, WordArenaPaths, load_installed_lexicon_exact,
 };
 
+mod mcp;
 mod runtime;
 mod transport;
+
+pub use mcp::MCP_PROTOCOL_VERSION;
 
 pub use runtime::{ProductionRuntimeError, build_production_state};
 pub use transport::{

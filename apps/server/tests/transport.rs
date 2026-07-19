@@ -23,7 +23,7 @@ use word_arena_application::{
 };
 use word_arena_engine::{Language, Ruleset, Seat, WordValidator};
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
-use word_arena_server::{GameInvalidation, ServerState, api_app};
+use word_arena_server::{GameInvalidation, MCP_PROTOCOL_VERSION, ServerState, api_app};
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
 
@@ -333,6 +333,227 @@ async fn websocket_reconnects_from_version_and_rest_converges() {
     server.abort();
 }
 
+#[tokio::test]
+async fn authenticated_mcp_handshake_exposes_metadata_without_game_tools() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "mcp-handshake").await;
+    let seat_token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        Some("mcp-seat-one"),
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let (session_id, initialized) = mcp_initialize(app.clone(), &game_id, &seat_token).await;
+    assert_eq!(
+        initialized["result"]["protocolVersion"],
+        MCP_PROTOCOL_VERSION
+    );
+    assert_eq!(initialized["result"]["serverInfo"]["name"], "word-arena");
+    assert_eq!(initialized["result"]["capabilities"], json!({}));
+
+    let tools = app
+        .oneshot(mcp_request(
+            Method::POST,
+            &game_id,
+            Some(&seat_token),
+            Some(&session_id),
+            Some(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(tools.status(), StatusCode::OK);
+    assert_eq!(mcp_response_json(tools).await["result"]["tools"], json!([]));
+}
+
+#[tokio::test]
+async fn mcp_authentication_and_session_binding_reject_cross_capability_reuse() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "mcp-isolation").await;
+    let other_game_id = create_game(&fixture, "mcp-other-game").await;
+    let seat_one = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        Some("mcp-one"),
+    )
+    .await;
+    let seat_two = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::Two),
+        [CapabilityScope::Act],
+        Some("mcp-two"),
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let (session_id, _) = mcp_initialize(app.clone(), &game_id, &seat_one).await;
+
+    for request in [
+        mcp_request(
+            Method::POST,
+            &game_id,
+            Some("invalid"),
+            Some(&session_id),
+            Some(&json!({"jsonrpc":"2.0","id":2,"method":"ping"})),
+        ),
+        mcp_request(
+            Method::POST,
+            &game_id,
+            Some(&seat_two),
+            Some(&session_id),
+            Some(&json!({"jsonrpc":"2.0","id":3,"method":"ping"})),
+        ),
+        mcp_request(
+            Method::POST,
+            &other_game_id,
+            Some(&seat_one),
+            Some(&session_id),
+            Some(&json!({"jsonrpc":"2.0","id":4,"method":"ping"})),
+        ),
+    ] {
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[tokio::test]
+async fn mcp_malformed_message_cancellation_and_session_delete_are_bounded() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "mcp-cancel").await;
+    let token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        Some("mcp-cancel-seat"),
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let mut foreign_origin = mcp_request(
+        Method::POST,
+        &game_id,
+        Some(&token),
+        None,
+        Some(&json!({
+            "jsonrpc":"2.0",
+            "id":0,
+            "method":"initialize",
+            "params":{
+                "protocolVersion":MCP_PROTOCOL_VERSION,
+                "capabilities":{},
+                "clientInfo":{"name":"foreign","version":"1"}
+            }
+        })),
+    );
+    foreign_origin
+        .headers_mut()
+        .insert(header::ORIGIN, "https://example.invalid".parse().unwrap());
+    let foreign_origin = app.clone().oneshot(foreign_origin).await.unwrap();
+    assert_eq!(foreign_origin.status(), StatusCode::FORBIDDEN);
+
+    let malformed = app
+        .clone()
+        .oneshot(
+            request_builder(
+                Method::POST,
+                &format!("/api/v1/games/{game_id}/mcp"),
+                Some(&token),
+            )
+            .header(header::HOST, "localhost")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::ACCEPT, "application/json, text/event-stream")
+            .header("mcp-protocol-version", MCP_PROTOCOL_VERSION)
+            .body(Body::from("{"))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let (session_id, _) = mcp_initialize(app.clone(), &game_id, &token).await;
+    let cancelled = app
+        .clone()
+        .oneshot(mcp_request(
+            Method::POST,
+            &game_id,
+            Some(&token),
+            Some(&session_id),
+            Some(&json!({
+                "jsonrpc":"2.0",
+                "method":"notifications/cancelled",
+                "params":{"requestId":77,"reason":"test cancellation"}
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(cancelled.status(), StatusCode::ACCEPTED);
+
+    let deleted = app
+        .clone()
+        .oneshot(mcp_request(
+            Method::DELETE,
+            &game_id,
+            Some(&token),
+            Some(&session_id),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert!(deleted.status().is_success());
+    let after_delete = app
+        .oneshot(mcp_request(
+            Method::POST,
+            &game_id,
+            Some(&token),
+            Some(&session_id),
+            Some(&json!({"jsonrpc":"2.0","id":8,"method":"ping"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(after_delete.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn mcp_gateway_cancels_active_sessions_for_graceful_shutdown() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "mcp-shutdown").await;
+    let token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        Some("mcp-shutdown-seat"),
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let (session_id, _) = mcp_initialize(app.clone(), &game_id, &token).await;
+    let stream = app
+        .oneshot(mcp_request(
+            Method::GET,
+            &game_id,
+            Some(&token),
+            Some(&session_id),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stream.status(), StatusCode::OK);
+    fixture.state.cancel_mcp();
+    let closed = tokio::time::timeout(
+        Duration::from_millis(250),
+        to_bytes(stream.into_body(), 128 * 1024),
+    )
+    .await;
+    assert!(
+        closed.is_ok(),
+        "MCP SSE stream did not close during shutdown"
+    );
+}
+
 struct Fixture {
     runtime: Arc<ApplicationRuntime>,
     state: Arc<ServerState>,
@@ -410,6 +631,101 @@ fn json_request(method: Method, uri: &str, token: Option<&str>, body: &Value) ->
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap()
+}
+
+fn mcp_request(
+    method: Method,
+    game_id: &GameId,
+    token: Option<&str>,
+    session_id: Option<&str>,
+    body: Option<&Value>,
+) -> Request<Body> {
+    let mut builder = request_builder(method, &format!("/api/v1/games/{game_id}/mcp"), token)
+        .header(header::HOST, "localhost")
+        .header(header::ACCEPT, "application/json, text/event-stream")
+        .header("mcp-protocol-version", MCP_PROTOCOL_VERSION);
+    if let Some(session_id) = session_id {
+        builder = builder.header("mcp-session-id", session_id);
+    }
+    match body {
+        Some(body) => builder
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_vec(body).unwrap()))
+            .unwrap(),
+        None => builder.body(Body::empty()).unwrap(),
+    }
+}
+
+async fn mcp_initialize(app: axum::Router, game_id: &GameId, token: &str) -> (String, Value) {
+    let response = app
+        .clone()
+        .oneshot(mcp_request(
+            Method::POST,
+            game_id,
+            Some(token),
+            None,
+            Some(&json!({
+                "jsonrpc":"2.0",
+                "id":1,
+                "method":"initialize",
+                "params":{
+                    "protocolVersion":MCP_PROTOCOL_VERSION,
+                    "capabilities":{},
+                    "clientInfo":{"name":"word-arena-test","version":"1"}
+                }
+            })),
+        ))
+        .await
+        .unwrap();
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 128 * 1024).await.unwrap();
+        panic!(
+            "MCP initialize returned {status}: {}",
+            String::from_utf8_lossy(&bytes)
+        );
+    }
+    let session_id = response
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let initialized = mcp_response_json(response).await;
+    let notification = app
+        .oneshot(mcp_request(
+            Method::POST,
+            game_id,
+            Some(token),
+            Some(&session_id),
+            Some(&json!({"jsonrpc":"2.0","method":"notifications/initialized"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(notification.status(), StatusCode::ACCEPTED);
+    (session_id, initialized)
+}
+
+async fn mcp_response_json(response: axum::response::Response) -> Value {
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    let bytes = to_bytes(response.into_body(), 128 * 1024).await.unwrap();
+    if content_type.starts_with("text/event-stream") {
+        let text = std::str::from_utf8(&bytes).unwrap();
+        let data = text
+            .lines()
+            .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+            .find(|data| !data.is_empty())
+            .unwrap();
+        serde_json::from_str(data).unwrap()
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    }
 }
 
 fn request_builder(method: Method, uri: &str, token: Option<&str>) -> axum::http::request::Builder {

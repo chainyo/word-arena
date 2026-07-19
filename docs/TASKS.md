@@ -132,13 +132,13 @@ and a restarted server recovers every committed game without privacy loss.
 
 ### MCP-001: Add authenticated MCP Streamable HTTP
 
-- [ ] Record the MCP transport decision, add the official Rust MCP SDK, and pin
+- [x] Record the MCP transport decision, add the official Rust MCP SDK, and pin
   a supported protocol/version contract.
-- [ ] Host Streamable HTTP in the existing server with capability
+- [x] Host Streamable HTTP in the existing server with capability
   authentication, session isolation, request limits, cancellation, and tracing.
-- [ ] Expose server metadata/capabilities without game tools until their
+- [x] Expose server metadata/capabilities without game tools until their
   schemas are implemented.
-- [ ] Add protocol handshake, authentication, malformed-message, cancellation,
+- [x] Add protocol handshake, authentication, malformed-message, cancellation,
   and graceful-shutdown integration tests.
 
 Verification: an MCP client initializes over authenticated Streamable HTTP and

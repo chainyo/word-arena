@@ -7,13 +7,13 @@ use std::{
 use axum::{
     Json, Router,
     extract::{
-        Path, Query, State, WebSocketUpgrade,
+        Path, Query, Request, State, WebSocketUpgrade,
         rejection::{JsonRejection, QueryRejection},
         ws::{Message, WebSocket},
     },
-    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{any, get, post},
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, broadcast};
@@ -29,7 +29,7 @@ use word_arena_application::{
 };
 use word_arena_engine::{Language, Move, Ruleset, RulesetId, Turn};
 
-use crate::RuntimeLexicons;
+use crate::{RuntimeLexicons, mcp::McpGateway};
 
 /// Stable V1 REST and WebSocket schema version.
 pub const API_SCHEMA_VERSION: u16 = 1;
@@ -48,6 +48,7 @@ pub struct ServerState {
     runtime: Arc<ApplicationRuntime>,
     notifications: NotificationHub,
     websocket_slots: Arc<Semaphore>,
+    mcp: McpGateway,
 }
 
 impl ServerState {
@@ -58,6 +59,7 @@ impl ServerState {
             runtime,
             notifications: NotificationHub::default(),
             websocket_slots: Arc::new(Semaphore::new(MAX_WEBSOCKETS)),
+            mcp: McpGateway::new(),
         }
     }
 
@@ -65,6 +67,11 @@ impl ServerState {
     #[must_use]
     pub fn runtime(&self) -> &Arc<ApplicationRuntime> {
         &self.runtime
+    }
+
+    /// Cancels every active MCP session during trusted process shutdown.
+    pub fn cancel_mcp(&self) {
+        self.mcp.cancel();
     }
 }
 
@@ -222,6 +229,7 @@ pub fn api_app(state: Arc<ServerState>) -> Router {
         .route("/api/v1/games/{game_id}/rules", get(game_rules))
         .route("/api/v1/games/{game_id}/actions", post(game_action))
         .route("/api/v1/games/{game_id}/events", get(game_events))
+        .route("/api/v1/games/{game_id}/mcp", any(mcp_endpoint))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
         .layer(TimeoutLayer::with_status_code(
@@ -243,6 +251,7 @@ pub async fn serve_application(
     lexicons: Arc<RuntimeLexicons>,
     state: Arc<ServerState>,
 ) -> std::io::Result<()> {
+    let mcp = state.mcp.clone();
     let worker_state = Arc::clone(&state);
     let deadline_worker = tokio::spawn(async move {
         let mut interval = tokio::time::interval(DEADLINE_POLL_INTERVAL);
@@ -272,7 +281,27 @@ pub async fn serve_application(
         .await;
     deadline_worker.abort();
     let _ = deadline_worker.await;
+    mcp.cancel();
     result
+}
+
+async fn mcp_endpoint(
+    State(state): State<Arc<ServerState>>,
+    Path(game_id): Path<String>,
+    request: Request,
+) -> Response {
+    let game_id = match parse_game_id(game_id) {
+        Ok(game_id) => game_id,
+        Err(error) => return error.into_response(),
+    };
+    let bearer = match bearer_token(request.headers()) {
+        Ok(token) => token.to_owned(),
+        Err(error) => return error.into_response(),
+    };
+    state
+        .mcp
+        .handle(&state.runtime, game_id, &bearer, request)
+        .await
 }
 
 async fn create_game(
@@ -741,8 +770,19 @@ fn cors_layer() -> CorsLayer {
             HeaderValue::from_static("http://127.0.0.1:5173"),
             HeaderValue::from_static("http://localhost:5173"),
         ])
-        .allow_methods([Method::GET, Method::POST])
-        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_headers([
+            header::ACCEPT,
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            HeaderName::from_static("last-event-id"),
+            HeaderName::from_static("mcp-protocol-version"),
+            HeaderName::from_static("mcp-session-id"),
+        ])
+        .expose_headers([
+            HeaderName::from_static("mcp-protocol-version"),
+            HeaderName::from_static("mcp-session-id"),
+        ])
 }
 
 async fn shutdown_signal() {

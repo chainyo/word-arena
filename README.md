@@ -45,14 +45,16 @@ The repository foundation is in place:
 - Atomic creation/action idempotency, persisted versioned deadline and invalid
   attempt policies, a restart-safe timeout worker, and finished-game replay
   fallback ([reliability contract](docs/RELIABILITY.md))
+- Authenticated MCP `2025-11-25` Streamable HTTP sessions built on the official
+  Rust SDK, with exact capability/session isolation ([MCP contract](docs/MCP.md))
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-MCP tools, agent drivers, and tournament orchestration are planned next. The
-current lexicon/gameplay boundary is
+MCP game tools/resources, agent drivers, and tournament orchestration are
+planned next. The current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is
 documented in [`docs/BASELINE_MATCHES.md`](docs/BASELINE_MATCHES.md).
