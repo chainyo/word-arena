@@ -116,6 +116,26 @@ pub enum GameError {
     #[error("tile or word normalization failed: {0}")]
     Normalization(#[from] NormalizedKeyError),
 
+    /// One physical tile normalized to zero or multiple board letters.
+    #[error(
+        "tile token {token:?} normalizes to {normalized:?}; one physical tile must represent exactly one A-Z board letter"
+    )]
+    InvalidTileToken {
+        /// Caller-supplied token.
+        token: String,
+        /// Token after applying the ruleset normalization profile.
+        normalized: String,
+    },
+
+    /// Persisted board state contains a noncanonical physical tile token.
+    #[error("persisted board tile {token:?} must use canonical token {canonical:?}")]
+    NonCanonicalBoardTile {
+        /// Persisted token.
+        token: String,
+        /// Required A-Z token.
+        canonical: String,
+    },
+
     /// Main or cross word is absent from the exact pack.
     #[error("word {word:?} normalizes to {normalized:?} and is not in the active lexicon")]
     InvalidWord {

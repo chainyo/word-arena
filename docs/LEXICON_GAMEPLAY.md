@@ -42,6 +42,13 @@ zero point value.
 The engine builds the main word and every perpendicular cross word against a
 proposed read-only board overlay. Each visible spelling is normalized through
 the profile pinned by the ruleset and queried against the same exact lexicon.
+Player input is canonicalized before validation and persistence. Every physical
+tile, including a blank assignment, becomes exactly one `A` through `Z` board
+token. French source spellings remain playable through their normalized board
+form: `ÉTÉ` is placed, displayed, scored, emitted, and replayed as `ETE`; `ŒUF`
+uses the four physical tiles `O`, `E`, `U`, `F`, never one `Œ` tile. Accented
+source forms remain only in lexicon provenance and audit data.
+
 Only after every word and all checked score/version arithmetic succeeds does a
 single transition publish tiles, score, next player, version, and event. An
 invalid main or cross word leaves the board, score, turn, version, and event
@@ -66,4 +73,5 @@ recomputes every placement, normalized word, score, state transition, and event.
 Any event-byte difference fails replay. Golden English and French tests serialize
 and deserialize replay bundles, reconstruct the games, and compare serialized
 public state bytes. They also cover three words formed by one placement and an
-accented French blank assignment.
+accent-folded French blank input, canonical board display, and rejection of a
+ligature encoded as one physical tile.

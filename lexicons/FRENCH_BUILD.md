@@ -51,6 +51,11 @@ through `Z`. Length is checked after ligature expansion. Different accented or
 ligature forms may intentionally collide on one runtime key; every occurrence
 and duplicate decision remains visible in the audit.
 
+The normalized key is also the public board spelling. The game uses only
+physical `A` through `Z` tiles: `ÉTÉ` appears as `ETE`, while `ŒUF` occupies the
+four tiles `O`, `E`, `U`, `F`. Accents and ligatures remain in source audit data
+and are never persisted as special board tiles.
+
 ## Deterministic outputs
 
 Run a source build into a directory outside Git:

@@ -52,7 +52,7 @@ impl fmt::Display for Coordinate {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tile {
-    /// Visible assigned token. A blank must still declare its chosen token.
+    /// Physical board token. Accepted input is canonicalized to one A-Z letter.
     pub letter: String,
     /// Whether this is a zero-point blank tile.
     pub is_blank: bool,
@@ -68,7 +68,7 @@ impl Tile {
         }
     }
 
-    /// Creates a zero-point blank assigned to a visible token.
+    /// Creates a zero-point blank assigned to one physical board letter.
     #[must_use]
     pub fn blank(assigned_letter: impl Into<String>) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl Tile {
 pub struct Placement {
     /// Target square.
     pub coordinate: Coordinate,
-    /// Tile and blank assignment.
+    /// Tile and blank assignment, canonicalized before a move is committed.
     pub tile: Tile,
 }
 
@@ -139,7 +139,7 @@ pub enum GamePhase {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FormedWord {
-    /// Visible board spelling, including blank assignments.
+    /// Canonical A-Z board spelling, including blank assignments.
     pub text: String,
     /// Exact key queried in the pinned pack.
     pub normalized: String,
@@ -366,7 +366,14 @@ impl Game {
             lexicon.identity(),
         )?;
         for tile in snapshot.state.board.iter().flatten() {
-            normalize_key(&ruleset.lexicon.normalization.profile, &tile.letter)?;
+            let canonical =
+                canonical_tile_token(&ruleset.lexicon.normalization.profile, &tile.letter)?;
+            if canonical != tile.letter {
+                return Err(GameError::NonCanonicalBoardTile {
+                    token: tile.letter.clone(),
+                    canonical,
+                });
+            }
         }
         Ok(Self {
             ruleset,
@@ -602,13 +609,13 @@ impl Game {
         if placements.is_empty() {
             return Err(GameError::EmptyPlacement);
         }
-        for placement in &placements {
+        for placement in &mut placements {
             if !placement.coordinate.in_bounds() {
                 return Err(GameError::CoordinateOutOfBounds {
                     coordinate: placement.coordinate,
                 });
             }
-            normalize_key(
+            placement.tile.letter = canonical_tile_token(
                 &self.ruleset.lexicon.normalization.profile,
                 &placement.tile.letter,
             )?;
@@ -860,6 +867,18 @@ struct PreparedMove {
     placements: Vec<Placement>,
     words: Vec<FormedWord>,
     score: u32,
+}
+
+fn canonical_tile_token(profile: &str, token: &str) -> Result<String, GameError> {
+    let normalized = normalize_key(profile, token)?.into_string();
+    if normalized.len() == 1 {
+        Ok(normalized)
+    } else {
+        Err(GameError::InvalidTileToken {
+            token: token.to_owned(),
+            normalized,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
