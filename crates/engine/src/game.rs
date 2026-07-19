@@ -1,13 +1,12 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt,
     sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
 use word_arena_lexicon::{CompatibilityContext, PackIdentity, normalize_key};
 
-use crate::{GameError, Ruleset, RulesetId, WordValidator};
+use crate::{Coordinate, GameError, Player, Ruleset, RulesetId, TileId, WordValidator};
 
 /// Width and height of the V1 board.
 pub const BOARD_SIZE: u8 = 15;
@@ -15,38 +14,6 @@ const BOARD_SQUARES: usize = BOARD_SIZE as usize * BOARD_SIZE as usize;
 const CENTER: Coordinate = Coordinate { row: 7, column: 7 };
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const REPLAY_SCHEMA_VERSION: u32 = 1;
-
-/// One board coordinate, zero-indexed from the upper-left corner.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Coordinate {
-    /// Zero-indexed row.
-    pub row: u8,
-    /// Zero-indexed column.
-    pub column: u8,
-}
-
-impl Coordinate {
-    /// Creates a coordinate. Bounds are enforced when a move is validated.
-    #[must_use]
-    pub const fn new(row: u8, column: u8) -> Self {
-        Self { row, column }
-    }
-
-    const fn index(self) -> usize {
-        self.row as usize * BOARD_SIZE as usize + self.column as usize
-    }
-
-    const fn in_bounds(self) -> bool {
-        self.row < BOARD_SIZE && self.column < BOARD_SIZE
-    }
-}
-
-impl fmt::Display for Coordinate {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "({}, {})", self.row, self.column)
-    }
-}
 
 /// A tile assignment supplied by a player.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -88,6 +55,26 @@ pub struct Placement {
     pub tile: Tile,
 }
 
+/// Typed player action accepted by the complete game engine.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Move {
+    /// Place one or more rack tiles on the board.
+    Place {
+        /// Proposed square assignments.
+        placements: Vec<Placement>,
+    },
+    /// Return owned tiles and draw deterministic replacements.
+    Exchange {
+        /// Stable IDs selected from the acting rack.
+        tile_ids: Vec<TileId>,
+    },
+    /// End the turn without changing tiles or score.
+    Pass,
+    /// End the game immediately.
+    Resign,
+}
+
 impl Placement {
     /// Creates a placement value.
     #[must_use]
@@ -98,32 +85,6 @@ impl Placement {
 
 /// Immutable tile stored on the public board.
 pub type BoardTile = Tile;
-
-/// Competitive seat whose score and turn are public.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Player {
-    /// First seat.
-    One,
-    /// Second seat.
-    Two,
-}
-
-impl Player {
-    const fn index(self) -> usize {
-        match self {
-            Self::One => 0,
-            Self::Two => 1,
-        }
-    }
-
-    const fn opponent(self) -> Self {
-        match self {
-            Self::One => Self::Two,
-            Self::Two => Self::One,
-        }
-    }
-}
 
 /// Lifecycle state represented in snapshots and results.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -176,8 +137,12 @@ impl PublicGameState {
     #[must_use]
     pub fn tile_at(&self, coordinate: Coordinate) -> Option<&BoardTile> {
         coordinate
-            .in_bounds()
-            .then(|| self.board.get(coordinate.index()).and_then(Option::as_ref))
+            .in_bounds(BOARD_SIZE, BOARD_SIZE)
+            .then(|| {
+                self.board
+                    .get(coordinate.index(BOARD_SIZE))
+                    .and_then(Option::as_ref)
+            })
             .flatten()
     }
 }
@@ -413,7 +378,7 @@ impl Game {
             .checked_add(1)
             .ok_or(GameError::VersionOverflow)?;
         for placement in &prepared.placements {
-            self.state.board[placement.coordinate.index()] = Some(placement.tile.clone());
+            self.state.board[placement.coordinate.index(BOARD_SIZE)] = Some(placement.tile.clone());
         }
         self.state.scores[player.index()] = updated_score;
         self.state.current_player = player.opponent();
@@ -610,7 +575,7 @@ impl Game {
             return Err(GameError::EmptyPlacement);
         }
         for placement in &mut placements {
-            if !placement.coordinate.in_bounds() {
+            if !placement.coordinate.in_bounds(BOARD_SIZE, BOARD_SIZE) {
                 return Err(GameError::CoordinateOutOfBounds {
                     coordinate: placement.coordinate,
                 });
@@ -915,7 +880,9 @@ fn coordinate_at(row: i16, column: i16) -> Option<Coordinate> {
     let row = u8::try_from(row).ok()?;
     let column = u8::try_from(column).ok()?;
     let coordinate = Coordinate::new(row, column);
-    coordinate.in_bounds().then_some(coordinate)
+    coordinate
+        .in_bounds(BOARD_SIZE, BOARD_SIZE)
+        .then_some(coordinate)
 }
 
 fn neighbors(coordinate: Coordinate) -> [Option<Coordinate>; 4] {

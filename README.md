@@ -72,6 +72,7 @@ Run the full local verification suite:
 
 ```bash
 cargo fmt --all --check
+cargo xtask ruleset verify
 cargo xtask lexicon audit
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
@@ -88,6 +89,7 @@ crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks
 crates/lexicon-builder/  Reproducible source importers and audit reports
 docs/            Architecture decisions and the maintained creation plan
 lexicons/        Pinned source metadata, licenses, and pack documentation
+rulesets/        Immutable board, premium, tile, score, and lexicon definitions
 web/             React application built from shadcn/ui primitives
 ```
 
@@ -104,6 +106,8 @@ The current data release is
 The curation/dispute process is documented in
 [`lexicons/CURATION.md`](lexicons/CURATION.md), and the explicit CI/local gate
 matrix is in [`docs/QUALITY_GATES.md`](docs/QUALITY_GATES.md).
+Physical English/French rules and their deterministic identities are documented
+in [`docs/RULESETS.md`](docs/RULESETS.md).
 
 ## License
 

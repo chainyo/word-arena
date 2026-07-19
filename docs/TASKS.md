@@ -21,22 +21,22 @@ the future bag order.
 
 ### GAME-001: Define physical game data and versioned rulesets
 
-- [ ] Introduce explicit typed models for physical tile tokens, stable tile
+- [x] Introduce explicit typed models for physical tile tokens, stable tile
   identities, racks, bags, board squares, premiums, seats, turns, moves,
   violations, scores, and game events without coupling the engine to transport
   or persistence.
-- [ ] Require every physical tile and blank assignment to occupy exactly one
+- [x] Require every physical tile and blank assignment to occupy exactly one
   canonical `A` through `Z` board token; French accented source spellings remain
   playable through normalized multi-tile board forms such as `ÉTÉ -> ETE` and
   `ŒUF -> OEUF`.
-- [ ] Extend the immutable ruleset schema with board dimensions/premiums, rack
+- [x] Extend the immutable ruleset schema with board dimensions/premiums, rack
   capacity, bingo bonus, exchange threshold, scoreless-turn limit, tile
   distribution, tile values, language normalization, and exact lexicon
   identity.
-- [ ] Add complete English and French V1 tile distributions, letter values, and
+- [x] Add complete English and French V1 tile distributions, letter values, and
   classic 15x15 premium-board fixtures. Reject malformed, asymmetric, duplicate,
   incomplete, or arithmetically unsafe definitions.
-- [ ] Add a deterministic ruleset identity/hash and a validation command that
+- [x] Add a deterministic ruleset identity/hash and a validation command that
   verifies every built-in ruleset and its lexicon pin.
 
 Verification:

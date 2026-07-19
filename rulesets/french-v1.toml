@@ -1,0 +1,123 @@
+schema_version = 2
+id = "french-v1"
+language = "french"
+pack_id = "word-arena-fr-v1"
+pack_version = "1.0.0"
+pack_format_version = 1
+locale = "fr"
+normalization_profile = "fr-basic-latin-fold-v1"
+lexicon_content_sha256 = "c926a5f1ead63711d041277c9bfb3af23f3a460bb6edf57ff66408552c495193"
+
+[game]
+rack_capacity = 7
+bingo_bonus = 50
+exchange_minimum = 7
+scoreless_turn_limit = 6
+
+[[game.tiles]]
+token = "A"
+count = 9
+value = 1
+[[game.tiles]]
+token = "B"
+count = 2
+value = 3
+[[game.tiles]]
+token = "C"
+count = 2
+value = 3
+[[game.tiles]]
+token = "D"
+count = 3
+value = 2
+[[game.tiles]]
+token = "E"
+count = 15
+value = 1
+[[game.tiles]]
+token = "F"
+count = 2
+value = 4
+[[game.tiles]]
+token = "G"
+count = 2
+value = 2
+[[game.tiles]]
+token = "H"
+count = 2
+value = 4
+[[game.tiles]]
+token = "I"
+count = 8
+value = 1
+[[game.tiles]]
+token = "J"
+count = 1
+value = 8
+[[game.tiles]]
+token = "K"
+count = 1
+value = 10
+[[game.tiles]]
+token = "L"
+count = 5
+value = 1
+[[game.tiles]]
+token = "M"
+count = 3
+value = 2
+[[game.tiles]]
+token = "N"
+count = 6
+value = 1
+[[game.tiles]]
+token = "O"
+count = 6
+value = 1
+[[game.tiles]]
+token = "P"
+count = 2
+value = 3
+[[game.tiles]]
+token = "Q"
+count = 1
+value = 8
+[[game.tiles]]
+token = "R"
+count = 6
+value = 1
+[[game.tiles]]
+token = "S"
+count = 6
+value = 1
+[[game.tiles]]
+token = "T"
+count = 6
+value = 1
+[[game.tiles]]
+token = "U"
+count = 6
+value = 1
+[[game.tiles]]
+token = "V"
+count = 2
+value = 4
+[[game.tiles]]
+token = "W"
+count = 1
+value = 10
+[[game.tiles]]
+token = "X"
+count = 1
+value = 10
+[[game.tiles]]
+token = "Y"
+count = 1
+value = 10
+[[game.tiles]]
+token = "Z"
+count = 1
+value = 10
+[[game.tiles]]
+count = 2
+value = 0

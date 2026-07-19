@@ -971,6 +971,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "toml",
  "word-arena-lexicon",
@@ -1045,6 +1046,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "word-arena-engine",
  "word-arena-lexicon",
  "word-arena-lexicon-builder",
  "word-arena-server",

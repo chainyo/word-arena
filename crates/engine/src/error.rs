@@ -20,6 +20,15 @@ pub enum GameError {
         ruleset: RulesetId,
     },
 
+    /// A decoded ruleset violates structural physical-game invariants.
+    #[error("ruleset {ruleset:?} definition is invalid: {reason}")]
+    InvalidRulesetDefinition {
+        /// Malformed ruleset ID.
+        ruleset: RulesetId,
+        /// Stable validation diagnostic.
+        reason: String,
+    },
+
     /// The required immutable pack was not supplied.
     #[error(
         "ruleset {ruleset:?} requires lexicon {required}, but that exact pack is unavailable; run `cargo xtask setup`"

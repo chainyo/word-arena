@@ -8,13 +8,21 @@ mod error;
 mod game;
 mod language;
 mod lexicon;
+mod model;
 mod ruleset;
 
 pub use error::GameError;
 pub use game::{
-    BOARD_SIZE, BoardTile, Coordinate, FormedWord, Game, GameEvent, GameEventKind, GamePhase,
-    GameResult, GameSnapshot, Placement, Player, PublicGameState, ReplayBundle, Tile,
+    BOARD_SIZE, BoardTile, FormedWord, Game, GameEvent, GameEventKind, GamePhase, GameResult,
+    GameSnapshot, Move, Placement, PublicGameState, ReplayBundle, Tile,
 };
 pub use language::Language;
 pub use lexicon::WordValidator;
-pub use ruleset::{RULESET_SCHEMA_VERSION, Ruleset, RulesetId};
+pub use model::{
+    Bag, BoardDefinition, BoardSquare, Coordinate, PhysicalTile, Player, Premium, Rack, Score,
+    Seat, TileFace, TileId, TileToken, TileTokenError, Turn, Violation,
+};
+pub use ruleset::{
+    GameRules, RULESET_SCHEMA_VERSION, Ruleset, RulesetDefinitionError, RulesetFixtureError,
+    RulesetId, RulesetIdentity, TileDefinition,
+};

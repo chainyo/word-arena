@@ -4,13 +4,14 @@ use std::{
     process::ExitCode,
 };
 
+use word_arena_engine::{Ruleset, RulesetId};
 use word_arena_lexicon::WordArenaPaths;
 use xtask::{
     ArtifactBuildSummary, InstallStatus, PackInstaller, PackRegistry, XtaskError, audit_repository,
     build_from_source, package_release, run_setup,
 };
 
-const USAGE: &str = "usage:\n  cargo xtask setup [--offline]\n  cargo xtask lexicon audit\n  cargo xtask lexicon list\n  cargo xtask lexicon inspect <pack-id>\n  cargo xtask lexicon verify [<pack-id>]\n  cargo xtask lexicon install <pack-id> [--offline]\n  cargo xtask lexicon remove <pack-id>\n  cargo xtask lexicon build --from-source [<pack-id>] --output <directory> [--release-materials] [--allow-registry-mismatch]\n  cargo xtask lexicon release-package --input <directory> --output <directory>";
+const USAGE: &str = "usage:\n  cargo xtask setup [--offline]\n  cargo xtask ruleset verify\n  cargo xtask lexicon audit\n  cargo xtask lexicon list\n  cargo xtask lexicon inspect <pack-id>\n  cargo xtask lexicon verify [<pack-id>]\n  cargo xtask lexicon install <pack-id> [--offline]\n  cargo xtask lexicon remove <pack-id>\n  cargo xtask lexicon build --from-source [<pack-id>] --output <directory> [--release-materials] [--allow-registry-mismatch]\n  cargo xtask lexicon release-package --input <directory> --output <directory>";
 
 fn main() -> ExitCode {
     match run() {
@@ -38,6 +39,7 @@ fn run() -> Result<(), XtaskError> {
         [command, offline] if command == "setup" && offline == "--offline" => {
             print_setup(run_setup(&installer, &workspace_root, true)?);
         }
+        [group, command] if group == "ruleset" && command == "verify" => verify_rulesets()?,
         [group, command] if group == "lexicon" && command == "list" => list_packs(&installer),
         [group, command] if group == "lexicon" && command == "audit" => {
             let summary = audit_repository(&workspace_root, installer.registry())?;
@@ -97,6 +99,26 @@ fn run() -> Result<(), XtaskError> {
             }
         }
         _ => return Err(XtaskError::Usage(USAGE.to_owned())),
+    }
+    Ok(())
+}
+
+fn verify_rulesets() -> Result<(), XtaskError> {
+    for id in [RulesetId::EnglishV1, RulesetId::FrenchV1] {
+        let ruleset = Ruleset::verify_builtin(id).map_err(|error| XtaskError::BuildContract {
+            message: error.to_string(),
+        })?;
+        ruleset
+            .validate()
+            .map_err(|error| XtaskError::BuildContract {
+                message: error.to_string(),
+            })?;
+        let identity = ruleset.identity();
+        println!("ruleset={}", ruleset.id.as_str());
+        println!("ruleset_sha256={}", identity.content_sha256);
+        println!("language={}", ruleset.language.code());
+        println!("lexicon={}", ruleset.lexicon.pack_id);
+        println!("tile_count={}", ruleset.game.total_tiles());
     }
     Ok(())
 }

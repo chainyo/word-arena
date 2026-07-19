@@ -99,11 +99,13 @@ workspace foundation, and pass every command documented in `AGENTS.md`.
 
 ## Phase 1: deterministic engine and rulesets
 
-- [ ] Define typed game, board, square, rack, bag, tile-token, seat, turn, move,
+- [x] Define typed game, board, square, rack, bag, tile-token, seat, turn, move,
   score, violation, and event models.
-- [ ] Implement a locale-aware normalization and tile-tokenization boundary.
-- [ ] Define a static ruleset schema and validation command.
-- [ ] Add initial English, French, German, and Spanish tile/board fixtures.
+- [x] Implement a locale-aware normalization and physical tile-tokenization
+  boundary for the available English and French rulesets.
+- [x] Define a static ruleset schema and validation command.
+- [x] Add initial English and French tile/board fixtures. German and Spanish
+  remain Phase 7 work alongside their separately reviewed lexicon packs.
 - [ ] Implement placement, connectivity, word construction, premiums, blanks,
   bingo bonuses, pass, exchange, resignation, and endgame scoring.
 - [x] Define the deterministic exact-membership lexicon boundary and immutable

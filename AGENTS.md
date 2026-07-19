@@ -29,6 +29,8 @@ repeated correction should apply to future work.
   crates extracted from it later.
 - `lexicons/`: source pins, exact third-party notices, and lexicon pack
   contracts. Never commit downloaded archives, generated packs, or word data.
+- `rulesets/`: immutable English/French physical board, premium, tile, scoring,
+  and exact lexicon inputs. A changed fixture requires a new ruleset identity.
 - `web/`: Vite/React frontend. Shared UI primitives live in
   `web/src/components/ui`; game-specific compositions belong under
   `web/src/components/game` when introduced.
@@ -45,6 +47,7 @@ Backend:
 ```bash
 cargo xtask setup
 cargo xtask setup --offline
+cargo xtask ruleset verify
 cargo xtask lexicon audit
 cargo xtask lexicon list
 cargo xtask lexicon verify
