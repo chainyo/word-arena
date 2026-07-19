@@ -36,6 +36,8 @@ The repository foundation is in place:
   and administrator query APIs over injected persistence/runtime boundaries
 - Embedded forward-only SQLx 0.9 migrations for the constrained local SQLite
   game, credential, tournament, match, agent-run, idempotency, and audit schema
+- Transactional SQLx game storage with optimistic concurrency, ordered
+  public/private events, authoritative snapshots, and restart-safe replay
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
@@ -124,6 +126,8 @@ Physical English/French rules and their deterministic identities are documented
 in [`docs/RULESETS.md`](docs/RULESETS.md).
 The application command/query boundary is documented in
 [`docs/APPLICATION.md`](docs/APPLICATION.md).
+The transactional SQLite repository contract is documented in
+[`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
 
 ## License
 

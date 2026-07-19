@@ -22,9 +22,10 @@ pub mod test_support;
 pub use error::GameError;
 pub use game::{
     AdministratorProjection, BOARD_SIZE, BoardTile, EventVisibility, FormedWord, Game, GameEvent,
-    GameEventKind, GamePhase, GameResult, GameSnapshot, HumanSpectatorProjection, Move, Placement,
-    PrivateGameEvent, PublicGameState, PublicProjection, ReplayBundle, SeatProjection,
-    TerminalReason, Tile,
+    GameEventKind, GamePhase, GameResult, GameSnapshot, HumanSpectatorProjection, Move,
+    PROJECTION_SCHEMA_VERSION, Placement, PrivateGameEvent, PublicGameState, PublicProjection,
+    REPLAY_SCHEMA_VERSION, ReplayBundle, SNAPSHOT_SCHEMA_VERSION, SeatProjection, TerminalReason,
+    Tile,
 };
 pub use language::Language;
 pub use lexicon::WordValidator;

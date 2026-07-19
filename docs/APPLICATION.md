@@ -14,10 +14,11 @@ engine `Move`.
 
 The service resolves the exact ruleset-bound lexicon, obtains a private seed,
 and delegates every game transition to `word-arena-engine`. A successful action
-replaces the repository checkpoint using its expected version. Idempotency
-outcome persistence and transactional event append are deliberately assigned to
-APP-007 and APP-003 respectively; the required command identity is already part
-of every API.
+replaces the repository checkpoint using its expected version and a single
+application-clock timestamp. The SQLite adapter appends the resulting public
+and private events and authoritative snapshot in one transaction. Idempotency
+outcome persistence remains assigned to APP-007; the required command identity
+is already part of every API.
 
 ## Authority-bound queries
 

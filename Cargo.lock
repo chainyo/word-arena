@@ -2018,10 +2018,14 @@ dependencies = [
 name = "word-arena-persistence"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "sqlx",
  "tempfile",
  "thiserror",
  "tokio",
+ "word-arena-application",
+ "word-arena-engine",
+ "word-arena-lexicon",
 ]
 
 [[package]]

@@ -17,9 +17,12 @@ use crate::{
 pub const BOARD_SIZE: u8 = 15;
 const BOARD_SQUARES: usize = BOARD_SIZE as usize * BOARD_SIZE as usize;
 const CENTER: Coordinate = Coordinate { row: 7, column: 7 };
-const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
-const REPLAY_SCHEMA_VERSION: u32 = 3;
-const PROJECTION_SCHEMA_VERSION: u32 = 1;
+/// Current authoritative snapshot schema.
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
+/// Current post-game replay schema.
+pub const REPLAY_SCHEMA_VERSION: u32 = 3;
+/// Current role projection schema.
+pub const PROJECTION_SCHEMA_VERSION: u32 = 1;
 
 /// A tile assignment supplied by a player.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

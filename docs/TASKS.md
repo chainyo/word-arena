@@ -61,12 +61,12 @@ all declared relationships reject corrupt rows, and SQLx queries compile in CI.
 
 ### APP-003: Persist events and snapshots atomically
 
-- [ ] Implement the SQLx game repository and lexicon/ruleset metadata adapters.
-- [ ] Append public/private events and replace the authoritative snapshot in one
+- [x] Implement the SQLx game repository and lexicon/ruleset metadata adapters.
+- [x] Append public/private events and replace the authoritative snapshot in one
   transaction guarded by the expected game version.
-- [ ] Distinguish not-found, conflict, incompatible schema/pack, corruption, and
+- [x] Distinguish not-found, conflict, incompatible schema/pack, corruption, and
   transient storage failures without leaking private payloads in diagnostics.
-- [ ] Prove transaction rollback, concurrent writer conflict, event sequence,
+- [x] Prove transaction rollback, concurrent writer conflict, event sequence,
   exact resume, and replay equivalence with integration tests.
 
 Verification: exactly one of two writes at the same expected version commits;

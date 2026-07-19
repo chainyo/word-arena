@@ -18,6 +18,12 @@ pub enum RepositoryError {
     /// Stored bytes or relationships are invalid.
     #[error("stored game is corrupt")]
     Corrupt,
+    /// Stored schema is valid but unsupported by this binary.
+    #[error("stored game schema is incompatible")]
+    IncompatibleSchema,
+    /// Stored exact lexicon identity is inconsistent or unavailable.
+    #[error("stored game lexicon pack is incompatible")]
+    IncompatiblePack,
     /// Adapter cannot currently complete the operation.
     #[error("game repository is unavailable")]
     Unavailable,

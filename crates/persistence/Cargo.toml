@@ -9,8 +9,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+word-arena-application = { path = "../application" }
+word-arena-engine = { path = "../engine" }
+word-arena-lexicon = { path = "../lexicon" }
 
 [dev-dependencies]
 tempfile.workspace = true

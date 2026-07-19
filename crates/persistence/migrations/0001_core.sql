@@ -29,7 +29,7 @@ CREATE TABLE lexicon_packs (
     format_version INTEGER NOT NULL CHECK (format_version > 0),
     normalization_version INTEGER NOT NULL CHECK (normalization_version > 0),
     locale TEXT NOT NULL CHECK (length(locale) BETWEEN 2 AND 35),
-    manifest_json BLOB NOT NULL CHECK (length(manifest_json) > 0),
+    identity_json BLOB NOT NULL CHECK (length(identity_json) > 0),
     installed_at_ms INTEGER NOT NULL CHECK (installed_at_ms >= 0),
     PRIMARY KEY (pack_id, pack_version, content_sha256)
 ) STRICT;

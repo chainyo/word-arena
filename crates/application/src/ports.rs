@@ -15,6 +15,8 @@ pub struct StoredGame {
     pub game_id: GameId,
     /// Injected creation time.
     pub created_at: UnixMillis,
+    /// Injected time of the latest committed version.
+    pub updated_at: UnixMillis,
     /// Complete authoritative engine checkpoint.
     pub snapshot: GameSnapshot,
 }

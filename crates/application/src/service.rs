@@ -80,6 +80,7 @@ impl ApplicationService {
         let record = StoredGame {
             game_id: command.game_id.clone(),
             created_at,
+            updated_at: created_at,
             snapshot: game.snapshot(),
         };
         self.repository.insert(record).await?;
@@ -192,16 +193,18 @@ impl ApplicationService {
         validate_record(&record, &command.game_id)?;
         let mut game = self.resume(&record)?;
         let event = game.apply_move(authority.seat(), command.expected_version, command.action)?;
+        let committed_at = self.clock.now();
         let updated = StoredGame {
             game_id: record.game_id,
             created_at: record.created_at,
+            updated_at: committed_at,
             snapshot: game.snapshot(),
         };
         self.repository
             .replace(command.expected_version, updated)
             .await?;
         Ok(GameActionResult {
-            committed_at: self.clock.now(),
+            committed_at,
             event,
             game: game.seat_projection(authority.seat()),
         })

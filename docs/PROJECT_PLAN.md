@@ -128,7 +128,7 @@ without network access after setup.
 - [x] Define application commands and seat-aware queries around the engine.
 - [x] Add SQLite migrations through SQLx for games, seats, events, snapshots,
   rulesets, lexicon pack metadata, tournaments, matches, and agent runs.
-- [ ] Append events and update snapshots in one optimistic-concurrency
+- [x] Append events and update snapshots in one optimistic-concurrency
   transaction using expected game versions.
 - [ ] Wire the completed engine public, per-seat private, human-spectator, and
   administrator projections to separate application credential types. Never

@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::LazyLock};
+use std::{str::FromStr, sync::LazyLock, time::Duration};
 
 use sqlx::{
     SqlSafeStr, SqlitePool,
@@ -49,6 +49,7 @@ pub async fn connect_and_migrate(database_url: &str) -> Result<SqlitePool, Migra
     let options = SqliteConnectOptions::from_str(database_url)?
         .create_if_missing(true)
         .foreign_keys(true)
+        .busy_timeout(Duration::from_secs(5))
         .journal_mode(SqliteJournalMode::Wal);
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
@@ -74,7 +75,8 @@ pub(crate) async fn temporary_pool(path: &std::path::Path) -> Result<SqlitePool,
     let options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)
-        .foreign_keys(true);
+        .foreign_keys(true)
+        .busy_timeout(Duration::from_secs(5));
     SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
@@ -289,7 +291,7 @@ mod tests {
         sqlx::query(
             "INSERT INTO lexicon_packs (
                 pack_id, pack_version, content_sha256, format_version,
-                normalization_version, locale, manifest_json, installed_at_ms
+                normalization_version, locale, identity_json, installed_at_ms
              ) VALUES ('pack', '1.0.0', ?, 1, 1, 'en', x'7b7d', 1)",
         )
         .bind(LEXICON_SHA)
