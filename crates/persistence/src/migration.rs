@@ -66,6 +66,13 @@ pub static MIGRATOR: LazyLock<Migrator> = LazyLock::new(|| {
             include_str!("../migrations/0008_tournament_schedules.sql").into_sql_str(),
             false,
         ),
+        Migration::new(
+            9,
+            "durable jobs".into(),
+            MigrationType::Simple,
+            include_str!("../migrations/0009_jobs.sql").into_sql_str(),
+            false,
+        ),
     ])
 });
 
@@ -151,14 +158,14 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
         let schema_version = sqlx::query_scalar::<_, String>(
             "SELECT value FROM schema_metadata WHERE key = 'application_schema_version'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(schema_version, "8");
+        assert_eq!(schema_version, "9");
 
         let tables = sqlx::query_scalar::<_, String>(
             "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
@@ -181,6 +188,8 @@ mod tests {
             "games",
             "idempotency_records",
             "invalid_attempt_counters",
+            "job_attempts",
+            "jobs",
             "lexicon_packs",
             "matches",
             "private_events",

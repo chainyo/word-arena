@@ -69,6 +69,12 @@ events. Insert is one transaction with ruleset/lexicon foreign keys. Load
 regenerates the deterministic schedule and rejects JSON, header, or normalized
 row drift; lifecycle changes use sequence-based optimistic concurrency.
 
+Migration 9 adds durable jobs and attempt history. Atomic claim-and-return
+orders eligible work by priority and age, increments a lease fence, and records
+each attempt. Injected-time renewal/completion rejects expired or stale owners;
+expired attempts become reclaimable exactly at expiry. Deduplication and
+idempotent completion are durable across process and database restart.
+
 Run them with:
 
 ```bash

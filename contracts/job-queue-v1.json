@@ -1,0 +1,34 @@
+{
+  "kind": "word_arena_durable_job_contract",
+  "schema_version": 1,
+  "states": [
+    "queued",
+    "leased",
+    "succeeded",
+    "permanent_failure",
+    "exhausted",
+    "cancelled"
+  ],
+  "claim_order": [
+    "priority_desc",
+    "available_at_asc",
+    "created_at_asc",
+    "job_id_asc"
+  ],
+  "deduplication_identity": ["kind", "deduplication_key"],
+  "lease_fence": ["job_id", "attempt", "lease_generation", "worker_id"],
+  "expiry_rule": "lease_expires_at_ms <= injected_now_ms",
+  "retry_policy": "min(initial_backoff_ms * 2^(attempt-1), max_backoff_ms)",
+  "handler_outcomes": ["succeeded", "retryable", "permanent", "cancelled"],
+  "repository_outcomes": [
+    "queued",
+    "succeeded",
+    "permanent_failure",
+    "exhausted",
+    "cancelled"
+  ],
+  "payload_max_bytes": 1048576,
+  "max_attempts": 100,
+  "max_lease_ms": 86400000,
+  "max_backoff_ms": 604800000
+}

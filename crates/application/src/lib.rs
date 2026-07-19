@@ -8,6 +8,7 @@ mod authority;
 mod capability;
 mod command;
 mod error;
+mod job;
 mod operations;
 mod ports;
 mod service;
@@ -35,6 +36,12 @@ pub use command::{
     TimeoutCommand, UnixMillis,
 };
 pub use error::{ApplicationError, RepositoryError};
+pub use job::{
+    CancellationResult, ClaimJobs, CompletionResult, EnqueueResult, JOB_MAX_ATTEMPTS,
+    JOB_MAX_BACKOFF_MS, JOB_MAX_LEASE_MS, JOB_PAYLOAD_MAX_BYTES, JOB_SCHEMA_VERSION, JobError,
+    JobHandler, JobHandlerOutcome, JobLease, JobRecord, JobRepository, JobRepositoryError,
+    JobStatus, JobWorker, NewJob, RenewalResult, WorkerStep, retry_backoff_ms,
+};
 pub use operations::{
     ACTION_OUTCOME_SCHEMA_VERSION, ActionCommit, ActionOutcome, ActionRejection,
     CreationIdempotencyLookup, CreationIdempotencyRecord, IDEMPOTENCY_DIGEST_VERSION,

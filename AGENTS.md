@@ -127,6 +127,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Generate tournament schedules only from versioned `TournamentSpec` inputs.
   Preserve deterministic ordering, exact seed commitments, seat/profile
   balance, and normalized SQL rows; never let workers rewrite a schedule.
+- Run background work through the durable `JobRepository` contract. Pass time
+  explicitly, fence writes by attempt/generation/owner, and classify every
+  handler result as success, retryable, permanent, or cancelled.
 - Keep public and seat-private events distinguishable from their creation.
 - Never commit proprietary word lists. Every lexicon pack needs source,
   version, locale, license, normalization, and checksum metadata.

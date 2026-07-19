@@ -59,6 +59,9 @@ The repository foundation is in place:
 - Deterministic round-robin, paired seat-swap, Swiss, and configurable series
   schedules with versioned identities, exact game inputs, fair profile
   exposure, and restart-safe SQLx persistence ([tournaments](docs/TOURNAMENTS.md))
+- A durable SQLite/SQLx priority job loop with atomic claims, fenced leases,
+  exact crash recovery, idempotent outcomes, bounded retry, and cancellation
+  ([job contract](docs/JOBS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,

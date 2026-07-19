@@ -405,13 +405,13 @@ paired formats give each entrant equal seat/language exposure where possible.
 
 ### TOUR-002: Build the SQLx job claim/lease loop
 
-- [ ] Add durable jobs with kind, payload schema, priority, availability,
+- [x] Add durable jobs with kind, payload schema, priority, availability,
   attempt, owner, lease expiry, cancellation, and deduplication identity.
-- [ ] Claim jobs atomically in SQLite without a network queue, renew leases, and
+- [x] Claim jobs atomically in SQLite without a network queue, renew leases, and
   recover abandoned jobs after injected-clock expiry.
-- [ ] Make handlers idempotent and separate retryable, permanent, cancelled,
+- [x] Make handlers idempotent and separate retryable, permanent, cancelled,
   and exhausted outcomes with bounded backoff.
-- [ ] Add concurrent worker, crash, lease race, renewal, duplicate enqueue,
+- [x] Add concurrent worker, crash, lease race, renewal, duplicate enqueue,
   fairness, and database restart integration tests.
 
 Verification: multiple workers never execute one live lease concurrently and a

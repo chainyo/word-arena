@@ -131,3 +131,15 @@ progress, and normalized-row tamper detection:
 cargo test -p word-arena-application --all-features --test tournament
 cargo test -p word-arena-persistence --all-features --test tournaments
 ```
+
+## Durable job claims and leases
+
+The job suites validate canonical bounded payloads, deterministic backoff,
+deduplication, fairness, concurrent atomic claims, exact expiry/reclamation,
+renewal, fencing, cancellation, all terminal outcomes, handler idempotency, and
+database restart:
+
+```bash
+cargo test -p word-arena-application --all-features --test job
+cargo test -p word-arena-persistence --all-features --test jobs
+```

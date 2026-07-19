@@ -190,7 +190,7 @@ policy without accessing its opponent's workspace or credentials.
 ## Phase 6: tournaments and statistics
 
 - [x] Add round-robin, paired seat-swap, Swiss, and configurable series formats.
-- [ ] Build a SQLite-backed SQLx job claim/lease loop before adding a queue.
+- [x] Build a SQLite-backed SQLx job claim/lease loop before adding a queue.
 - [ ] Add concurrency and model-provider-rate controls, cancellation, retry, and
   worker recovery.
 - [ ] Compute per-language and per-ruleset Glicko-2 ratings.
