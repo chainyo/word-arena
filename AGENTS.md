@@ -124,6 +124,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   point.
 - Version and hash rulesets, lexicons, RNG algorithms, public schemas, and agent
   manifests. A recorded game must identify every input needed for replay.
+- Generate tournament schedules only from versioned `TournamentSpec` inputs.
+  Preserve deterministic ordering, exact seed commitments, seat/profile
+  balance, and normalized SQL rows; never let workers rewrite a schedule.
 - Keep public and seat-private events distinguishable from their creation.
 - Never commit proprietary word lists. Every lexicon pack needs source,
   version, locale, license, normalization, and checksum metadata.

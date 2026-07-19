@@ -23,6 +23,7 @@ word-arena-engine = { path = "../engine" }
 word-arena-lexicon = { path = "../lexicon" }
 
 [dev-dependencies]
+proptest.workspace = true
 tokio.workspace = true
 
 [lints]

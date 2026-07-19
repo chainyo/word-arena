@@ -63,6 +63,12 @@ game, run, seat, and manifest identity. The typed archive carries explicit
 retention; expiry transactionally removes detailed and budget telemetry. Public
 reads return the content-free analytics projection, never the private JSON.
 
+Migration 8 stores the immutable V1 tournament spec and schedule plus normalized
+series, matches, seat assignments, byes, Swiss progress, and ordered lifecycle
+events. Insert is one transaction with ruleset/lexicon foreign keys. Load
+regenerates the deterministic schedule and rejects JSON, header, or normalized
+row drift; lifecycle changes use sequence-based optimistic concurrency.
+
 Run them with:
 
 ```bash

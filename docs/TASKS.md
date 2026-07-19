@@ -391,13 +391,13 @@ telemetry, while all visible reproducibility and performance fields remain.
 
 ### TOUR-001: Add deterministic tournament formats
 
-- [ ] Model versioned round-robin, paired seat-swap, Swiss, and configurable
+- [x] Model versioned round-robin, paired seat-swap, Swiss, and configurable
   series formats with explicit entrants, languages, rulesets, seeds, and rounds.
-- [ ] Generate schedules deterministically with stable tie-breaks, byes,
+- [x] Generate schedules deterministically with stable tie-breaks, byes,
   rematch/seat-balance policy, and immutable format identity.
-- [ ] Persist tournament, series, match, seat assignment, and lifecycle state
+- [x] Persist tournament, series, match, seat assignment, and lifecycle state
   through application repositories.
-- [ ] Add golden schedules and property tests for pair coverage, seat balance,
+- [x] Add golden schedules and property tests for pair coverage, seat balance,
   determinism, no duplicate simultaneous assignment, and Swiss progression.
 
 Verification: identical tournament inputs produce byte-identical schedules and

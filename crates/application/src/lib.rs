@@ -11,6 +11,7 @@ mod error;
 mod operations;
 mod ports;
 mod service;
+mod tournament;
 
 #[cfg(feature = "test-support")]
 pub mod test_support;
@@ -46,3 +47,11 @@ pub use ports::{
     LexiconResolver, SeedSource, StoredGame,
 };
 pub use service::{ApplicationRuntime, ApplicationService, CapabilityAdapters};
+pub use tournament::{
+    EntrantPairing, ScheduledMatch, ScheduledSeries, SeatBalance, SeriesSeatPolicy,
+    StoredTournament, SwissProgress, SwissRematchPolicy, SwissStanding,
+    TOURNAMENT_FORMAT_SCHEMA_VERSION, TOURNAMENT_LIFECYCLE_SCHEMA_VERSION,
+    TOURNAMENT_SCHEDULE_SCHEMA_VERSION, TournamentBye, TournamentEntrant, TournamentError,
+    TournamentFormat, TournamentFormatIdentity, TournamentGameProfile, TournamentLifecycleEvent,
+    TournamentLifecycleState, TournamentRepository, TournamentSchedule, TournamentSpec,
+};

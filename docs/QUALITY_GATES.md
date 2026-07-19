@@ -118,3 +118,16 @@ cargo test -p word-arena-persistence --all-features
 The SQLx suite additionally proves exact tournament-to-turn correlation,
 terminal-only writes, restart loading, column drift rejection, and transactional
 retention of detailed and budget telemetry.
+
+## Tournament schedule determinism
+
+The application suite locks a golden schedule and property-checks pair
+coverage, seat/profile fairness, rotating byes, deterministic bytes, concurrent
+assignment uniqueness, and progressive Swiss pairing. The SQLx suite covers
+atomic insertion, exact restart loading, lifecycle conflicts, rollback, Swiss
+progress, and normalized-row tamper detection:
+
+```bash
+cargo test -p word-arena-application --all-features --test tournament
+cargo test -p word-arena-persistence --all-features --test tournaments
+```

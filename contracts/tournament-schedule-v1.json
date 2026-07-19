@@ -1,0 +1,47 @@
+{
+  "kind": "word_arena_tournament_schedule_contract",
+  "format_schema_version": 1,
+  "schedule_schema_version": 1,
+  "lifecycle_schema_version": 1,
+  "formats": [
+    "round_robin",
+    "paired_seat_swap",
+    "swiss",
+    "series"
+  ],
+  "format_identity_inputs": [
+    "format_schema_version",
+    "format",
+    "ordered_game_profiles"
+  ],
+  "schedule_inputs": [
+    "tournament_id",
+    "entrants_and_seed_numbers",
+    "format_identity",
+    "game_seed_commitments",
+    "swiss_progress_when_applicable"
+  ],
+  "deterministic_order": [
+    "round_number",
+    "table_number",
+    "series_game_number"
+  ],
+  "swiss_tiebreak_order": [
+    "match_points_desc",
+    "spread_desc",
+    "wins_desc",
+    "seed_number_asc",
+    "entrant_id_asc"
+  ],
+  "static_profile_policy": "cyclic_pair_distance_with_cycle_rotation",
+  "paired_seat_policy": "exact_swap_within_each_two-game_pair",
+  "seed_policy": "ordered_sha256_commitments_consumed_exactly_once",
+  "lifecycle": [
+    "draft",
+    "scheduled",
+    "running",
+    "paused",
+    "finished",
+    "cancelled"
+  ]
+}

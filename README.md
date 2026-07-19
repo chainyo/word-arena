@@ -56,6 +56,9 @@ The repository foundation is in place:
 - Versioned, source-labelled private run telemetry with bounded redaction,
   explicit usage availability, SQLx retention, and a structurally content-free
   public analytics projection ([telemetry contract](docs/AGENT_TELEMETRY.md))
+- Deterministic round-robin, paired seat-swap, Swiss, and configurable series
+  schedules with versioned identities, exact game inputs, fair profile
+  exposure, and restart-safe SQLx persistence ([tournaments](docs/TOURNAMENTS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
