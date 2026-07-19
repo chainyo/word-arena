@@ -86,3 +86,20 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check web application
         run: bun run check
+      - name: Install Chromium for end-to-end tests
+        run: bunx playwright install --with-deps chromium
+      - name: Run desktop and mobile end-to-end tests
+        run: bun run test:e2e
+      - name: Reject generated lexicons and dirty test output
+        run: |
+          test -z "$(git ls-files 'lexicons/*.tar' 'lexicons/*.tar.gz' 'lexicons/*.zip' 'lexicons/**/keys.txt' 'lexicons/**/audit.jsonl')"
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Upload failed browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-browser-failure-${{ github.sha }}
+          path: web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

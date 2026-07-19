@@ -105,7 +105,9 @@ identities wrap. Reduced-motion mode removes smooth scrolling/long animations
 and disables replay auto-play while keeping previous/next stepping available.
 Biome accessibility rules plus Bun semantic-render tests verify landmarks,
 narration, touch/overflow CSS, theme resolution, connection messaging, and
-motion alternatives; WEB-005 adds axe and browser end-to-end coverage.
+motion alternatives. Axe plus desktop/mobile Playwright scenarios verify the
+real operator, player, spectator, reconnect, authentication, privacy, terminal,
+and replay flows against a deterministic V1 fixture referee.
 
 ## Replay and aggregate views
 
@@ -138,4 +140,6 @@ and reconnect decisions.
 ```bash
 scripts/web/verify-contract.sh
 bun run --cwd web check
+bun run --cwd web test:e2e
+bun run --cwd web check:full
 ```

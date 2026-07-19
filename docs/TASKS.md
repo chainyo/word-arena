@@ -274,13 +274,13 @@ flows remain usable at 320 CSS pixels, 200% zoom, and keyboard-only input.
 
 ### WEB-005: Add frontend unit, accessibility, and end-to-end gates
 
-- [ ] Add a Bun-compatible component/unit test runner, DOM testing utilities,
+- [x] Add a Bun-compatible component/unit test runner, DOM testing utilities,
   axe checks, and Playwright end-to-end tests without introducing ESLint.
-- [ ] Provide deterministic server fixtures for player, spectator, reconnect,
+- [x] Provide deterministic server fixtures for player, spectator, reconnect,
   replay, terminal game, auth failure, and privacy scenarios.
-- [ ] Run critical desktop/mobile flows in CI with screenshots/traces retained
+- [x] Run critical desktop/mobile flows in CI with screenshots/traces retained
   only on failure and no downloaded/generated lexicon data committed.
-- [ ] Document focused and full web verification commands in `AGENTS.md` and
+- [x] Document focused and full web verification commands in `AGENTS.md` and
   quality-gate documentation.
 
 Verification: Biome, TypeScript, production build, unit/component,

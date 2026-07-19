@@ -205,7 +205,7 @@ describe("credentials, cache keys, and authentication", () => {
           message: "a valid scoped capability is required",
         }),
         { status: 401 }
-      )) as typeof fetch
+      )) as unknown as typeof fetch
     expect(fetchGameView(session, "invalid")).rejects.toBeInstanceOf(
       GameApiError
     )

@@ -1,4 +1,37 @@
-# Lexicon V1 quality gates
+# Project quality gates
+
+## Web application
+
+The web job performs a frozen Bun install, runs Biome, TypeScript checks for
+application and test code, the unit/component suite, and a production build. It
+then installs Chromium and runs deterministic Playwright flows in desktop and
+mobile projects. Axe scans the operator, player, spectator, authentication,
+and replay states. Browser screenshots and traces use `only-on-failure` and
+`retain-on-failure`; CI uploads the failure directory only when the job fails.
+
+`web/fixtures/server.ts` is a self-contained Bun referee for browser tests. It
+serves explicit player, spectator, reconnect, replay, terminal, authentication
+failure, and privacy scenarios through the V1 REST/WebSocket shapes. It does
+not read the database, contact a dictionary provider, or download/build a
+lexicon. The CI job finishes by rejecting tracked generated lexicon data and
+any dirty output.
+
+Focused commands from the repository root:
+
+```bash
+bun run --cwd web test:unit
+bun run --cwd web test:e2e -- --project=desktop-chromium --grep "player stages"
+```
+
+Install Chromium once, then run the complete clean-install-equivalent web gate:
+
+```bash
+bun install --cwd web --frozen-lockfile
+bun run --cwd web playwright install chromium
+bun run --cwd web check:full
+```
+
+## Lexicon V1
 
 The normal Rust job still runs formatting, strict Clippy, the complete workspace
 test suite, and an all-features build. The dedicated **Offline lexicon and replay

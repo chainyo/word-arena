@@ -684,9 +684,9 @@ function WorkspaceHeader({ subtitle }: { subtitle: string }) {
               WA
             </span>
             <div className="min-w-0">
-              <p className="truncate font-heading text-sm font-medium tracking-tight">
+              <h1 className="truncate font-heading text-sm font-medium tracking-tight">
                 Word Arena
-              </p>
+              </h1>
               <p className="truncate text-[11px] text-muted-foreground">
                 {subtitle}
               </p>

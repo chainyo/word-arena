@@ -164,7 +164,7 @@ using internal APIs.
   and agent-detail views.
 - [x] Add reconnect behavior, keyboard controls, accessible board narration,
   reduced motion, light/dark themes, and mobile layouts.
-- [ ] Add component, interaction, accessibility, and end-to-end tests.
+- [x] Add component, interaction, accessibility, and end-to-end tests.
 
 Exit criterion: a user can create, watch, inspect, and replay the vertical-slice
 game without using the command line.

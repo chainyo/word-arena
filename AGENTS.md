@@ -78,9 +78,19 @@ bun install --cwd web
 bun run --cwd web dev
 bun run --cwd web check
 bun run --cwd web test
+bun run --cwd web test:unit
+bun run --cwd web test:e2e
+bun run --cwd web check:full
 bun run --cwd web format
 bun run --cwd web fix
 ```
+
+Install the browser used by the end-to-end gate once with
+`bun run --cwd web playwright install chromium`. Use `bun run --cwd web
+test:e2e -- --project=desktop-chromium --grep <flow>` for a focused browser
+flow. The full web gate is `bun run --cwd web check:full`; it starts a
+deterministic fixture referee and runs the same desktop/mobile scenarios as CI.
+The fixtures require neither the Rust server nor downloaded lexicon packs.
 
 Add a shadcn component from `web/` with:
 
@@ -153,7 +163,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Keep server state in a typed API layer rather than duplicating it across
   components. Treat WebSocket events as invalidation/input to authoritative
   snapshots, not as an alternate source of truth.
-- Run Biome, TypeScript, and the production build after UI changes.
+- Run the focused unit/component tests while iterating, then Biome, TypeScript,
+  the production build, axe, and desktop/mobile Playwright flows before
+  completing UI changes.
 
 ## MCP and agent conventions
 
