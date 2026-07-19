@@ -35,14 +35,46 @@ use word_arena_cli::{
     args::ConfigOverrides, bridge::run_bridge, client::RemoteClient, config::ResolvedConfig,
     error::CliError,
 };
-use word_arena_engine::{Game, GameMode, Language, Ruleset, Seat, WordValidator};
+use word_arena_engine::{
+    Game, GameMode, Language, PROJECTION_SCHEMA_VERSION, Ruleset, Seat, WordValidator,
+};
 use word_arena_lexicon::{
     BuilderDescriptor, FileDescriptor, NormalizedKey, PackIdentity, PackManifest, PolicyDescriptor,
     REQUIRED_PAYLOAD_FILES, SourceDescriptor,
 };
-use word_arena_server::{GameInvalidation, MCP_PROTOCOL_VERSION, ServerState, api_app};
+use word_arena_server::{
+    API_SCHEMA_VERSION, BROWSER_WEBSOCKET_PROTOCOL, GAME_EVENTS_PATH, GameInvalidation,
+    MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH, ServerState,
+    api_app,
+};
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
+
+#[test]
+fn web_api_contract_matches_authoritative_server_constants() {
+    let contract: Value =
+        serde_json::from_str(include_str!("../../../contracts/web-api-v1.json")).unwrap();
+    assert_eq!(contract["api_schema_version"], API_SCHEMA_VERSION);
+    assert_eq!(
+        contract["projection_schema_version"],
+        PROJECTION_SCHEMA_VERSION
+    );
+    assert_eq!(
+        contract["browser_websocket_protocol"],
+        BROWSER_WEBSOCKET_PROTOCOL
+    );
+    assert_eq!(contract["projection_paths"]["public"], PUBLIC_GAME_PATH);
+    assert_eq!(contract["projection_paths"]["seat"], SEAT_GAME_PATH);
+    assert_eq!(
+        contract["projection_paths"]["spectator"],
+        SPECTATOR_GAME_PATH
+    );
+    assert_eq!(contract["events_path"], GAME_EVENTS_PATH);
+    assert_eq!(
+        contract["invalidation_fields"],
+        json!(["schema_version", "game_id", "version"])
+    );
+}
 
 #[derive(Debug)]
 struct AcceptingLexicon(PackIdentity);
@@ -339,7 +371,7 @@ async fn websocket_reconnects_from_version_and_rest_converges() {
         axum::serve(listener, api_app(server_state)).await.unwrap();
     });
     let url = format!("ws://{address}/api/v1/games/{game_id}/events?after_version=0");
-    let mut websocket = connect_websocket(&url, &public_token).await;
+    let mut websocket = connect_browser_websocket(&url, &public_token).await;
 
     let app = api_app(Arc::clone(&fixture.state));
     let action = app
@@ -2106,6 +2138,23 @@ async fn connect_websocket(
         format!("Bearer {token}").parse().unwrap(),
     );
     connect_async(request).await.unwrap().0
+}
+
+async fn connect_browser_websocket(
+    url: &str,
+    token: &str,
+) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
+    let mut request = url.into_client_request().unwrap();
+    request.headers_mut().insert(
+        header::SEC_WEBSOCKET_PROTOCOL,
+        format!("word-arena-v1, {token}").parse().unwrap(),
+    );
+    let (websocket, response) = connect_async(request).await.unwrap();
+    assert_eq!(
+        response.headers().get(header::SEC_WEBSOCKET_PROTOCOL),
+        Some(&"word-arena-v1".parse().unwrap())
+    );
+    websocket
 }
 
 async fn receive_marker(

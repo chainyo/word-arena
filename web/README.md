@@ -12,12 +12,25 @@ manager.
 bun install
 bun run dev
 bun run check
+bun run test
 bun run format
 bun run fix
 ```
 
 Biome owns frontend formatting, linting, and import organization. Use `format`
 for formatting-only changes and `fix` to apply all safe Biome fixes.
+
+## Live API policy
+
+The default route is the active-game connection workspace. After connection,
+routes have the shape `/games/:gameId/:authority`, where authority is `public`,
+`seat`, or `spectator`. Capabilities are held only in memory: never put them in
+URLs, Web Storage, IndexedDB, service-worker caches, logs, or query keys. A page
+reload intentionally requires re-entry.
+
+TanStack Query caches decoded authoritative snapshots. WebSocket messages are
+public invalidation markers only; they trigger a fresh authority-specific REST
+snapshot instead of mutating game state locally. See [`docs/WEB.md`](../docs/WEB.md).
 
 ## Adding components
 

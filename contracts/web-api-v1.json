@@ -1,0 +1,12 @@
+{
+  "api_schema_version": 1,
+  "projection_schema_version": 1,
+  "browser_websocket_protocol": "word-arena-v1",
+  "projection_paths": {
+    "public": "/api/v1/games/{game_id}/public",
+    "seat": "/api/v1/games/{game_id}/seat",
+    "spectator": "/api/v1/games/{game_id}/spectator"
+  },
+  "events_path": "/api/v1/games/{game_id}/events",
+  "invalidation_fields": ["schema_version", "game_id", "version"]
+}

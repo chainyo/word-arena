@@ -33,6 +33,16 @@ use crate::{RuntimeLexicons, mcp::McpGateway};
 
 /// Stable V1 REST and WebSocket schema version.
 pub const API_SCHEMA_VERSION: u16 = 1;
+/// Browser-safe WebSocket subprotocol used alongside an opaque capability.
+pub const BROWSER_WEBSOCKET_PROTOCOL: &str = "word-arena-v1";
+/// V1 public projection route contract.
+pub const PUBLIC_GAME_PATH: &str = "/api/v1/games/{game_id}/public";
+/// V1 seat-private projection route contract.
+pub const SEAT_GAME_PATH: &str = "/api/v1/games/{game_id}/seat";
+/// V1 trusted-human spectator projection route contract.
+pub const SPECTATOR_GAME_PATH: &str = "/api/v1/games/{game_id}/spectator";
+/// V1 public-only invalidation stream route contract.
+pub const GAME_EVENTS_PATH: &str = "/api/v1/games/{game_id}/events";
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_IN_FLIGHT_REQUESTS: usize = 128;
 const MAX_WEBSOCKETS: usize = 64;
@@ -222,16 +232,16 @@ pub fn application_app(lexicons: Arc<RuntimeLexicons>, state: Arc<ServerState>) 
 pub fn api_app(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/api/v1/games", post(create_game))
-        .route("/api/v1/games/{game_id}/public", get(public_game))
-        .route("/api/v1/games/{game_id}/seat", get(seat_game))
-        .route("/api/v1/games/{game_id}/spectator", get(spectator_game))
+        .route(PUBLIC_GAME_PATH, get(public_game))
+        .route(SEAT_GAME_PATH, get(seat_game))
+        .route(SPECTATOR_GAME_PATH, get(spectator_game))
         .route(
             "/api/v1/games/{game_id}/administrator",
             get(administrator_game),
         )
         .route("/api/v1/games/{game_id}/rules", get(game_rules))
         .route("/api/v1/games/{game_id}/actions", post(game_action))
-        .route("/api/v1/games/{game_id}/events", get(game_events))
+        .route(GAME_EVENTS_PATH, get(game_events))
         .route("/api/v1/games/{game_id}/mcp", any(mcp_endpoint))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
@@ -518,8 +528,12 @@ async fn game_events(
 ) -> Result<Response, ApiError> {
     let Query(query) = query.map_err(|_| invalid_payload())?;
     let game_id = parse_game_id(game_id)?;
-    let authenticated =
-        authenticate(&state, &headers, &game_id, CapabilityScope::ObservePublic).await?;
+    let (token, browser_subprotocol) = websocket_bearer_token(&headers)?;
+    let authenticated = state
+        .runtime
+        .authenticate_capability(&token, &game_id, CapabilityScope::ObservePublic)
+        .await
+        .map_err(|error| map_capability_error(&error))?;
     let public_credential = authenticated.public_viewer();
     let receiver = state.notifications.subscribe(&game_id);
     let current = state
@@ -549,6 +563,11 @@ async fn game_events(
                 "too many websocket connections",
             )
         })?;
+    let websocket = if browser_subprotocol {
+        websocket.protocols([BROWSER_WEBSOCKET_PROTOCOL])
+    } else {
+        websocket
+    };
     Ok(websocket
         .max_message_size(8 * 1024)
         .max_frame_size(8 * 1024)
@@ -665,6 +684,26 @@ fn bearer_token(headers: &HeaderMap) -> Result<&str, ApiError> {
         .strip_prefix("Bearer ")
         .filter(|token| !token.is_empty() && token.len() <= 256)
         .ok_or_else(ApiError::unauthorized)
+}
+
+fn websocket_bearer_token(headers: &HeaderMap) -> Result<(String, bool), ApiError> {
+    if let Ok(token) = bearer_token(headers) {
+        return Ok((token.to_owned(), false));
+    }
+    let protocols = headers
+        .get(header::SEC_WEBSOCKET_PROTOCOL)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(ApiError::unauthorized)?;
+    let mut values = protocols.split(',').map(str::trim);
+    if !values.any(|value| value == BROWSER_WEBSOCKET_PROTOCOL) {
+        return Err(ApiError::unauthorized());
+    }
+    let token = protocols
+        .split(',')
+        .map(str::trim)
+        .find(|value| value.starts_with("wa_cap_v1.") && value.len() <= 256)
+        .ok_or_else(ApiError::unauthorized)?;
+    Ok((token.to_owned(), true))
 }
 
 fn parse_game_id(value: String) -> Result<GameId, ApiError> {

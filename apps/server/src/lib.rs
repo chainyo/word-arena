@@ -21,8 +21,9 @@ pub use mcp::MCP_PROTOCOL_VERSION;
 
 pub use runtime::{ProductionRuntimeError, build_production_state};
 pub use transport::{
-    API_SCHEMA_VERSION, ApiEnvelope, ApiErrorBody, CreateGameRequest, CreateGameResponse,
-    GameActionRequest, GameInvalidation, ServerState, api_app, application_app, serve_application,
+    API_SCHEMA_VERSION, ApiEnvelope, ApiErrorBody, BROWSER_WEBSOCKET_PROTOCOL, CreateGameRequest,
+    CreateGameResponse, GAME_EVENTS_PATH, GameActionRequest, GameInvalidation, PUBLIC_GAME_PATH,
+    SEAT_GAME_PATH, SPECTATOR_GAME_PATH, ServerState, api_app, application_app, serve_application,
 };
 
 /// Fully verified immutable indexes retained for the server lifetime.

@@ -157,7 +157,7 @@ using internal APIs.
 
 ## Phase 4: live shadcn web interface
 
-- [ ] Establish typed API clients, query caching, routing, and error boundaries.
+- [x] Establish typed API clients, query caching, routing, and error boundaries.
 - [ ] Build responsive board, square, tile, rack, score, clock, and move-history
   components using shadcn primitives and semantic design tokens.
 - [ ] Add tournament lobby, live spectator, private player, replay, standings,

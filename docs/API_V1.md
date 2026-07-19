@@ -82,6 +82,11 @@ Connect with the bearer header to:
 GET /api/v1/games/{game_id}/events?after_version=12
 ```
 
+Browser clients, which cannot set an `Authorization` header on `WebSocket`,
+send the protocols `word-arena-v1` and the opaque capability. The server
+selects only `word-arena-v1`; the capability must never be placed in the URL or
+persisted in browser storage.
+
 Every text message has exactly this public shape:
 
 ```json

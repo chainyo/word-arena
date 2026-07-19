@@ -26,6 +26,9 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Verify MCP client and schema compatibility
         run: scripts/mcp/verify-contract.sh
+
+      - name: Verify web API contract compatibility
+        run: scripts/web/verify-contract.sh
       - name: Run tests
         run: cargo test --workspace --all-features
       - name: Build workspace

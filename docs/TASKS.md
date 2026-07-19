@@ -218,13 +218,13 @@ language games exclusively through published protocol surfaces.
 
 ### WEB-001: Establish the typed web application foundation
 
-- [ ] Add generated or hand-maintained typed REST/WebSocket clients with a
+- [x] Add generated or hand-maintained typed REST/WebSocket clients with a
   version drift check against server schemas.
-- [ ] Add routing, query caching, credential/session storage policy, global
+- [x] Add routing, query caching, credential/session storage policy, global
   error boundaries, and reconnect-aware invalidation handling.
-- [ ] Keep authoritative server snapshots as the sole game state and avoid
+- [x] Keep authoritative server snapshots as the sole game state and avoid
   leaking spectator/seat credentials across routes or browser storage.
-- [ ] Add unit tests for decoding, auth failures, cache keys, invalidation,
+- [x] Add unit tests for decoding, auth failures, cache keys, invalidation,
   reconnect, and error/recovery states.
 
 Verification: the local default route opens the active game workspace, fetches

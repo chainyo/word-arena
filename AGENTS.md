@@ -68,6 +68,7 @@ cargo test -p word-arena-persistence --all-features
 cargo run -p word-arena-server
 cargo run -p word-arena-cli -- --help
 scripts/mcp/verify-contract.sh
+scripts/web/verify-contract.sh
 ```
 
 Frontend:
@@ -76,6 +77,7 @@ Frontend:
 bun install --cwd web
 bun run --cwd web dev
 bun run --cwd web check
+bun run --cwd web test
 bun run --cwd web format
 bun run --cwd web fix
 ```

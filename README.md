@@ -52,12 +52,14 @@ The repository foundation is in place:
 - Credential-free direct HTTP and stdio MCP client scenarios for both languages,
   with pinned schemas and replay checks ([client validation](docs/MCP_CLIENTS.md))
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
-- A local-first game workspace preview centered on the board and seat state
+- A typed, routed local game workspace with memory-only capabilities, strict
+  public/seat/spectator decoders, query caching, and reconnecting WebSocket
+  invalidations ([web foundation](docs/WEB.md))
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Agent drivers and tournament orchestration are planned next. The current
+Responsive game controls and spectator/replay views are planned next. The current
 lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is

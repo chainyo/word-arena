@@ -6,7 +6,7 @@ type Premium = "double-letter" | "double-word" | "triple-letter" | "triple-word"
 
 export type BoardTile = {
   letter: string
-  value: number
+  value?: number
   recent?: boolean
 }
 
@@ -147,7 +147,7 @@ export function GameBoard({ tiles }: GameBoardProps) {
           const tile = tiles[key]
           const name = squareName(row, column)
           const description = tile
-            ? `${name}: ${tile.letter}, ${tile.value} points${tile.recent ? ", part of the latest move" : ""}`
+            ? `${name}: ${tile.letter}${tile.value === undefined ? "" : `, ${tile.value} points`}${tile.recent ? ", part of the latest move" : ""}`
             : premium
               ? `${name}: ${premiumNames[premium]} score`
               : `${name}: empty`
@@ -178,9 +178,11 @@ export function GameBoard({ tiles }: GameBoardProps) {
                   )}
                 >
                   {tile.letter}
-                  <span className="absolute right-[9%] bottom-[4%] text-[clamp(0.28rem,0.5vw,0.45rem)] leading-none font-medium">
-                    {tile.value}
-                  </span>
+                  {tile.value === undefined ? null : (
+                    <span className="absolute right-[9%] bottom-[4%] text-[clamp(0.28rem,0.5vw,0.45rem)] leading-none font-medium">
+                      {tile.value}
+                    </span>
+                  )}
                 </span>
               ) : null}
             </li>
