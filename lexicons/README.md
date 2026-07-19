@@ -69,6 +69,9 @@ Spanish packs are documented in
 imports remain gated by the committed native-speaker review requirements; no
 German or Spanish word data is currently imported or released.
 
+The source-independent deterministic importer and its remaining release work
+are described in [`HUNSPELL_BUILD.md`](HUNSPELL_BUILD.md).
+
 ## Release compliance rule
 
 A lexicon pack must not be released until an automated check confirms that its

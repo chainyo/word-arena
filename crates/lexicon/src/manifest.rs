@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     CURRENT_FORMAT_VERSION, ENGLISH_NORMALIZATION_PROFILE, FRENCH_NORMALIZATION_PROFILE,
-    MANIFEST_FILE, NORMALIZATION_ALGORITHM, NORMALIZATION_VERSION, PackError,
-    REQUIRED_PAYLOAD_FILES,
+    GERMAN_NORMALIZATION_PROFILE, MANIFEST_FILE, NORMALIZATION_ALGORITHM, NORMALIZATION_VERSION,
+    PackError, REQUIRED_PAYLOAD_FILES, SPANISH_NORMALIZATION_PROFILE,
 };
 
 /// Strict, versioned metadata stored in `manifest.toml` at each pack root.
@@ -255,7 +255,10 @@ fn validate_normalization(
 
     let supported = matches!(
         (locale, normalization.profile.as_str()),
-        ("en", ENGLISH_NORMALIZATION_PROFILE) | ("fr", FRENCH_NORMALIZATION_PROFILE)
+        ("en", ENGLISH_NORMALIZATION_PROFILE)
+            | ("fr", FRENCH_NORMALIZATION_PROFILE)
+            | ("de", GERMAN_NORMALIZATION_PROFILE)
+            | ("es", SPANISH_NORMALIZATION_PROFILE)
     );
     if !supported {
         return Err(PackError::UnsupportedNormalizationProfile {

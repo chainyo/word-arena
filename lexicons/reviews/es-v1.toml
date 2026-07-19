@@ -2,7 +2,7 @@ schema_version = 1
 language = "es"
 policy_id = "es-standard-filter"
 policy_version = 1
+source_id = "wooorm-dictionary-es-4.0.0"
 status = "pending"
 required_qualification = "native or professionally fluent Spanish speaker"
 gate = "No Spanish data may be imported or released until this record is replaced by an approved review with reviewer, date, rationale, and evidence URL."
-

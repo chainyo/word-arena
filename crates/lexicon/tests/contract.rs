@@ -6,8 +6,9 @@ use std::{
 use tempfile::TempDir;
 use word_arena_lexicon::{
     CacheDecision, CompatibilityContext, CompatibilityError, ENGLISH_NORMALIZATION_PROFILE,
-    FRENCH_NORMALIZATION_PROFILE, NormalizedKey, NormalizedKeyError, PackError, PackManifest,
-    ensure_exact_pack, normalize_key, plan_cache_install, validate_pack,
+    FRENCH_NORMALIZATION_PROFILE, GERMAN_NORMALIZATION_PROFILE, NormalizedKey, NormalizedKeyError,
+    PackError, PackManifest, SPANISH_NORMALIZATION_PROFILE, ensure_exact_pack, normalize_key,
+    plan_cache_install, validate_pack,
 };
 
 const GOLDEN_FILES: [&str; 7] = [
@@ -177,6 +178,24 @@ fn normalization_v1_produces_exact_utf8_board_keys() {
         "ETE"
     );
     assert_eq!(
+        normalize_key(GERMAN_NORMALIZATION_PROFILE, "Füße")
+            .expect("German folded key")
+            .as_ref(),
+        "FUSSE"
+    );
+    assert_eq!(
+        normalize_key(SPANISH_NORMALIZATION_PROFILE, "niñez")
+            .expect("Spanish folded key")
+            .as_ref(),
+        "NINEZ"
+    );
+    assert_eq!(
+        normalize_key(SPANISH_NORMALIZATION_PROFILE, "vergüenza")
+            .expect("Spanish diaeresis-folded key")
+            .as_ref(),
+        "VERGUENZA"
+    );
+    assert_eq!(
         NormalizedKey::from_utf8(b"BONJOUR".to_vec())
             .expect("valid UTF-8 key")
             .as_bytes(),
@@ -185,6 +204,29 @@ fn normalization_v1_produces_exact_utf8_board_keys() {
     assert!(matches!(
         NormalizedKey::from_utf8(vec![0xff]),
         Err(NormalizedKeyError::InvalidUtf8(_))
+    ));
+}
+
+#[test]
+fn manifests_bind_german_and_spanish_to_their_exact_profiles() {
+    let mut german = read_manifest(&fixture("en-v1"));
+    german.locale = "de".to_owned();
+    german.normalization.profile = GERMAN_NORMALIZATION_PROFILE.to_owned();
+    german
+        .validate_schema()
+        .expect("German profile must be understood by format V1");
+
+    let mut spanish = german.clone();
+    spanish.locale = "es".to_owned();
+    spanish.normalization.profile = SPANISH_NORMALIZATION_PROFILE.to_owned();
+    spanish
+        .validate_schema()
+        .expect("Spanish profile must be understood by format V1");
+
+    spanish.normalization.profile = GERMAN_NORMALIZATION_PROFILE.to_owned();
+    assert!(matches!(
+        spanish.validate_schema(),
+        Err(PackError::UnsupportedNormalizationProfile { locale, .. }) if locale == "es"
     ));
 }
 

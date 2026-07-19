@@ -256,4 +256,86 @@ pub enum BuilderError {
         /// Invariant details.
         message: String,
     },
+
+    /// A Hunspell affix or dictionary fixture could not be parsed completely.
+    #[error("invalid Hunspell source: {message}")]
+    HunspellParse {
+        /// Stable parser diagnostic without source contents.
+        message: String,
+    },
+
+    /// A deterministic Hunspell build violated its row-accounting contract.
+    #[error("Hunspell build accounting invariant failed: {message}")]
+    HunspellAccountingInvariant {
+        /// Failed invariant.
+        message: String,
+    },
+
+    /// A native-language review record cannot be read.
+    #[error("failed to read native-language review at {path}: {source}")]
+    NativeReviewRead {
+        /// Review path.
+        path: PathBuf,
+        /// Underlying I/O failure.
+        #[source]
+        source: io::Error,
+    },
+
+    /// A native-language review record is malformed or has unknown fields.
+    #[error("invalid native-language review at {path}: {source}")]
+    NativeReviewSyntax {
+        /// Review path.
+        path: PathBuf,
+        /// TOML decode failure.
+        #[source]
+        source: toml::de::Error,
+    },
+
+    /// Real source import was attempted without complete review approval.
+    #[error("{locale} source import remains gated by {path}: {reason}")]
+    NativeReviewRequired {
+        /// Gated locale.
+        locale: String,
+        /// Required review record.
+        path: PathBuf,
+        /// Missing or inconsistent approval evidence.
+        reason: String,
+    },
+
+    /// A Hunspell source archive has the wrong byte length.
+    #[error(
+        "Hunspell source archive size mismatch at {path}: expected {expected} bytes, found {actual} bytes"
+    )]
+    HunspellArchiveSizeMismatch {
+        /// Archive path.
+        path: PathBuf,
+        /// Policy value.
+        expected: u64,
+        /// Observed byte length.
+        actual: u64,
+    },
+
+    /// A Hunspell source archive has the wrong SHA-256.
+    #[error(
+        "Hunspell source archive checksum mismatch at {path}: expected {expected}, calculated {actual}"
+    )]
+    HunspellArchiveChecksumMismatch {
+        /// Archive path.
+        path: PathBuf,
+        /// Policy digest.
+        expected: String,
+        /// Calculated digest.
+        actual: String,
+    },
+
+    /// The pinned Hunspell archive member is missing or duplicated.
+    #[error("Hunspell source archive at {archive} has invalid member {member:?}: {reason}")]
+    HunspellArchiveMember {
+        /// Archive path.
+        archive: PathBuf,
+        /// Exact expected member path.
+        member: String,
+        /// Missing, duplicate, type, encoding, or read detail.
+        reason: String,
+    },
 }

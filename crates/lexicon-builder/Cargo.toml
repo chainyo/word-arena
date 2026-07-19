@@ -21,6 +21,7 @@ thiserror.workspace = true
 toml.workspace = true
 word-arena-lexicon = { path = "../lexicon" }
 zip.workspace = true
+zspell.workspace = true
 
 [lints]
 workspace = true

@@ -8,8 +8,11 @@ mod english;
 mod error;
 mod french;
 mod french_policy;
+mod hunspell;
+mod hunspell_policy;
 mod index;
 mod policy;
+mod review;
 mod scowl;
 mod util;
 
@@ -28,8 +31,15 @@ pub use french::{
     build_french_from_archive, build_french_from_xml,
 };
 pub use french_policy::FrenchPolicy;
+pub use hunspell::{
+    HunspellAuditRecord, HunspellBuildReport, HunspellBuildSummary, HunspellRejectReason,
+    HunspellSourceClass, build_hunspell_from_archive, build_hunspell_from_files,
+    build_hunspell_from_strings,
+};
+pub use hunspell_policy::{HunspellPolicy, ReviewRequirement};
 pub use index::{IndexBuildSummary, compile_index};
 pub use policy::EnglishPolicy;
+pub use review::ApprovedNativeReview;
 pub use scowl::{PreparedScowl, prepare_scowl_archive};
 
 /// Stable builder name recorded in generated metadata.

@@ -44,6 +44,12 @@ pub const ENGLISH_NORMALIZATION_PROFILE: &str = "en-basic-latin-v1";
 /// French V1 folds accents and supported ligatures to basic Latin board tokens.
 pub const FRENCH_NORMALIZATION_PROFILE: &str = "fr-basic-latin-fold-v1";
 
+/// German V1 folds diacritics and sharp S to basic Latin board tokens.
+pub const GERMAN_NORMALIZATION_PROFILE: &str = "de-basic-latin-fold-v1";
+
+/// Spanish V1 folds diacritics to basic Latin board tokens.
+pub const SPANISH_NORMALIZATION_PROFILE: &str = "es-basic-latin-fold-v1";
+
 /// The manifest filename at the root of every pack.
 pub const MANIFEST_FILE: &str = "manifest.toml";
 

@@ -494,6 +494,12 @@ used for redistributable Word Arena packs; otherwise the language remains gated.
 
 ### OPS-002: Build German and Spanish Word Arena packs
 
+Progress: the deterministic, approval-gated Hunspell importer, provisional
+normalization profiles, manifest compatibility, strict policies, and synthetic
+byte-equivalence/corruption tests are implemented. Real source import and every
+release/ruleset checkbox below remain gated by the pending native-language
+reviews; see [`../lexicons/HUNSPELL_BUILD.md`](../lexicons/HUNSPELL_BUILD.md).
+
 - [ ] Add deterministic importers, normalization profiles, curation overrides,
   manifests, notices, and compact exact-membership builds for approved sources.
 - [ ] Add immutable physical ruleset fixtures, distributions, board/scoring

@@ -49,6 +49,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 unicode-normalization = "0.1.25"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }
+zspell = { version = "=0.5.5", features = ["zspell-unstable"] }
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"

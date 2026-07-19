@@ -1,6 +1,7 @@
 use std::{fs, path::Path};
 
 use tempfile::TempDir;
+use word_arena_lexicon_builder::BuilderError;
 use xtask::{PackRegistry, XtaskError, audit_repository};
 
 #[test]
@@ -75,7 +76,10 @@ fn multilingual_policy_drift_is_rejected() {
 
     assert!(matches!(
         audit_repository(fixture.path(), &registry),
-        Err(XtaskError::BuildContract { message }) if message.contains("selection policy")
+        Err(XtaskError::Builder(BuilderError::InvalidPolicy {
+            field: "max_word_length",
+            ..
+        }))
     ));
 }
 

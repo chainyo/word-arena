@@ -2,7 +2,10 @@ use std::{fmt, ops::Deref};
 
 use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
-use crate::{ENGLISH_NORMALIZATION_PROFILE, FRENCH_NORMALIZATION_PROFILE, NormalizedKeyError};
+use crate::{
+    ENGLISH_NORMALIZATION_PROFILE, FRENCH_NORMALIZATION_PROFILE, GERMAN_NORMALIZATION_PROFILE,
+    NormalizedKeyError, SPANISH_NORMALIZATION_PROFILE,
+};
 
 /// A validated UTF-8 string compared by exact bytes in a compiled lexicon.
 ///
@@ -88,8 +91,9 @@ impl TryFrom<Vec<u8>> for NormalizedKey {
 /// Applies normalization algorithm V1 for one supported locale profile.
 ///
 /// English performs Unicode uppercasing and accepts only `A` through `Z`.
-/// French additionally decomposes and removes combining marks and expands `Œ`
-/// to `OE` and `Æ` to `AE`, then accepts only `A` through `Z`.
+/// French, German, and Spanish additionally decompose and remove combining
+/// marks, then accept only `A` through `Z`. French expands `Œ` to `OE` and `Æ`
+/// to `AE`; Unicode uppercasing expands German `ß` to `SS`.
 ///
 /// # Errors
 ///
@@ -98,7 +102,10 @@ impl TryFrom<Vec<u8>> for NormalizedKey {
 pub fn normalize_key(profile: &str, source: &str) -> Result<NormalizedKey, NormalizedKeyError> {
     let normalized = match profile {
         ENGLISH_NORMALIZATION_PROFILE => uppercase_basic_latin(profile, source)?,
-        FRENCH_NORMALIZATION_PROFILE => french_basic_latin(profile, source)?,
+        FRENCH_NORMALIZATION_PROFILE => latin_fold(profile, source, true)?,
+        GERMAN_NORMALIZATION_PROFILE | SPANISH_NORMALIZATION_PROFILE => {
+            latin_fold(profile, source, false)?
+        }
         _ => {
             return Err(NormalizedKeyError::UnsupportedProfile {
                 profile: profile.to_owned(),
@@ -116,12 +123,16 @@ fn uppercase_basic_latin(profile: &str, source: &str) -> Result<String, Normaliz
     Ok(normalized)
 }
 
-fn french_basic_latin(profile: &str, source: &str) -> Result<String, NormalizedKeyError> {
+fn latin_fold(
+    profile: &str,
+    source: &str,
+    expand_ligatures: bool,
+) -> Result<String, NormalizedKeyError> {
     let mut normalized = String::with_capacity(source.len());
     for source_character in source.chars() {
         match source_character {
-            'œ' | 'Œ' => normalized.push_str("OE"),
-            'æ' | 'Æ' => normalized.push_str("AE"),
+            'œ' | 'Œ' if expand_ligatures => normalized.push_str("OE"),
+            'æ' | 'Æ' if expand_ligatures => normalized.push_str("AE"),
             _ => {
                 for upper in source_character.to_uppercase() {
                     for decomposed in std::iter::once(upper).nfd() {

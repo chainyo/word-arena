@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 use serde::Deserialize;
 use word_arena_lexicon::NORMALIZATION_VERSION;
-use word_arena_lexicon_builder::{EnglishPolicy, FrenchPolicy, load_curation};
+use word_arena_lexicon_builder::{EnglishPolicy, FrenchPolicy, HunspellPolicy, load_curation};
 
 use crate::{
     PackRecord, PackRegistry, XtaskError, artifact::sha256_file, release::audit_release_config,
@@ -34,31 +34,9 @@ struct SourceRecord {
     attribution: Option<String>,
     compatibility: Option<String>,
     redistribution_obligations: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SelectionPolicy {
-    schema_version: u32,
-    id: String,
-    version: u32,
-    pack_id: String,
-    source_id: String,
-    normalization_profile: String,
-    alphabet: String,
-    min_word_length: usize,
-    max_word_length: usize,
-    review_file: String,
-    included_forms: Vec<String>,
-    excluded_forms: Vec<String>,
-    review_requirement: ReviewRequirement,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewRequirement {
-    status: String,
-    qualification: String,
-    scope: String,
-    evidence_required: Vec<String>,
+    archive_root: Option<String>,
+    archive_dictionary_path: Option<String>,
+    archive_affix_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +45,7 @@ struct ReviewRecord {
     language: String,
     policy_id: String,
     policy_version: u32,
+    source_id: String,
     status: String,
     required_qualification: String,
     gate: Option<String>,
@@ -226,29 +205,17 @@ fn validate_gated_selection(
     policy_name: &str,
 ) -> Result<(), XtaskError> {
     let policy_path = workspace_root.join("lexicons/policies").join(policy_name);
-    let policy: SelectionPolicy = load_toml(&policy_path)?;
+    let policy = HunspellPolicy::load(&policy_path)?;
     let source = require_source(sources, &policy.source_id)?;
-    let policy_valid = policy.schema_version == 1
-        && policy.version > 0
-        && policy.pack_id == format!("word-arena-{language}-v1")
-        && source.language == language
-        && policy.normalization_profile == format!("{language}-basic-latin-fold-v1")
-        && policy.alphabet == "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        && policy.min_word_length == 2
-        && policy.max_word_length == 15
-        && !policy.included_forms.is_empty()
-        && !policy.excluded_forms.is_empty()
-        && policy.review_requirement.status == "required-before-import"
-        && !policy.review_requirement.qualification.trim().is_empty()
-        && !policy.review_requirement.scope.trim().is_empty()
-        && policy.review_requirement.evidence_required
-            == [
-                "reviewer identity",
-                "review date",
-                "decision",
-                "rationale",
-                "source-policy linkage",
-            ];
+    let expected_revision = source.revision.as_deref().unwrap_or(&source.version);
+    let policy_valid = source.language == language
+        && policy.source_revision == expected_revision
+        && policy.source_archive_sha256 == source.archive_sha256
+        && policy.source_archive_size_bytes == source.archive_size_bytes
+        && source.archive_root.as_deref() == Some(policy.source_archive_root.as_str())
+        && source.archive_dictionary_path.as_deref()
+            == Some(policy.source_dictionary_path.as_str())
+        && source.archive_affix_path.as_deref() == Some(policy.source_affix_path.as_str());
     if !policy_valid {
         return audit_error(format!("invalid or incomplete {language} selection policy"));
     }
@@ -262,6 +229,7 @@ fn validate_gated_selection(
         || review.language != language
         || review.policy_id != policy.id
         || review.policy_version != policy.version
+        || review.source_id != policy.source_id
         || review.required_qualification != policy.review_requirement.qualification
     {
         return audit_error(format!(
