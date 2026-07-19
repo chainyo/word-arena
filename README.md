@@ -32,6 +32,8 @@ The repository foundation is in place:
   schemas with replay-first snapshot validation
 - Feature-gated deterministic random-legal/greedy bots and an in-memory match
   runner, covered by English/French golden, property, and 1,000-game stress tests
+- Transport-independent application commands and public, seat, human-spectator,
+  and administrator query APIs over injected persistence/runtime boundaries
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
@@ -93,6 +95,7 @@ bun run --cwd web check
 ```text
 apps/server/     Axum application and future HTTP, WebSocket, and MCP adapters
 crates/engine/   Deterministic game domain and rules engine
+crates/application/  Typed application commands, queries, and adapter ports
 crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks
 crates/lexicon-builder/  Reproducible source importers and audit reports
 docs/            Architecture decisions and the maintained creation plan
@@ -116,6 +119,8 @@ The curation/dispute process is documented in
 matrix is in [`docs/QUALITY_GATES.md`](docs/QUALITY_GATES.md).
 Physical English/French rules and their deterministic identities are documented
 in [`docs/RULESETS.md`](docs/RULESETS.md).
+The application command/query boundary is documented in
+[`docs/APPLICATION.md`](docs/APPLICATION.md).
 
 ## License
 

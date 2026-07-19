@@ -29,14 +29,14 @@ preserved by the test suite and Git history through GAME-006.
 
 ### APP-001: Define application commands and seat-aware queries
 
-- [ ] Add an application crate between transports and the engine with typed
+- [x] Add an application crate between transports and the engine with typed
   create-game and game-action commands carrying game ID, expected version,
   turn identity, and idempotency key.
-- [ ] Define separate public, seat, human-spectator, and administrator query
+- [x] Define separate public, seat, human-spectator, and administrator query
   requests/results without caller-supplied authorization roles.
-- [ ] Inject game repository, lexicon resolver, ID, seed, and clock boundaries;
+- [x] Inject game repository, lexicon resolver, ID, seed, and clock boundaries;
   do not couple application use cases to Axum or SQLite.
-- [ ] Cover command routing, wrong-seat authorization, stale versions, missing
+- [x] Cover command routing, wrong-seat authorization, stale versions, missing
   games/packs, projection isolation, and deterministic engine errors with unit
   tests using in-memory adapters.
 

@@ -125,7 +125,7 @@ without network access after setup.
 
 ## Phase 2: application service and persistence
 
-- [ ] Define application commands and seat-aware queries around the engine.
+- [x] Define application commands and seat-aware queries around the engine.
 - [ ] Add SQLite migrations through SQLx for games, seats, events, snapshots,
   rulesets, lexicon pack metadata, tournaments, matches, and agent runs.
 - [ ] Append events and update snapshots in one optimistic-concurrency
