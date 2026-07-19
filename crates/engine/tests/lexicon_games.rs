@@ -146,7 +146,7 @@ fn english_golden_game_validates_multiple_words_and_replays_byte_equivalently() 
 }
 
 #[test]
-fn french_blank_assignment_uses_folded_lookup_and_zero_points() {
+fn french_tiles_are_canonical_on_the_board_events_and_replay() {
     let ruleset = Ruleset::french_v1();
     let lexicon = validator(&ruleset, &["ETE"]);
     let mut game = Game::create("french-golden", ruleset.clone(), Some(Arc::clone(&lexicon)))
@@ -156,20 +156,49 @@ fn french_blank_assignment_uses_folded_lookup_and_zero_points() {
             Player::One,
             vec![blank(7, 6, "É"), regular(7, 7, "T"), regular(7, 8, "É")],
         )
-        .expect("accented French word");
-    let GameEventKind::MovePlayed { words, score, .. } = &event.kind else {
+        .expect("accented French input");
+    let GameEventKind::MovePlayed {
+        placements,
+        words,
+        score,
+        ..
+    } = &event.kind
+    else {
         panic!("expected move event");
     };
-    assert_eq!(words.len(), 1);
-    assert_eq!(words[0].text, "ÉTÉ");
-    assert_eq!(words[0].normalized, "ETE");
-    assert_eq!(*score, 2, "blank É contributes zero points");
-    assert!(
-        game.public_state()
-            .tile_at(Coordinate::new(7, 6))
-            .expect("blank on board")
-            .is_blank
+    assert_eq!(
+        placements
+            .iter()
+            .map(|placement| placement.tile.letter.as_str())
+            .collect::<Vec<_>>(),
+        ["E", "T", "E"]
     );
+    assert_eq!(words.len(), 1);
+    assert_eq!(words[0].text, "ETE");
+    assert_eq!(words[0].normalized, "ETE");
+    assert_eq!(*score, 2, "blank E contributes zero points");
+    let blank = game
+        .public_state()
+        .tile_at(Coordinate::new(7, 6))
+        .expect("blank on board");
+    assert!(blank.is_blank);
+    assert_eq!(blank.letter, "E");
+
+    let mut noncanonical_snapshot = game.snapshot();
+    noncanonical_snapshot.state.board[7 * 15 + 8]
+        .as_mut()
+        .expect("occupied French board square")
+        .letter = "É".to_owned();
+    assert!(matches!(
+        Game::resume(
+            noncanonical_snapshot,
+            ruleset.clone(),
+            Some(Arc::clone(&lexicon))
+        ),
+        Err(GameError::NonCanonicalBoardTile { token, canonical })
+            if token == "É" && canonical == "E"
+    ));
+
     game.finish().expect("finish French game");
     let public = serde_json::to_vec(game.public_state()).expect("French public state");
     let replay = Game::replay(
@@ -181,6 +210,27 @@ fn french_blank_assignment_uses_folded_lookup_and_zero_points() {
         serde_json::to_vec(replay.public_state()).expect("replayed French state"),
         public
     );
+}
+
+#[test]
+fn one_physical_tile_cannot_encode_a_french_ligature() {
+    let ruleset = Ruleset::french_v1();
+    let lexicon = validator(&ruleset, &["OEUF"]);
+    let mut game = Game::create("french-ligature", ruleset, Some(lexicon)).unwrap();
+
+    assert!(matches!(
+        game.play_tiles(
+            Player::One,
+            vec![
+                regular(7, 7, "Œ"),
+                regular(7, 8, "U"),
+                regular(7, 9, "F")
+            ]
+        ),
+        Err(GameError::InvalidTileToken { token, normalized })
+            if token == "Œ" && normalized == "OE"
+    ));
+    assert_eq!(game.public_state().version, 0);
 }
 
 #[test]
