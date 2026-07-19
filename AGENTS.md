@@ -22,6 +22,9 @@ repeated correction should apply to future work.
 - `crates/application/`: transport-agnostic commands, authority-bound queries,
   and injected repository/lexicon/ID/seed/clock ports. Database, HTTP, MCP, and
   raw credential parsing remain adapters outside its core use cases.
+- `crates/agent-runtime/`: strict agent manifests, canonical identities,
+  process-driver contracts, sandbox policies, and normalized telemetry. Keep
+  provider credentials and game rules outside this crate.
 - `crates/lexicon/`: versioned pack contracts, normalization, integrity checks,
   and runtime exact-membership adapters. Keep pack parsing independent from the
   game engine and transport layers.
@@ -65,6 +68,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo build --workspace --all-features
 cargo test -p word-arena-persistence --all-features
+cargo test -p word-arena-agent-runtime --all-features
 cargo run -p word-arena-server
 cargo run -p word-arena-cli -- --help
 scripts/mcp/verify-contract.sh
@@ -180,6 +184,12 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   Do not couple the engine to any single agent harness or model provider.
 - Run autonomous agent processes in isolated seat workspaces with explicit time,
   tool, network, and compute budgets.
+- Parse agent configuration through `ValidatedAgentManifest` before persisting
+  it or starting a process. Persist its canonical bytes and exact SHA-256
+  identity together; never reconstruct an identity from display metadata.
+- Agent manifests may identify a provider and model but cannot contain secret
+  values, credential references, operator capabilities, shell commands, or
+  workspace paths. Those are trusted runtime inputs outside the manifest.
 
 ## Documentation and dependencies
 

@@ -36,6 +36,8 @@ The repository foundation is in place:
   public, seat, human-spectator, and administrator credential/query APIs
 - Embedded forward-only SQLx 0.9 migrations for the constrained local SQLite
   game, credential, tournament, match, agent-run, idempotency, and audit schema
+- Strict secret-free agent manifests with canonical SHA-256 identities and
+  run/result/replay attribution ([manifest contract](docs/AGENT_MANIFESTS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
@@ -58,11 +60,11 @@ The repository foundation is in place:
 - Responsive semantic board, premium, tile, private/spectator rack, score,
   authoritative clock, move-history, and confirmed player-action components
 - Bun-managed frontend dependencies
-- CI for formatting, linting, tests, type checking, and builds
+- CI for formatting, linting, tests, type checking, builds, axe, and
+  desktop/mobile browser flows
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Operator, spectator/replay, and statistics views are planned next. The current
-lexicon/gameplay boundary is
+The current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is
 documented in [`docs/BASELINE_MATCHES.md`](docs/BASELINE_MATCHES.md).
@@ -109,7 +111,7 @@ cargo xtask lexicon audit
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo build --workspace --all-features
-bun run --cwd web check
+bun run --cwd web check:full
 ```
 
 ## Repository layout
@@ -119,6 +121,7 @@ apps/cli/        Redacted REST client and MCP stdio-to-HTTP bridge
 apps/server/     Axum REST/WebSocket/MCP application
 crates/engine/   Deterministic game domain and rules engine
 crates/application/  Typed application commands, queries, and adapter ports
+crates/agent-runtime/  Agent manifests, drivers, sandboxing, and telemetry contracts
 crates/lexicon/  Lexicon pack contracts, normalization, and integrity checks
 crates/lexicon-builder/  Reproducible source importers and audit reports
 crates/persistence/  Embedded SQLx migrations and SQLite adapters

@@ -1,0 +1,291 @@
+use std::{fs, path::PathBuf};
+
+use serde_json::Value;
+use tempfile::TempDir;
+use word_arena_agent_runtime::ValidatedAgentManifest;
+use word_arena_engine::Seat;
+use word_arena_persistence::{
+    AgentAttributionError, AgentRunAttribution, AgentRunOutcome, SqliteAgentAttributionRepository,
+    connect_and_migrate,
+};
+
+struct Database {
+    _directory: TempDir,
+    pool: sqlx::SqlitePool,
+    repository: SqliteAgentAttributionRepository,
+}
+
+impl Database {
+    async fn open(name: &str) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(format!("{name}.sqlite3"));
+        let pool = connect_and_migrate(&format!("sqlite://{}", path.display()))
+            .await
+            .unwrap();
+        seed_game(&pool, "game-one").await;
+        Self {
+            _directory: directory,
+            repository: SqliteAgentAttributionRepository::new(pool.clone()),
+            pool,
+        }
+    }
+}
+
+fn manifest(name: &str) -> ValidatedAgentManifest {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/agents/codex-v1.json");
+    let mut value: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    value["name"] = name.into();
+    ValidatedAgentManifest::from_json(&serde_json::to_vec(&value).unwrap()).unwrap()
+}
+
+fn run(run_id: &str, seat: Seat) -> AgentRunAttribution {
+    AgentRunAttribution {
+        run_id: run_id.into(),
+        match_id: None,
+        game_id: "game-one".into(),
+        seat,
+        created_at_ms: 10,
+    }
+}
+
+#[tokio::test]
+async fn canonical_manifest_is_registered_once_and_loaded_exactly() {
+    let database = Database::open("manifest-round-trip").await;
+    let manifest = manifest("Codex one");
+    database
+        .repository
+        .create_run(&manifest, &run("run-one", Seat::One))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        database
+            .repository
+            .load_run_manifest("run-one")
+            .await
+            .unwrap(),
+        manifest
+    );
+    let bytes = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT manifest_json FROM agent_manifests WHERE manifest_sha256 = ?",
+    )
+    .bind(&manifest.identity().manifest_sha256)
+    .fetch_one(&database.pool)
+    .await
+    .unwrap();
+    assert_eq!(bytes, manifest.canonical_json());
+    assert!(!String::from_utf8(bytes).unwrap().contains("secret"));
+}
+
+#[tokio::test]
+async fn run_result_and_replay_repeat_the_exact_manifest_identity() {
+    let database = Database::open("result-replay").await;
+    let manifest = manifest("Codex one");
+    database
+        .repository
+        .create_run(&manifest, &run("run-one", Seat::One))
+        .await
+        .unwrap();
+    database
+        .repository
+        .record_result(
+            "run-one",
+            manifest.identity(),
+            AgentRunOutcome::Finished,
+            20,
+        )
+        .await
+        .unwrap();
+    insert_replay(&database.pool, "game-one", 1).await;
+    database
+        .repository
+        .attach_replay("game-one", 1, Seat::One, "run-one", manifest.identity())
+        .await
+        .unwrap();
+
+    let result_sha = sqlx::query_scalar::<_, String>(
+        "SELECT manifest_sha256 FROM agent_run_results WHERE run_id = 'run-one'",
+    )
+    .fetch_one(&database.pool)
+    .await
+    .unwrap();
+    assert_eq!(result_sha, manifest.identity().manifest_sha256);
+    assert_eq!(
+        database
+            .repository
+            .replay_attribution("game-one", 1)
+            .await
+            .unwrap(),
+        [word_arena_persistence::ReplayAgentAttribution {
+            seat: Seat::One,
+            run_id: "run-one".into(),
+            manifest: manifest.identity().clone(),
+        }]
+    );
+}
+
+#[tokio::test]
+async fn identity_cross_run_seat_and_replay_substitution_fail_closed() {
+    let database = Database::open("substitution").await;
+    let first = manifest("Codex one");
+    let second = manifest("Codex two");
+    database
+        .repository
+        .create_run(&first, &run("run-one", Seat::One))
+        .await
+        .unwrap();
+    database
+        .repository
+        .create_run(&second, &run("run-two", Seat::Two))
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .repository
+            .record_result("run-one", second.identity(), AgentRunOutcome::Finished, 20)
+            .await,
+        Err(AgentAttributionError::Conflict)
+    );
+    let mut malformed_identity = first.identity().clone();
+    malformed_identity.hash_algorithm = "sha512".into();
+    assert_eq!(
+        database
+            .repository
+            .record_result(
+                "run-one",
+                &malformed_identity,
+                AgentRunOutcome::Finished,
+                20
+            )
+            .await,
+        Err(AgentAttributionError::Invalid)
+    );
+    insert_replay(&database.pool, "game-one", 1).await;
+    assert_eq!(
+        database
+            .repository
+            .attach_replay("game-one", 1, Seat::Two, "run-one", first.identity())
+            .await,
+        Err(AgentAttributionError::Conflict)
+    );
+    assert_eq!(
+        database
+            .repository
+            .attach_replay("game-one", 1, Seat::One, "run-one", second.identity())
+            .await,
+        Err(AgentAttributionError::Conflict)
+    );
+}
+
+#[tokio::test]
+async fn failed_run_creation_rolls_back_the_seat_assignment() {
+    let database = Database::open("create-rollback").await;
+    let manifest = manifest("Codex one");
+    let mut invalid = run("run-one", Seat::One);
+    invalid.match_id = Some("missing-match".into());
+    assert_eq!(
+        database.repository.create_run(&manifest, &invalid).await,
+        Err(AgentAttributionError::Conflict)
+    );
+    let seat = sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT participant_kind, participant_id
+         FROM seats WHERE game_id = 'game-one' AND seat_number = 1",
+    )
+    .fetch_one(&database.pool)
+    .await
+    .unwrap();
+    assert_eq!(seat, ("unassigned".into(), None));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_manifests")
+            .fetch_one(&database.pool)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn stored_manifest_drift_is_detected_on_load() {
+    let database = Database::open("stored-drift").await;
+    let manifest = manifest("Codex one");
+    database
+        .repository
+        .create_run(&manifest, &run("run-one", Seat::One))
+        .await
+        .unwrap();
+    sqlx::query("UPDATE agent_manifests SET manifest_json = ? WHERE manifest_sha256 = ?")
+        .bind(b"{}".as_slice())
+        .bind(&manifest.identity().manifest_sha256)
+        .execute(&database.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        database.repository.load_run_manifest("run-one").await,
+        Err(AgentAttributionError::Corrupt)
+    );
+}
+
+async fn seed_game(pool: &sqlx::SqlitePool, game_id: &str) {
+    let ruleset_sha = "c".repeat(64);
+    let lexicon_sha = "d".repeat(64);
+    sqlx::query(
+        "INSERT INTO rulesets (
+            ruleset_id, schema_version, content_sha256, definition_json, created_at_ms
+         ) VALUES ('english-v1', 1, ?, x'7b7d', 1)",
+    )
+    .bind(&ruleset_sha)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO lexicon_packs (
+            pack_id, pack_version, content_sha256, format_version,
+            normalization_version, locale, identity_json, installed_at_ms
+         ) VALUES ('pack', '1.0.0', ?, 1, 1, 'en', x'7b7d', 1)",
+    )
+    .bind(&lexicon_sha)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO games (
+            game_id, status, version, ruleset_id, ruleset_sha256,
+            lexicon_pack_id, lexicon_pack_version, lexicon_content_sha256,
+            rng_algorithm, seed_commitment_sha256, created_at_ms, updated_at_ms
+         ) VALUES (?, 'finished', 1, 'english-v1', ?, 'pack', '1.0.0', ?,
+                   'xoshiro256-star-star-v1', ?, 1, 2)",
+    )
+    .bind(game_id)
+    .bind(ruleset_sha)
+    .bind(lexicon_sha)
+    .bind("e".repeat(64))
+    .execute(pool)
+    .await
+    .unwrap();
+    for seat in [1_i64, 2] {
+        sqlx::query(
+            "INSERT INTO seats (
+                game_id, seat_number, participant_kind, created_at_ms
+             ) VALUES (?, ?, 'unassigned', 1)",
+        )
+        .bind(game_id)
+        .bind(seat)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
+async fn insert_replay(pool: &sqlx::SqlitePool, game_id: &str, version: i64) {
+    sqlx::query(
+        "INSERT INTO game_replays (
+            game_id, version, replay_schema_version, payload_json, created_at_ms
+         ) VALUES (?, ?, 3, x'7b7d', 20)",
+    )
+    .bind(game_id)
+    .bind(version)
+    .execute(pool)
+    .await
+    .unwrap();
+}

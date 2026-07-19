@@ -290,13 +290,13 @@ accessibility, and end-to-end suites pass from a clean Bun install.
 
 ### RUN-001: Define versioned agent manifests
 
-- [ ] Define a strict versioned manifest for harness, model, prompt hash, tool
+- [x] Define a strict versioned manifest for harness, model, prompt hash, tool
   policy, environment image, driver version, workspace policy, and budgets.
-- [ ] Normalize and hash the canonical manifest; validate semantic versions,
+- [x] Normalize and hash the canonical manifest; validate semantic versions,
   digests, command arguments, and mutually exclusive provider settings.
-- [ ] Persist the exact manifest identity with each run/result/replay without
+- [x] Persist the exact manifest identity with each run/result/replay without
   storing provider secrets.
-- [ ] Add schema round-trip, unknown-field, unsafe command, drift, and golden
+- [x] Add schema round-trip, unknown-field, unsafe command, drift, and golden
   identity tests plus documented examples for every supported harness.
 
 Verification: every run is reproducibly attributable to one immutable manifest

@@ -1,0 +1,52 @@
+{
+  "kind": "word_arena_agent_manifest_contract",
+  "schema_version": 1,
+  "hash_algorithm": "sha256-canonical-json-v1",
+  "canonicalization": {
+    "encoding": "utf-8",
+    "object_keys": "lexicographic",
+    "set_values": "lexicographic",
+    "whitespace": "none"
+  },
+  "harness_kinds": [
+    "claude_code",
+    "cline",
+    "codex",
+    "generic_command",
+    "pi"
+  ],
+  "model_source_kinds": ["harness_default", "local", "provider"],
+  "provider_kinds": ["anthropic", "google", "open_ai", "open_router"],
+  "local_runtime_kinds": ["llama_cpp", "ollama", "vllm"],
+  "network_policy_kinds": ["allowlisted", "deny", "mcp_only"],
+  "workspace_persistence_kinds": ["per_turn", "persistent_for_run"],
+  "workspace_retention_kinds": ["delete_on_finish", "retain_on_failure"],
+  "required_top_level_fields": [
+    "budgets",
+    "driver_version",
+    "environment",
+    "harness",
+    "model",
+    "name",
+    "prompt",
+    "schema_version",
+    "tool_policy",
+    "workspace"
+  ],
+  "forbidden_secret_fields": [
+    "api_key",
+    "authorization",
+    "credential",
+    "credentials",
+    "password",
+    "provider_secret",
+    "secret"
+  ],
+  "examples": [
+    "examples/agents/claude-code-v1.json",
+    "examples/agents/cline-v1.json",
+    "examples/agents/codex-v1.json",
+    "examples/agents/generic-command-v1.json",
+    "examples/agents/pi-v1.json"
+  ]
+}

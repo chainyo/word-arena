@@ -3040,6 +3040,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "word-arena-agent-runtime"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
+]
+
+[[package]]
 name = "word-arena-application"
 version = "0.1.0"
 dependencies = [
@@ -3125,6 +3137,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "word-arena-agent-runtime",
  "word-arena-application",
  "word-arena-engine",
  "word-arena-lexicon",

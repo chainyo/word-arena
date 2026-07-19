@@ -2,6 +2,7 @@
 members = [
   "apps/cli",
   "apps/server",
+  "crates/agent-runtime",
   "crates/application",
   "crates/engine",
   "crates/lexicon",

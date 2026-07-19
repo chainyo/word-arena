@@ -46,6 +46,12 @@ revocation, and rotation update their privacy-safe audit rows in the same SQL
 transaction. Migration 3 adds the optional foreign-keyed agent-run binding
 without rewriting the already-published operations migration.
 
+Migration 5 content-addresses canonical agent manifests and repeats the exact
+manifest digest on terminal run results and per-seat replay attribution. Foreign
+keys reject cross-run, cross-game, cross-seat, or changed-manifest attachment;
+provider secrets are not representable in the validated manifest bytes stored
+by the adapter.
+
 Run them with:
 
 ```bash
