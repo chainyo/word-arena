@@ -6,6 +6,7 @@ import {
   Languages,
   Layers3,
   LoaderCircle,
+  Monitor,
   Moon,
   Plus,
   Radio,
@@ -20,6 +21,7 @@ import {
   type ErrorInfo,
   type FormEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -44,6 +46,7 @@ import {
 } from "@/api/client"
 import { credentialVault } from "@/api/credentials"
 import { gameQueryKey, gameQueryOptions, rulesQueryOptions } from "@/api/query"
+import { classifySessionFailure, connectionMessage } from "@/api/session"
 import type {
   ConnectionState,
   Coordinate,
@@ -72,10 +75,14 @@ import {
   setDraftMode,
   stageSelectedTile,
 } from "@/components/game/move-draft"
-import { MoveHistory, type MoveRecord } from "@/components/game/move-history"
+import {
+  MoveHistory,
+  type MoveRecord,
+  moveSummary,
+} from "@/components/game/move-history"
 import { PlayerCard } from "@/components/game/player-card"
 import { ReplayView } from "@/components/replay/replay-view"
-import { useTheme } from "@/components/theme-provider"
+import { type Theme, useTheme } from "@/components/theme-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -146,7 +153,11 @@ function FatalError({
   onRetry: () => void
 }) {
   return (
-    <main className="grid min-h-svh place-items-center bg-background p-4">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="grid min-h-svh place-items-center bg-background p-4"
+    >
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Game workspace stopped</CardTitle>
@@ -319,7 +330,11 @@ function OperatorWorkspace() {
   return (
     <div className="min-h-svh bg-background">
       <WorkspaceHeader subtitle="Local game operator" />
-      <main className="mx-auto grid max-w-[1400px] items-start gap-4 p-3 sm:p-5 lg:grid-cols-[23rem_minmax(0,1fr)]">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto grid max-w-[1400px] items-start gap-4 p-3 sm:p-5 lg:grid-cols-[23rem_minmax(0,1fr)]"
+      >
         <section className="space-y-4">
           <Card size="sm">
             <CardHeader className="border-b">
@@ -385,7 +400,7 @@ function OperatorWorkspace() {
                 ) : null}
                 <Button className="w-full" disabled={pending} type="submit">
                   {pending ? (
-                    <LoaderCircle className="animate-spin" />
+                    <LoaderCircle className="animate-spin motion-reduce:animate-none" />
                   ) : (
                     <Plus />
                   )}
@@ -527,7 +542,11 @@ function ReplayRoute() {
         subtitle={`Game ${session.gameId} · human-spectator replay`}
       />
       {error ? (
-        <main className="mx-auto max-w-xl p-4 sm:p-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto max-w-xl p-4 sm:p-8"
+        >
           <Alert variant="destructive">
             <AlertCircle />
             <AlertTitle>Replay unavailable</AlertTitle>
@@ -555,7 +574,11 @@ function ReplayRoute() {
           replay={replay}
         />
       ) : (
-        <main className="mx-auto grid max-w-[1200px] gap-4 p-4 lg:grid-cols-[1fr_18rem]">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto grid max-w-[1200px] gap-4 p-4 lg:grid-cols-[1fr_18rem]"
+        >
           <Skeleton className="aspect-square rounded-xl" />
           <div className="space-y-4">
             <Skeleton className="h-36" />
@@ -574,7 +597,11 @@ function DeferredDataRoute({ kind }: { kind: "agent" | "standings" }) {
   return (
     <div className="min-h-svh bg-background">
       <WorkspaceHeader subtitle={`${title} · public aggregate authority`} />
-      <main className="mx-auto max-w-5xl p-3 sm:p-5">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto max-w-5xl p-3 sm:p-5"
+      >
         <Card size="sm">
           <CardHeader className="border-b">
             <div className="mb-1 flex items-center gap-2">
@@ -641,35 +668,61 @@ function DeferredDataRoute({ kind }: { kind: "agent" | "standings" }) {
 }
 
 function WorkspaceHeader({ subtitle }: { subtitle: string }) {
-  const { setTheme, theme } = useTheme()
-  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-  const dark = theme === "dark" || (theme === "system" && systemDark)
+  const { resolvedTheme, setTheme, theme } = useTheme()
   return (
-    <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between gap-3 px-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary font-heading text-xs font-semibold text-primary-foreground shadow-sm">
-            WA
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-heading text-sm font-medium tracking-tight">
-              Word Arena
-            </p>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {subtitle}
-            </p>
+    <>
+      <a
+        className="fixed top-2 left-2 z-50 -translate-y-20 rounded-lg bg-background px-3 py-2 text-sm font-medium shadow-lg ring-2 ring-ring transition-transform focus:translate-y-0 motion-reduce:transition-none"
+        href="#main-content"
+      >
+        Skip to game content
+      </a>
+      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur-sm">
+        <div className="mx-auto flex min-h-14 max-w-[1600px] items-center justify-between gap-3 px-3 py-2 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary font-heading text-xs font-semibold text-primary-foreground shadow-sm">
+              WA
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-heading text-sm font-medium tracking-tight">
+                Word Arena
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {subtitle}
+              </p>
+            </div>
           </div>
+          <nav aria-label="Workspace controls">
+            <Select
+              onValueChange={(value) => {
+                if (value) setTheme(value as Theme)
+              }}
+              value={theme}
+            >
+              <SelectTrigger
+                aria-label={`Color theme: ${theme}`}
+                className="w-auto min-w-24"
+                size="sm"
+              >
+                {resolvedTheme === "dark" ? <Moon /> : <Sun />}
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="light">
+                  <Sun /> Light
+                </SelectItem>
+                <SelectItem value="dark">
+                  <Moon /> Dark
+                </SelectItem>
+                <SelectItem value="system">
+                  <Monitor /> System
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </nav>
         </div>
-        <Button
-          aria-label={`Switch to ${dark ? "light" : "dark"} theme`}
-          onClick={() => setTheme(dark ? "light" : "dark")}
-          size="icon"
-          variant="outline"
-        >
-          {dark ? <Sun /> : <Moon />}
-        </Button>
-      </div>
-    </header>
+      </header>
+    </>
   )
 }
 
@@ -715,7 +768,11 @@ function WorkspaceConnect({
   return (
     <div className="min-h-svh bg-background">
       <WorkspaceHeader subtitle="Connect to an active local game" />
-      <main className="mx-auto grid max-w-[1200px] items-start gap-4 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto grid max-w-[1200px] items-start gap-4 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_24rem]"
+      >
         <Card className="overflow-hidden" size="sm">
           <CardHeader className="border-b">
             <CardTitle>Game board</CardTitle>
@@ -813,26 +870,27 @@ function useLiveGame(session: GameSession, token: string) {
   const [rules, setRules] = useState<Ruleset>()
   const version = useRef(0)
 
+  const load = useCallback(async () => {
+    try {
+      const next = await queryClient.fetchQuery(gameQueryOptions(session))
+      version.current = next.public.state.version
+      setView(next)
+      setError(undefined)
+      return next
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Snapshot failed"))
+      return undefined
+    }
+  }, [session])
+
+  const reload = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: gameQueryKey(session) })
+    return load()
+  }, [load, session])
+
   useEffect(() => {
     let cancelled = false
     let disconnect: (() => void) | undefined
-    const load = async () => {
-      try {
-        const next = await queryClient.fetchQuery(gameQueryOptions(session))
-        if (cancelled) return undefined
-        version.current = next.public.state.version
-        setView(next)
-        setError(undefined)
-        return next
-      } catch (caught) {
-        if (cancelled) return undefined
-        setError(
-          caught instanceof Error ? caught : new Error("Snapshot failed")
-        )
-        setConnection("offline")
-        return undefined
-      }
-    }
     const loadRules = async () => {
       try {
         const next = await queryClient.fetchQuery(rulesQueryOptions(session))
@@ -862,7 +920,7 @@ function useLiveGame(session: GameSession, token: string) {
       cancelled = true
       disconnect?.()
     }
-  }, [session, token])
+  }, [load, session, token])
 
   const acceptAuthoritativeView = (next: GameView) => {
     version.current = next.public.state.version
@@ -871,7 +929,7 @@ function useLiveGame(session: GameSession, token: string) {
     queryClient.setQueryData(gameQueryKey(session), next)
   }
 
-  return { acceptAuthoritativeView, connection, error, rules, view }
+  return { acceptAuthoritativeView, connection, error, reload, rules, view }
 }
 
 function LiveWorkspace({ session }: { session: GameSession }) {
@@ -879,31 +937,57 @@ function LiveWorkspace({ session }: { session: GameSession }) {
   if (!token) {
     return <WorkspaceConnect onConnected={setToken} session={session} />
   }
-  return <AuthenticatedWorkspace session={session} token={token} />
+  return (
+    <AuthenticatedWorkspace
+      onCredentialReset={() => {
+        credentialVault.delete(session)
+        queryClient.removeQueries({ queryKey: gameQueryKey(session) })
+        setToken(undefined)
+      }}
+      session={session}
+      token={token}
+    />
+  )
 }
 
 function AuthenticatedWorkspace({
+  onCredentialReset,
   session,
   token,
 }: {
+  onCredentialReset: () => void
   session: GameSession
   token: string
 }) {
-  const { acceptAuthoritativeView, connection, error, rules, view } =
+  const { acceptAuthoritativeView, connection, error, reload, rules, view } =
     useLiveGame(session, token)
+  const initialFailure = error ? classifySessionFailure(error) : undefined
   if (error && !view) {
     return (
       <div className="min-h-svh bg-background">
         <WorkspaceHeader subtitle={`Game ${session.gameId}`} />
-        <main className="mx-auto max-w-xl p-4 sm:p-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto max-w-xl p-4 sm:p-8"
+        >
           <Alert variant="destructive">
             <Unplug />
-            <AlertTitle>Unable to load this projection</AlertTitle>
+            <AlertTitle>
+              {initialFailure === "credential"
+                ? "Capability expired or revoked"
+                : "Unable to load this projection"}
+            </AlertTitle>
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
-          <Button className="mt-4" onClick={() => window.location.assign("/")}>
-            Use another credential
-          </Button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {initialFailure === "credential" ? null : (
+              <Button onClick={() => void reload()} variant="outline">
+                <RefreshCw /> Retry snapshot
+              </Button>
+            )}
+            <Button onClick={onCredentialReset}>Use another credential</Button>
+          </div>
         </main>
       </div>
     )
@@ -914,10 +998,13 @@ function AuthenticatedWorkspace({
       connection={connection}
       key={`${view.public.state.game_id}-${view.public.state.version}`}
       onAuthoritativeView={acceptAuthoritativeView}
+      onCredentialReset={onCredentialReset}
+      onReload={reload}
       rules={rules}
       session={session}
       token={token}
       view={view}
+      snapshotError={error}
     />
   )
 }
@@ -926,7 +1013,11 @@ function LoadingWorkspace({ gameId }: { gameId: string }) {
   return (
     <div className="min-h-svh bg-background">
       <WorkspaceHeader subtitle={`Game ${gameId}`} />
-      <main className="mx-auto grid max-w-[1200px] gap-4 p-4 lg:grid-cols-[1fr_18rem]">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto grid max-w-[1200px] gap-4 p-4 lg:grid-cols-[1fr_18rem]"
+      >
         <Skeleton className="aspect-square rounded-xl" />
         <div className="space-y-4">
           <Skeleton className="h-36" />
@@ -940,15 +1031,21 @@ function LoadingWorkspace({ gameId }: { gameId: string }) {
 function GameWorkspace({
   connection,
   onAuthoritativeView,
+  onCredentialReset,
+  onReload,
   rules,
   session,
+  snapshotError,
   token,
   view,
 }: {
   connection: ConnectionState
   onAuthoritativeView: (view: GameView) => void
+  onCredentialReset: () => void
+  onReload: () => Promise<GameView | undefined>
   rules?: Ruleset
   session: GameSession
+  snapshotError?: Error
   token: string
   view: GameView
 }) {
@@ -964,6 +1061,8 @@ function GameWorkspace({
   )
   const premiums = useMemo(() => displayPremiums(rules), [rules])
   const canAct =
+    connection === "live" &&
+    snapshotError === undefined &&
     view.authority === "seat" &&
     view.seat === state.current_player &&
     state.phase === "active"
@@ -994,6 +1093,7 @@ function GameWorkspace({
     ])
   )
   const moves = toMoveRecords(view)
+  const latestMove = moves[0]
 
   const chooseSquare = (row: number, column: number) => {
     const result = stageSelectedTile(draft, rack, { row, column })
@@ -1023,12 +1123,28 @@ function GameWorkspace({
       })
       onAuthoritativeView(next)
       setDraft(EMPTY_MOVE_DRAFT)
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>("[data-game-status]")?.focus()
+      })
     } catch (caught) {
-      setActionError(
-        caught instanceof Error
-          ? caught.message
-          : "The referee rejected the action"
-      )
+      if (classifySessionFailure(caught) === "conflict") {
+        const refreshed = await onReload()
+        if (refreshed) {
+          setDraft(EMPTY_MOVE_DRAFT)
+          setActionError(
+            "The turn changed before submission. The latest authoritative board is now loaded."
+          )
+          requestAnimationFrame(() => {
+            document.querySelector<HTMLElement>("[data-game-status]")?.focus()
+          })
+        }
+      } else {
+        setActionError(
+          caught instanceof Error
+            ? caught.message
+            : "The referee rejected the action"
+        )
+      }
     } finally {
       setPending(false)
     }
@@ -1039,8 +1155,19 @@ function GameWorkspace({
       <WorkspaceHeader
         subtitle={`Game ${state.game_id} · ${view.authority} view`}
       />
-      <main className="mx-auto grid max-w-[1600px] items-start gap-3 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[15rem_minmax(0,1fr)_18rem]">
-        <aside className="grid gap-3 sm:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:grid-cols-1">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto grid max-w-[1600px] items-start gap-3 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[15rem_minmax(0,1fr)_18rem]"
+      >
+        <p aria-atomic="true" aria-live="polite" className="sr-only">
+          {connectionMessage(connection)}{" "}
+          {latestMove ? moveSummary(latestMove) : ""}
+        </p>
+        <aside
+          aria-label="Players and match configuration"
+          className="grid gap-3 sm:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:grid-cols-1"
+        >
           <PlayerCard
             active={state.phase === "active" && state.current_player === "one"}
             agent="Seat one"
@@ -1091,7 +1218,54 @@ function GameWorkspace({
             </CardContent>
           </Card>
         </aside>
-        <section className="min-w-0 lg:col-start-1 xl:col-start-2">
+        <section
+          aria-labelledby="live-board-title"
+          className="min-w-0 lg:col-start-1 xl:col-start-2"
+        >
+          {connection !== "live" || snapshotError ? (
+            <Alert
+              className="mb-3"
+              role={
+                snapshotError &&
+                classifySessionFailure(snapshotError) === "credential"
+                  ? "alert"
+                  : "status"
+              }
+              variant={
+                snapshotError &&
+                classifySessionFailure(snapshotError) === "credential"
+                  ? "destructive"
+                  : "default"
+              }
+            >
+              <Unplug />
+              <AlertTitle>
+                {snapshotError &&
+                classifySessionFailure(snapshotError) === "credential"
+                  ? "Capability expired or revoked"
+                  : "Showing the last authoritative board"}
+              </AlertTitle>
+              <AlertDescription>
+                {snapshotError?.message ?? connectionMessage(connection)}
+              </AlertDescription>
+              <div className="col-start-2 mt-2 flex flex-wrap gap-2">
+                {snapshotError &&
+                classifySessionFailure(snapshotError) === "credential" ? (
+                  <Button onClick={onCredentialReset} size="sm">
+                    Use another credential
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => void onReload()}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RefreshCw /> Retry now
+                  </Button>
+                )}
+              </div>
+            </Alert>
+          ) : null}
           <Card className="gap-3" size="sm">
             <CardHeader className="border-b sm:grid-cols-[1fr_auto]">
               <div>
@@ -1105,17 +1279,21 @@ function GameWorkspace({
                     Version {state.version}
                   </span>
                 </div>
-                <CardTitle>Live board</CardTitle>
+                <CardTitle data-game-status id="live-board-title" tabIndex={-1}>
+                  Live board
+                </CardTitle>
                 <CardDescription>
                   Server snapshots are the only authoritative state.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2 self-center">
-                <Badge
-                  variant={connection === "live" ? "secondary" : "outline"}
-                >
-                  {connection}
-                </Badge>
+                <span>
+                  <Badge
+                    variant={connection === "live" ? "secondary" : "outline"}
+                  >
+                    {connection}
+                  </Badge>
+                </span>
                 <GameClock
                   active={state.phase === "active"}
                   deadlineAt={view.turnDeadline?.deadlineAt}
@@ -1126,6 +1304,7 @@ function GameWorkspace({
             </CardHeader>
             <CardContent>
               <GameBoard
+                announcement={latestMove ? moveSummary(latestMove) : undefined}
                 disabled={!canAct || pending || draft.mode !== "place"}
                 onSquareSelect={canAct ? chooseSquare : undefined}
                 premiums={premiums}
@@ -1191,7 +1370,10 @@ function GameWorkspace({
             </div>
           ) : null}
         </section>
-        <aside className="min-w-0 lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
+        <aside
+          aria-label="Move history and projection details"
+          className="min-w-0 lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1"
+        >
           <MoveHistory moves={moves} />
           <Card className="mt-3" size="sm">
             <CardHeader className="border-b">

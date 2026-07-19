@@ -20,6 +20,10 @@ type MoveHistoryProps = {
   moves: MoveRecord[]
 }
 
+export function moveSummary(move: MoveRecord): string {
+  return `${move.player}, turn ${move.turn}: ${move.word}, ${move.detail}, ${move.score} points.`
+}
+
 export function MoveHistory({ moves }: MoveHistoryProps) {
   return (
     <Card size="sm">
@@ -29,8 +33,17 @@ export function MoveHistory({ moves }: MoveHistoryProps) {
       </CardHeader>
       <CardContent className="px-0">
         <ol className="divide-y" aria-label="Recent moves">
+          {moves.length === 0 ? (
+            <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+              No completed moves yet.
+            </li>
+          ) : null}
           {moves.map((move, index) => (
-            <li className="px-3 py-3" key={move.turn}>
+            <li
+              aria-label={moveSummary(move)}
+              className="px-3 py-3"
+              key={move.turn}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

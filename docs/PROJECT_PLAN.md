@@ -162,7 +162,7 @@ using internal APIs.
   components using shadcn primitives and semantic design tokens.
 - [x] Add tournament lobby, live spectator, private player, replay, standings,
   and agent-detail views.
-- [ ] Add reconnect behavior, keyboard controls, accessible board narration,
+- [x] Add reconnect behavior, keyboard controls, accessible board narration,
   reduced motion, light/dark themes, and mobile layouts.
 - [ ] Add component, interaction, accessibility, and end-to-end tests.
 

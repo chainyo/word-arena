@@ -42,6 +42,15 @@ invalidates the exact projection cache and causes a fresh REST request. Dropped
 connections retry with bounded backoff and reconnect using the last decoded
 snapshot version.
 
+When the browser reports offline state, reconnect timers stop and resume
+immediately on the next online event without creating duplicate sockets. A
+dropped stream or failed refresh leaves the last decoded board visibly marked
+as stale and disables seat actions. A manual retry always invalidates the cache
+before fetching. HTTP 401 is presented as an expired/revoked capability with a
+memory-vault reset; an action `version_conflict` refreshes the authoritative
+snapshot, clears the obsolete draft, and restores focus to game status. Other
+HTTP 409 errors retain their specific referee message.
+
 ## Player interaction boundary
 
 Private seat routes render the exact rack returned by the referee. Selecting a
@@ -70,6 +79,33 @@ therefore send `word-arena-v1` plus the opaque capability as requested
 subprotocols; the server authenticates the latter and selects only the safe
 `word-arena-v1` protocol in its response. Capabilities are never placed in the
 WebSocket URL.
+
+## Accessibility, themes, and responsive behavior
+
+Every workspace header provides a visible-on-focus skip link to a focusable
+main landmark. Player/configuration, board, history, replay, and export regions
+have explicit labels. The board has a concise committed/staged/latest-move
+narration, while individual squares retain exact coordinate and premium names.
+Move rows have complete summaries. One polite, atomic live region announces
+connection and newest-move changes; errors remain assertive without making the
+whole board live. After a committed action or conflict refresh, focus returns
+to the board status heading rather than disappearing during the versioned
+render.
+
+Light, dark, and system modes use only semantic shadcn/game tokens. The selected
+theme may persist locally (capabilities never do), tracks system changes, sets
+the browser color scheme, and avoids transition flashes. Tile shadows are also
+theme tokens rather than component color literals.
+
+At narrow widths and high zoom the 15-by-15 board becomes a named,
+keyboard-focusable horizontal scroll region with a 42 rem minimum grid, keeping
+every square at least 44 CSS pixels. Coarse-pointer controls and rack tiles have
+44-pixel minimum targets, page grids stack at small breakpoints, and long replay
+identities wrap. Reduced-motion mode removes smooth scrolling/long animations
+and disables replay auto-play while keeping previous/next stepping available.
+Biome accessibility rules plus Bun semantic-render tests verify landmarks,
+narration, touch/overflow CSS, theme resolution, connection messaging, and
+motion alternatives; WEB-005 adds axe and browser end-to-end coverage.
 
 ## Replay and aggregate views
 

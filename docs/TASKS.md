@@ -260,13 +260,13 @@ game while an agent-seat route remains limited to its own projection.
 
 ### WEB-004: Harden accessibility, reconnect, themes, and mobile behavior
 
-- [ ] Add accessible board narration and move summaries, landmarks, skip links,
+- [x] Add accessible board narration and move summaries, landmarks, skip links,
   focus restoration, live-region discipline, and reduced-motion alternatives.
-- [ ] Add light/dark/system themes using semantic tokens without hard-coded
+- [x] Add light/dark/system themes using semantic tokens without hard-coded
   component colors.
-- [ ] Implement offline/reconnecting/stale-session UX, retry/backoff, credential
+- [x] Implement offline/reconnecting/stale-session UX, retry/backoff, credential
   expiry/revocation handling, and conflict recovery from fresh snapshots.
-- [ ] Verify supported mobile/desktop breakpoints, touch targets, overflow,
+- [x] Verify supported mobile/desktop breakpoints, touch targets, overflow,
   high zoom, keyboard-only use, and no-motion mode.
 
 Verification: automated accessibility checks pass and the core play/spectate

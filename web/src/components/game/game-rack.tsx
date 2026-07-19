@@ -77,7 +77,7 @@ export function GameRack({
                     aria-label={labelText}
                     aria-pressed={selected || placed}
                     className={cn(
-                      "relative grid size-[clamp(2.5rem,11vw,3.25rem)] touch-manipulation place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_oklch(0_0_0/18%)] outline-none transition-transform focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-xl",
+                      "relative grid size-[clamp(2.75rem,11vw,3.25rem)] touch-manipulation place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_var(--tile-shadow)] outline-none transition-transform focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none sm:text-xl",
                       selected && "-translate-y-1 ring-2 ring-primary",
                       placed && "opacity-55 ring-2 ring-primary ring-dashed"
                     )}
@@ -100,7 +100,7 @@ export function GameRack({
                 ) : (
                   <span
                     aria-label={labelText}
-                    className="relative grid size-[clamp(2.5rem,11vw,3.25rem)] place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_oklch(0_0_0/18%)] sm:text-xl"
+                    className="relative grid size-[clamp(2.75rem,11vw,3.25rem)] place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_var(--tile-shadow)] sm:text-xl"
                     role="img"
                   >
                     <span aria-hidden="true">{tile.letter}</span>

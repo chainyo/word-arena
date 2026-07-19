@@ -48,6 +48,8 @@
   --color-board-triple-word: var(--board-triple-word);
   --color-tile: var(--tile);
   --color-tile-foreground: var(--tile-foreground);
+  --color-tile-shadow: var(--tile-shadow);
+  --color-overlay: var(--overlay);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -100,6 +102,8 @@
   --tile: oklch(0.88 0.09 83);
   --tile-foreground: oklch(0.25 0.035 70);
   --tile-edge: oklch(0.69 0.075 75);
+  --tile-shadow: oklch(0 0 0 / 18%);
+  --overlay: oklch(0 0 0 / 10%);
 }
 
 .dark {
@@ -144,6 +148,8 @@
   --tile: oklch(0.77 0.09 83);
   --tile-foreground: oklch(0.2 0.035 70);
   --tile-edge: oklch(0.58 0.07 75);
+  --tile-shadow: oklch(0 0 0 / 35%);
+  --overlay: oklch(0 0 0 / 35%);
 }
 
 @layer base {
@@ -152,7 +158,7 @@
   }
 
   html {
-    @apply scroll-smooth font-sans;
+    @apply scroll-smooth font-sans motion-reduce:scroll-auto;
   }
 
   body {
@@ -160,8 +166,35 @@
     min-width: 320px;
   }
 
+  main:focus {
+    outline: none;
+  }
+
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+}
+
+@media (pointer: coarse) {
+  [data-slot="button"],
+  [data-slot="select-trigger"],
+  [data-slot="input"] {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
   }
 }

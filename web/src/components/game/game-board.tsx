@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react"
+import { type KeyboardEvent, useId } from "react"
 
 import type { Premium } from "@/api/types"
 import { cn } from "@/lib/utils"
@@ -13,11 +13,30 @@ export type BoardTile = {
 }
 
 type GameBoardProps = {
+  announcement?: string
   disabled?: boolean
   onSquareSelect?: (row: number, column: number) => void
   premiums?: Record<string, Premium>
   stagedTiles?: Record<string, BoardTile>
   tiles: Record<string, BoardTile>
+}
+
+export function boardNarration(
+  tiles: Record<string, BoardTile>,
+  stagedTiles: Record<string, BoardTile> = {},
+  announcement?: string
+): string {
+  const occupied = Object.keys(tiles).length
+  const staged = Object.keys(stagedTiles).length
+  const parts = [
+    `Board contains ${occupied} committed ${occupied === 1 ? "tile" : "tiles"}.`,
+  ]
+  if (staged > 0) {
+    parts.push(`${staged} ${staged === 1 ? "tile is" : "tiles are"} staged.`)
+  }
+  if (announcement) parts.push(announcement)
+  parts.push("Use arrow keys to move between interactive squares.")
+  return parts.join(" ")
 }
 
 const premiumLabels: Partial<Record<Premium, string>> = {
@@ -99,7 +118,7 @@ function TileFace({ tile }: { tile: BoardTile }) {
     <span
       aria-hidden="true"
       className={cn(
-        "absolute inset-[7%] grid place-items-center rounded-[18%] bg-tile font-heading text-[clamp(0.55rem,1.4vw,1.05rem)] font-semibold text-tile-foreground shadow-[inset_0_-2px_0_var(--tile-edge),0_1px_2px_oklch(0_0_0/18%)]",
+        "absolute inset-[7%] grid place-items-center rounded-[18%] bg-tile font-heading text-[clamp(0.55rem,1.4vw,1.05rem)] font-semibold text-tile-foreground shadow-[inset_0_-2px_0_var(--tile-edge),0_1px_2px_var(--tile-shadow)]",
         tile.recent && "ring-2 ring-primary ring-inset",
         tile.staged && "opacity-80 ring-2 ring-primary ring-dashed ring-inset"
       )}
@@ -115,12 +134,14 @@ function TileFace({ tile }: { tile: BoardTile }) {
 }
 
 export function GameBoard({
+  announcement,
   disabled = false,
   onSquareSelect,
   premiums = {},
   stagedTiles = {},
   tiles,
 }: GameBoardProps) {
+  const descriptionId = useId()
   const interactive = onSquareSelect !== undefined
   const firstOpen = squares.find(
     ({ column, row }) => !tiles[`${row}-${column}`]
@@ -128,91 +149,103 @@ export function GameBoard({
   const initialKey = tiles["7-7"]
     ? `${firstOpen?.row}-${firstOpen?.column}`
     : "7-7"
+  const narration = boardNarration(tiles, stagedTiles, announcement)
   return (
-    <div className="mx-auto w-full max-w-[720px]">
-      <div className="mb-1.5 grid grid-cols-[repeat(15,minmax(0,1fr))] px-1.5 text-center font-mono text-[9px] text-muted-foreground sm:text-[10px]">
-        {columnLabels.map((label) => (
-          <span key={label}>{label}</span>
-        ))}
+    <section
+      aria-label="Scrollable 15 by 15 word game board region"
+      className="w-full overflow-x-auto overscroll-x-contain pb-2"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must be able to scroll the board at narrow widths and high zoom.
+      tabIndex={0}
+    >
+      <p className="sr-only" id={descriptionId}>
+        {narration}
+      </p>
+      <div className="mx-auto w-full min-w-[42rem] max-w-[720px]">
+        <div className="mb-1.5 grid grid-cols-[repeat(15,minmax(0,1fr))] px-1.5 text-center font-mono text-[9px] text-muted-foreground sm:text-[10px]">
+          {columnLabels.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+        <ol
+          aria-describedby={descriptionId}
+          aria-label="15 by 15 word game board"
+          className="grid touch-manipulation grid-cols-[repeat(15,minmax(0,1fr))] gap-px rounded-xl bg-board-line p-1.5 shadow-inner ring-1 ring-foreground/10"
+          data-game-board="true"
+        >
+          {squares.map(({ column, row }) => {
+            const key = `${row}-${column}`
+            const premium = premiums[key] ?? "normal"
+            const tile = tiles[key]
+            const staged = stagedTiles[key]
+            const shownTile = tile ?? staged
+            const name = squareName(row, column)
+            const premiumName = premiumNames[premium]
+            const description = shownTile
+              ? `${name}: ${shownTile.letter}${shownTile.value === undefined ? "" : `, ${shownTile.value} points`}${shownTile.recent ? ", part of the latest move" : ""}${shownTile.staged ? ", staged for this move" : ""}`
+              : premiumName
+                ? `${name}: ${premiumName} score`
+                : `${name}: empty`
+            const content = (
+              <>
+                {premium !== "normal" && !shownTile ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-0 grid place-items-center font-heading text-[clamp(0.3rem,0.65vw,0.55rem)] font-semibold tracking-tight"
+                  >
+                    {premiumLabels[premium]}
+                  </span>
+                ) : null}
+                {shownTile ? <TileFace tile={shownTile} /> : null}
+              </>
+            )
+            return (
+              <li
+                className={cn(
+                  "relative aspect-square min-w-0 list-none overflow-hidden rounded-[3px] bg-board",
+                  premiumClasses[premium]
+                )}
+                key={key}
+              >
+                {interactive ? (
+                  <button
+                    aria-disabled={disabled || tile !== undefined}
+                    aria-label={description}
+                    className="absolute inset-0 size-full rounded-[3px] outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed"
+                    data-column={column}
+                    data-row={row}
+                    onClick={() => {
+                      if (!disabled && !tile) onSquareSelect(row, column)
+                    }}
+                    onKeyDown={moveBoardFocus}
+                    tabIndex={key === initialKey ? 0 : -1}
+                    type="button"
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <span aria-label={description} role="img">
+                    {content}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground sm:text-xs">
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-board-double-letter" /> DL
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-board-triple-letter" /> TL
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-board-double-word" /> DW
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-sm bg-board-triple-word" /> TW
+          </span>
+        </div>
       </div>
-      <ol
-        aria-label="15 by 15 word game board"
-        className="grid touch-manipulation grid-cols-[repeat(15,minmax(0,1fr))] gap-px rounded-xl bg-board-line p-1.5 shadow-inner ring-1 ring-foreground/10"
-        data-game-board="true"
-      >
-        {squares.map(({ column, row }) => {
-          const key = `${row}-${column}`
-          const premium = premiums[key] ?? "normal"
-          const tile = tiles[key]
-          const staged = stagedTiles[key]
-          const shownTile = tile ?? staged
-          const name = squareName(row, column)
-          const premiumName = premiumNames[premium]
-          const description = shownTile
-            ? `${name}: ${shownTile.letter}${shownTile.value === undefined ? "" : `, ${shownTile.value} points`}${shownTile.recent ? ", part of the latest move" : ""}${shownTile.staged ? ", staged for this move" : ""}`
-            : premiumName
-              ? `${name}: ${premiumName} score`
-              : `${name}: empty`
-          const content = (
-            <>
-              {premium !== "normal" && !shownTile ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-0 grid place-items-center font-heading text-[clamp(0.3rem,0.65vw,0.55rem)] font-semibold tracking-tight"
-                >
-                  {premiumLabels[premium]}
-                </span>
-              ) : null}
-              {shownTile ? <TileFace tile={shownTile} /> : null}
-            </>
-          )
-          return (
-            <li
-              className={cn(
-                "relative aspect-square min-w-0 list-none overflow-hidden rounded-[3px] bg-board",
-                premiumClasses[premium]
-              )}
-              key={key}
-            >
-              {interactive ? (
-                <button
-                  aria-disabled={disabled || tile !== undefined}
-                  aria-label={description}
-                  className="absolute inset-0 size-full rounded-[3px] outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed"
-                  data-column={column}
-                  data-row={row}
-                  onClick={() => {
-                    if (!disabled && !tile) onSquareSelect(row, column)
-                  }}
-                  onKeyDown={moveBoardFocus}
-                  tabIndex={key === initialKey ? 0 : -1}
-                  type="button"
-                >
-                  {content}
-                </button>
-              ) : (
-                <span aria-label={description} role="img">
-                  {content}
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ol>
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground sm:text-xs">
-        <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-board-double-letter" /> DL
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-board-triple-letter" /> TL
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-board-double-word" /> DW
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-board-triple-word" /> TW
-        </span>
-      </div>
-    </div>
+    </section>
   )
 }

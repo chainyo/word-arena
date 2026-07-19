@@ -73,6 +73,7 @@ export function ReplayView({
   const lastSequence = replay.events.at(-1)?.sequence ?? 0
   const [sequence, setSequence] = useState(lastSequence)
   const [playing, setPlaying] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState(false)
   const [query, setQuery] = useState("")
   const [kind, setKind] = useState("all")
   const [page, setPage] = useState(0)
@@ -84,6 +85,17 @@ export function ReplayView({
   )
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const pageEvents = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const update = () => {
+      setReducedMotion(media.matches)
+      if (media.matches) setPlaying(false)
+    }
+    update()
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [])
 
   useEffect(() => {
     if (!playing) return undefined
@@ -129,8 +141,15 @@ export function ReplayView({
   })
 
   return (
-    <main className="mx-auto grid max-w-[1600px] items-start gap-3 p-3 sm:p-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <section className="min-w-0 space-y-3">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto grid max-w-[1600px] items-start gap-3 p-3 sm:p-5 xl:grid-cols-[minmax(0,1fr)_22rem]"
+    >
+      <section
+        aria-label="Recorded board and events"
+        className="min-w-0 space-y-3"
+      >
         <Card size="sm">
           <CardHeader className="border-b sm:grid-cols-[1fr_auto]">
             <div>
@@ -167,6 +186,7 @@ export function ReplayView({
               </Button>
               <Button
                 aria-label={playing ? "Pause replay" : "Play replay"}
+                disabled={reducedMotion}
                 onClick={() => {
                   if (sequence >= lastSequence) setSequence(0)
                   setPlaying((current) => !current)
@@ -195,9 +215,16 @@ export function ReplayView({
                 <ChevronLast />
               </Button>
             </div>
+            {reducedMotion ? (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Auto-play is disabled by the reduced-motion preference. Use the
+                previous and next controls to step through events.
+              </p>
+            ) : null}
           </CardHeader>
           <CardContent>
             <GameBoard
+              announcement={`Recorded event ${frame.sequence + 1} of ${replay.events.length}.`}
               premiums={displayPremiums(replay.ruleset)}
               tiles={tiles}
             />
@@ -293,7 +320,10 @@ export function ReplayView({
           </CardContent>
         </Card>
       </section>
-      <aside className="space-y-3">
+      <aside
+        aria-label="Replay scores, statistics, and exact inputs"
+        className="space-y-3"
+      >
         <Card size="sm">
           <CardHeader className="border-b">
             <CardTitle>Score at event {frame.sequence}</CardTitle>

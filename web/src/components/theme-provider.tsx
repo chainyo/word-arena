@@ -1,7 +1,7 @@
 import * as React from "react"
 
-type Theme = "dark" | "light" | "system"
-type ResolvedTheme = "dark" | "light"
+export type Theme = "dark" | "light" | "system"
+export type ResolvedTheme = "dark" | "light"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -11,6 +11,7 @@ type ThemeProviderProps = {
 }
 
 type ThemeProviderState = {
+  resolvedTheme: ResolvedTheme
   theme: Theme
   setTheme: (theme: Theme) => void
 }
@@ -31,11 +32,34 @@ function isTheme(value: string | null): value is Theme {
 }
 
 function getSystemTheme(): ResolvedTheme {
-  if (window.matchMedia(COLOR_SCHEME_QUERY).matches) {
-    return "dark"
-  }
+  return resolveTheme(
+    "system",
+    typeof window !== "undefined" &&
+      window.matchMedia(COLOR_SCHEME_QUERY).matches
+  )
+}
 
-  return "light"
+export function resolveTheme(
+  theme: Theme,
+  prefersDark: boolean
+): ResolvedTheme {
+  return theme === "system" ? (prefersDark ? "dark" : "light") : theme
+}
+
+function readStoredTheme(storageKey: string): string | null {
+  try {
+    return localStorage.getItem(storageKey)
+  } catch {
+    return null
+  }
+}
+
+function writeStoredTheme(storageKey: string, theme: Theme) {
+  try {
+    localStorage.setItem(storageKey, theme)
+  } catch {
+    // Theme persistence is optional; the in-memory preference still applies.
+  }
 }
 
 function disableTransitionsTemporarily() {
@@ -84,17 +108,20 @@ export function ThemeProvider({
   ...props
 }: ThemeProviderProps) {
   const [theme, setThemeState] = React.useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey)
+    const storedTheme = readStoredTheme(storageKey)
     if (isTheme(storedTheme)) {
       return storedTheme
     }
 
     return defaultTheme
   })
+  const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() =>
+    theme === "system" ? getSystemTheme() : theme
+  )
 
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
-      localStorage.setItem(storageKey, nextTheme)
+      writeStoredTheme(storageKey, nextTheme)
       setThemeState(nextTheme)
     },
     [storageKey]
@@ -111,6 +138,8 @@ export function ThemeProvider({
 
       root.classList.remove("light", "dark")
       root.classList.add(resolvedTheme)
+      root.style.colorScheme = resolvedTheme
+      setResolvedTheme(resolvedTheme)
 
       if (restoreTransitions) {
         restoreTransitions()
@@ -166,7 +195,7 @@ export function ThemeProvider({
                 ? "light"
                 : "dark"
 
-        localStorage.setItem(storageKey, nextTheme)
+        writeStoredTheme(storageKey, nextTheme)
         return nextTheme
       })
     }
@@ -205,10 +234,11 @@ export function ThemeProvider({
 
   const value = React.useMemo(
     () => ({
+      resolvedTheme,
       theme,
       setTheme,
     }),
-    [theme, setTheme]
+    [resolvedTheme, theme, setTheme]
   )
 
   return (
