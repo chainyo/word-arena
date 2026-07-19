@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "protocol_version": "2025-11-25",
+  "competitive_tool_schema_sha256": "90361c5078fd057e9bcbe6da8c4fd8663202f8464a2fb35b8686a092d76ae407",
+  "competitive_tools": [
+    "exchange_tiles",
+    "get_ruleset",
+    "observe_game",
+    "pass_turn",
+    "play_tiles",
+    "resign"
+  ],
+  "resource_templates": [
+    "word-arena://games/{game_id}/history",
+    "word-arena://games/{game_id}/lexicon-manifest",
+    "word-arena://games/{game_id}/public",
+    "word-arena://games/{game_id}/ruleset",
+    "word-arena://games/{game_id}/seat"
+  ]
+}

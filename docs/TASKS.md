@@ -202,13 +202,13 @@ knowing the HTTP transport, and CLI output never contains another seat's data.
 
 ### MCP-006: Validate representative MCP clients
 
-- [ ] Add a reproducible MCP Inspector smoke procedure and checked-in scripted
+- [x] Add a reproducible MCP Inspector smoke procedure and checked-in scripted
   clients that exercise initialization, tools, resources, retries, and shutdown.
-- [ ] Cover at least the generic stdio bridge and direct Streamable HTTP paths;
+- [x] Cover at least the generic stdio bridge and direct Streamable HTTP paths;
   document Codex, Claude Code, Cline, and Pi configuration examples.
-- [ ] Run a complete two-client English and French scenario and retain only
+- [x] Run a complete two-client English and French scenario and retain only
   synthetic transcripts/artifacts safe for Git.
-- [ ] Add protocol-schema compatibility checks to CI without requiring model
+- [x] Add protocol-schema compatibility checks to CI without requiring model
   provider credentials or network access.
 
 Verification: two scripted MCP clients finish and deterministically replay both

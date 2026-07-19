@@ -32,6 +32,7 @@ word-arena-persistence = { path = "../../crates/persistence" }
 [dev-dependencies]
 tempfile.workspace = true
 tokio-tungstenite = "0.29.0"
+word-arena-cli = { path = "../cli" }
 word-arena-application = { path = "../../crates/application", features = ["test-support"] }
 
 [lints]

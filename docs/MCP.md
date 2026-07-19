@@ -81,3 +81,6 @@ Local stdio-only MCP clients can use `word-arena mcp stdio`. The bridge keeps
 JSON-RPC bytes on stdout, diagnostics on stderr, preserves Streamable HTTP
 session authority, and forwards the optional server notification stream. See
 [`CLI.md`](CLI.md) for configuration, redaction, framing, and exit codes.
+Reproducible Inspector steps, client configuration examples, schema fixtures,
+and English/French two-seat scenarios are documented in
+[`MCP_CLIENTS.md`](MCP_CLIENTS.md).

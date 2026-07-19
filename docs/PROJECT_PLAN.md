@@ -149,7 +149,7 @@ private state, and a restarted server resumes active games correctly.
   state, history, rules, and the active lexicon manifest.
 - [x] Add a practice-only, rate-limited move preview capability.
 - [x] Build `word-arena-cli` and an MCP stdio-to-HTTP bridge.
-- [ ] Test schemas and behavior with the MCP Inspector and representative agent
+- [x] Test schemas and behavior with the MCP Inspector and representative agent
   clients.
 
 Exit criterion: two scripted MCP clients finish and replay a full game without

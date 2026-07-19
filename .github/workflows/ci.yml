@@ -24,6 +24,8 @@ jobs:
         run: cargo xtask ruleset verify
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Verify MCP client and schema compatibility
+        run: scripts/mcp/verify-contract.sh
       - name: Run tests
         run: cargo test --workspace --all-features
       - name: Build workspace

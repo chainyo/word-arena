@@ -49,14 +49,16 @@ The repository foundation is in place:
   Rust SDK, with exact capability/session isolation ([MCP contract](docs/MCP.md))
 - A redacted Rust CLI for health, seat observation/actions, private replay
   export, and a transparent MCP stdio bridge ([CLI contract](docs/CLI.md))
+- Credential-free direct HTTP and stdio MCP client scenarios for both languages,
+  with pinned schemas and replay checks ([client validation](docs/MCP_CLIENTS.md))
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Representative MCP client validation, agent drivers, and tournament
-orchestration are planned next. The current lexicon/gameplay boundary is
+Agent drivers and tournament orchestration are planned next. The current
+lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is
 documented in [`docs/BASELINE_MATCHES.md`](docs/BASELINE_MATCHES.md).

@@ -1,4 +1,9 @@
-use std::{collections::BTreeSet, fmt::Write as _, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Write as _,
+    sync::Arc,
+    time::Duration,
+};
 
 use axum::{
     body::{Body, to_bytes},
@@ -7,7 +12,10 @@ use axum::{
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tokio::net::TcpListener;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream},
+    net::TcpListener,
+};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message, client::IntoClientRequest},
@@ -23,7 +31,11 @@ use word_arena_application::{
         SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
     },
 };
-use word_arena_engine::{GameMode, Language, Ruleset, Seat, WordValidator};
+use word_arena_cli::{
+    args::ConfigOverrides, bridge::run_bridge, client::RemoteClient, config::ResolvedConfig,
+    error::CliError,
+};
+use word_arena_engine::{Game, GameMode, Language, Ruleset, Seat, WordValidator};
 use word_arena_lexicon::{
     BuilderDescriptor, FileDescriptor, NormalizedKey, PackIdentity, PackManifest, PolicyDescriptor,
     REQUIRED_PAYLOAD_FILES, SourceDescriptor,
@@ -397,6 +409,22 @@ async fn authenticated_mcp_handshake_exposes_competitive_tools() {
     assert_eq!(tools.status(), StatusCode::OK);
     let tools = mcp_response_json(tools).await;
     assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 6);
+    let contract: Value =
+        serde_json::from_str(include_str!("snapshots/mcp_client_contract_v1.json")).unwrap();
+    assert_eq!(contract["protocol_version"], MCP_PROTOCOL_VERSION);
+    let actual_names = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    let expected_names = contract["competitive_tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|name| name.as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(actual_names, expected_names);
     let schema_bytes = serde_json::to_vec(&tools["result"]["tools"]).unwrap();
     let schema_digest =
         Sha256::digest(schema_bytes)
@@ -408,6 +436,10 @@ async fn authenticated_mcp_handshake_exposes_competitive_tools() {
     assert_eq!(
         schema_digest,
         include_str!("snapshots/mcp_competitive_tools_v1.sha256").trim()
+    );
+    assert_eq!(
+        schema_digest,
+        contract["competitive_tool_schema_sha256"].as_str().unwrap()
     );
 }
 
@@ -935,7 +967,148 @@ async fn competitive_mcp_tools_complete_english_and_french_games_with_retry_and_
                 &["racks", "bag", "seed", "snapshot"],
             );
         }
+        assert_persisted_replay(&fixture, &game_id).await;
     }
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the full two-client stdio lifecycle is intentionally visible as one protocol scenario"
+)]
+async fn scripted_stdio_mcp_clients_finish_and_replay_english_and_french() {
+    let mut scenarios = Vec::new();
+    for language in [Language::English, Language::French] {
+        let fixture = fixture();
+        let game_id = create_game_language(&fixture, language.code(), language).await;
+        let seat_one_token = issue(
+            &fixture,
+            &game_id,
+            CapabilityRole::Seat(Seat::One),
+            [CapabilityScope::Act],
+            Some(&format!("stdio-{}-one", language.code())),
+        )
+        .await;
+        let seat_two_token = issue(
+            &fixture,
+            &game_id,
+            CapabilityRole::Seat(Seat::Two),
+            [CapabilityScope::Act],
+            Some(&format!("stdio-{}-two", language.code())),
+        )
+        .await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server_state = Arc::clone(&fixture.state);
+        let server = tokio::spawn(async move {
+            axum::serve(listener, api_app(server_state)).await.unwrap();
+        });
+        let server_url = format!("http://{address}");
+        let mut seat_one = StdioMcpClient::connect(&server_url, &game_id, &seat_one_token).await;
+        let mut seat_two = StdioMcpClient::connect(&server_url, &game_id, &seat_two_token).await;
+
+        let tools = seat_one.rpc("tools/list", json!({})).await;
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 6);
+        let resources = seat_one.rpc("resources/list", json!({})).await;
+        assert_eq!(
+            resources["result"]["resources"].as_array().unwrap().len(),
+            5
+        );
+        let history_uri = format!("word-arena://games/{game_id}/history");
+        let history = seat_one
+            .rpc("resources/read", json!({"uri":history_uri}))
+            .await;
+        assert_eq!(
+            history["result"]["contents"][0]["mimeType"],
+            "application/json"
+        );
+        let observed_one = seat_one
+            .call("observe_game", json!({"schema_version":1}))
+            .await;
+        let observed_two = seat_two
+            .call("observe_game", json!({"schema_version":1}))
+            .await;
+        assert_eq!(observed_one["structuredContent"]["game"]["seat"], "one");
+        assert_eq!(observed_two["structuredContent"]["game"]["seat"], "two");
+        assert_no_keys(
+            &observed_one["structuredContent"],
+            &["racks", "bag", "seed", "snapshot"],
+        );
+        assert_no_keys(
+            &observed_two["structuredContent"],
+            &["racks", "bag", "seed", "snapshot"],
+        );
+
+        for version in 0..6_u64 {
+            let arguments = json!({
+                "schema_version":1,
+                "expected_version":version,
+                "turn_id":version,
+                "idempotency_key":format!("stdio-{}-pass-{version}", language.code())
+            });
+            let client = if version % 2 == 0 {
+                &mut seat_one
+            } else {
+                &mut seat_two
+            };
+            let passed = client.call("pass_turn", arguments.clone()).await;
+            assert_eq!(passed["isError"], false);
+            assert_eq!(
+                passed["structuredContent"]["game"]["public"]["state"]["version"],
+                version + 1
+            );
+            if version == 0 {
+                let retried = client.call("pass_turn", arguments).await;
+                assert_eq!(retried["structuredContent"], passed["structuredContent"]);
+            }
+        }
+        let final_one = seat_one
+            .call("observe_game", json!({"schema_version":1}))
+            .await;
+        let final_two = seat_two
+            .call("observe_game", json!({"schema_version":1}))
+            .await;
+        for final_view in [&final_one, &final_two] {
+            assert_eq!(
+                final_view["structuredContent"]["game"]["public"]["state"]["phase"],
+                "finished"
+            );
+            assert_eq!(
+                final_view["structuredContent"]["game"]["public"]["events"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                7
+            );
+            assert_no_keys(
+                &final_view["structuredContent"],
+                &["racks", "bag", "seed", "snapshot"],
+            );
+        }
+        seat_one.close().await;
+        seat_two.close().await;
+        server.abort();
+        assert_persisted_replay(&fixture, &game_id).await;
+        scenarios.push(json!({
+            "language":language.code(),
+            "transport":"stdio_bridge",
+            "clients":2,
+            "committed_actions":6,
+            "retry_verified":true,
+            "terminal_phase":"finished",
+            "replay_verified":true
+        }));
+    }
+    let transcript = json!({
+        "schema_version":1,
+        "protocol_version":MCP_PROTOCOL_VERSION,
+        "contains_credentials":false,
+        "contains_private_game_data":false,
+        "scenarios":scenarios
+    });
+    let expected: Value =
+        serde_json::from_str(include_str!("snapshots/mcp_stdio_scenarios_v1.json")).unwrap();
+    assert_eq!(transcript, expected);
 }
 
 #[tokio::test]
@@ -1019,6 +1192,16 @@ async fn authenticated_mcp_resources_are_stable_and_private_in_both_languages() 
                 "word-arena://games/{game_id}/lexicon-manifest",
             ]
         );
+        let contract: Value =
+            serde_json::from_str(include_str!("snapshots/mcp_client_contract_v1.json")).unwrap();
+        let actual_templates = template_uris.into_iter().collect::<BTreeSet<_>>();
+        let expected_templates = contract["resource_templates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|uri| uri.as_str().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual_templates, expected_templates);
 
         let public = mcp_read_resource(
             app.clone(),
@@ -1418,6 +1601,7 @@ struct Fixture {
     runtime: Arc<ApplicationRuntime>,
     state: Arc<ServerState>,
     capabilities: Arc<InMemoryCapabilityRepository>,
+    games: Arc<InMemoryGameRepository>,
 }
 
 fn fixture() -> Fixture {
@@ -1430,7 +1614,7 @@ fn fixture_with_preview_policy(preview_policy: PreviewPolicy) -> Fixture {
         let manifest = fixture_manifest(&ruleset.lexicon);
         (Arc::new(AcceptingLexicon(ruleset.lexicon)), manifest)
     });
-    let game_repository: Arc<dyn GameRepository> = Arc::new(InMemoryGameRepository::default());
+    let games = Arc::new(InMemoryGameRepository::default());
     let resolver: Arc<dyn LexiconResolver> = Arc::new(FixtureLexicons(lexicons));
     let ids: Arc<dyn GameIdSource> = Arc::new(SequenceGameIds::new("http-game"));
     let seeds: Arc<dyn SeedSource> = Arc::new(SequenceSeeds::new(99));
@@ -1438,7 +1622,7 @@ fn fixture_with_preview_policy(preview_policy: PreviewPolicy) -> Fixture {
     let capabilities = Arc::new(InMemoryCapabilityRepository::default());
     let runtime = Arc::new(
         ApplicationRuntime::new(
-            game_repository,
+            games.clone(),
             resolver,
             ids,
             seeds,
@@ -1456,6 +1640,7 @@ fn fixture_with_preview_policy(preview_policy: PreviewPolicy) -> Fixture {
         runtime,
         state,
         capabilities,
+        games,
     }
 }
 
@@ -1519,6 +1704,128 @@ async fn create_game_mode(
         .await
         .unwrap()
         .game_id
+}
+
+struct StdioMcpClient {
+    input: DuplexStream,
+    output: BufReader<DuplexStream>,
+    bridge: tokio::task::JoinHandle<Result<(), CliError>>,
+    next_id: u64,
+}
+
+impl StdioMcpClient {
+    async fn connect(server_url: &str, game_id: &GameId, token: &str) -> Self {
+        let config = ResolvedConfig::load_from(
+            ConfigOverrides {
+                server_url: Some(server_url.to_owned()),
+                game_id: Some(game_id.to_string()),
+                token: Some(token.to_owned()),
+                timeout_ms: Some(2_000),
+            },
+            None,
+            &HashMap::new(),
+        )
+        .unwrap();
+        let client = RemoteClient::new(config).unwrap();
+        let (input, bridge_input) = tokio::io::duplex(64 * 1024);
+        let (bridge_output, output) = tokio::io::duplex(64 * 1024);
+        let bridge = tokio::spawn(run_bridge(
+            bridge_input,
+            bridge_output,
+            client,
+            tokio_util::sync::CancellationToken::new(),
+        ));
+        let mut client = Self {
+            input,
+            output: BufReader::new(output),
+            bridge,
+            next_id: 1,
+        };
+        let initialized = client
+            .rpc(
+                "initialize",
+                json!({
+                    "protocolVersion":MCP_PROTOCOL_VERSION,
+                    "capabilities":{},
+                    "clientInfo":{"name":"word-arena-scripted-stdio","version":"1"}
+                }),
+            )
+            .await;
+        assert_eq!(
+            initialized["result"]["protocolVersion"],
+            MCP_PROTOCOL_VERSION
+        );
+        client.notify("notifications/initialized", json!({})).await;
+        client
+    }
+
+    async fn call(&mut self, name: &str, arguments: Value) -> Value {
+        let response = self
+            .rpc("tools/call", json!({"name":name,"arguments":arguments}))
+            .await;
+        assert!(
+            response.get("error").is_none(),
+            "stdio MCP protocol error: {response}"
+        );
+        response["result"].clone()
+    }
+
+    async fn rpc(&mut self, method: &str, params: Value) -> Value {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.write(json!({
+            "jsonrpc":"2.0",
+            "id":id,
+            "method":method,
+            "params":params
+        }))
+        .await;
+        loop {
+            let mut line = String::new();
+            self.output.read_line(&mut line).await.unwrap();
+            assert!(
+                !line.is_empty(),
+                "stdio MCP bridge closed before response {id}"
+            );
+            let response: Value = serde_json::from_str(line.trim_end()).unwrap();
+            if response["id"] == id {
+                return response;
+            }
+            assert!(
+                response.get("method").is_some(),
+                "unexpected stdio MCP response: {response}"
+            );
+        }
+    }
+
+    async fn notify(&mut self, method: &str, params: Value) {
+        self.write(json!({
+            "jsonrpc":"2.0",
+            "method":method,
+            "params":params
+        }))
+        .await;
+    }
+
+    async fn write(&mut self, message: Value) {
+        let bytes = serde_json::to_vec(&message).unwrap();
+        self.input.write_all(&bytes).await.unwrap();
+        self.input.write_all(b"\n").await.unwrap();
+        self.input.flush().await.unwrap();
+    }
+
+    async fn close(mut self) {
+        self.input.shutdown().await.unwrap();
+        self.bridge.await.unwrap().unwrap();
+    }
+}
+
+async fn assert_persisted_replay(fixture: &Fixture, game_id: &GameId) {
+    let stored = fixture.games.load(game_id).await.unwrap();
+    let recovery = fixture.games.load_recovery(game_id).await.unwrap();
+    let lexicon = Arc::new(AcceptingLexicon(recovery.replay.lexicon.clone()));
+    let replayed = Game::replay(&recovery.replay, Some(lexicon)).unwrap();
+    assert_eq!(replayed.snapshot(), stored.snapshot);
 }
 
 async fn issue<const N: usize>(

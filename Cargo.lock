@@ -3152,6 +3152,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "word-arena-application",
+ "word-arena-cli",
  "word-arena-engine",
  "word-arena-lexicon",
  "word-arena-persistence",

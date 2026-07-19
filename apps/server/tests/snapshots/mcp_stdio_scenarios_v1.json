@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "protocol_version": "2025-11-25",
+  "contains_credentials": false,
+  "contains_private_game_data": false,
+  "scenarios": [
+    {
+      "language": "en",
+      "transport": "stdio_bridge",
+      "clients": 2,
+      "committed_actions": 6,
+      "retry_verified": true,
+      "terminal_phase": "finished",
+      "replay_verified": true
+    },
+    {
+      "language": "fr",
+      "transport": "stdio_bridge",
+      "clients": 2,
+      "committed_actions": 6,
+      "retry_verified": true,
+      "terminal_phase": "finished",
+      "replay_verified": true
+    }
+  ]
+}

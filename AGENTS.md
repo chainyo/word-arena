@@ -67,6 +67,7 @@ cargo build --workspace --all-features
 cargo test -p word-arena-persistence --all-features
 cargo run -p word-arena-server
 cargo run -p word-arena-cli -- --help
+scripts/mcp/verify-contract.sh
 ```
 
 Frontend:
