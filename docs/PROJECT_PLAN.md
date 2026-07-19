@@ -193,7 +193,7 @@ policy without accessing its opponent's workspace or credentials.
 - [x] Build a SQLite-backed SQLx job claim/lease loop before adding a queue.
 - [x] Add concurrency and model-provider-rate controls, cancellation, retry, and
   worker recovery.
-- [ ] Compute per-language and per-ruleset Glicko-2 ratings.
+- [x] Compute per-language and per-ruleset Glicko-2 ratings.
 - [ ] Report win rate, spread, average move score, bingos, invalid actions,
   passes, exchanges, turn latency, premium use, vocabulary, tool calls, tokens,
   and cost where available.

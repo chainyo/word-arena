@@ -81,6 +81,12 @@ results. Capacity acquisition and token consumption are one transaction.
 Recovery expires dead reservations from injected time; result, charge,
 telemetry, and rating identities commit together.
 
+Migration 11 adds immutable, scoped Glicko-2 periods plus normalized match,
+entrant-input, derived-update, and current-rating rows. Period insertion and
+current projection updates commit together. Loads and rebuilds recompute every
+fixed-point result and reject canonical payload, normalized row, sequence, or
+previous-rating drift.
+
 Run them with:
 
 ```bash

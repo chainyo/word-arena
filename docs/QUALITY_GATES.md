@@ -155,3 +155,15 @@ inputs, and exactly-once terminal/downstream identities:
 cargo test -p word-arena-application --all-features --test scheduler
 cargo test -p word-arena-persistence --all-features --test scheduler
 ```
+
+## Scoped rating determinism
+
+The rating suites lock the published Glicko-2 example, volatility convergence,
+inactivity and numeric ceilings, ties, fixed-point serialization, pool
+isolation, paired-game accounting, transaction rollback, restart idempotency,
+normalized-row auditing, and exact full-history rebuilds:
+
+```bash
+cargo test -p word-arena-application --all-features --test rating
+cargo test -p word-arena-persistence --all-features --test ratings
+```

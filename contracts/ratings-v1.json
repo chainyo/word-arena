@@ -1,0 +1,43 @@
+{
+  "kind": "word_arena_ratings_contract",
+  "schema_version": 1,
+  "algorithm": "glicko-2",
+  "algorithm_parameters": {
+    "scale": 173.7178,
+    "tau": 0.5,
+    "convergence_epsilon": 0.000001,
+    "maximum_iterations": 10000
+  },
+  "fixed_point_storage": {
+    "rating": "signed_milli_points",
+    "deviation": "unsigned_milli_points",
+    "volatility": "unsigned_nano_units",
+    "score": "unsigned_millionths"
+  },
+  "bounds": {
+    "rating": [-1000, 5000],
+    "deviation": [0.001, 350],
+    "volatility": [0.000001, 1],
+    "score_millionths": [0, 1000000]
+  },
+  "pool_identity": [
+    "language",
+    "ruleset_id",
+    "ruleset_sha256",
+    "rated_format_policy"
+  ],
+  "immutable_inputs": [
+    "period_id",
+    "period_sequence",
+    "pool_identity",
+    "match_id",
+    "series_id",
+    "series_game_number",
+    "entrants",
+    "score",
+    "previous_ratings",
+    "opponent_results"
+  ],
+  "paired_series_accounting": "each_seat_swapped_game_exactly_once",
+  "rebuild_order": ["pool_key", "period_sequence", "entrant_id"]
+}

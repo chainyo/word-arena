@@ -133,6 +133,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Acquire all scheduler scopes before launching match work. Treat persisted
   reservations and token buckets as authoritative, propagate tournament
   controls, and publish terminal result/downstream idempotency keys atomically.
+- Treat ratings as rebuildable fixed-point projections. Scope every Glicko-2
+  period by language, exact ruleset identity, and rated-format policy; store
+  immutable match inputs and count every paired seat-swap game exactly once.
 - Keep public and seat-private events distinguishable from their creation.
 - Never commit proprietary word lists. Every lexicon pack needs source,
   version, locale, license, normalization, and checksum metadata.

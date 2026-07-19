@@ -80,6 +80,13 @@ pub static MIGRATOR: LazyLock<Migrator> = LazyLock::new(|| {
             include_str!("../migrations/0010_scheduler_controls.sql").into_sql_str(),
             false,
         ),
+        Migration::new(
+            11,
+            "scoped ratings".into(),
+            MigrationType::Simple,
+            include_str!("../migrations/0011_ratings.sql").into_sql_str(),
+            false,
+        ),
     ])
 });
 
@@ -165,14 +172,14 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
         let schema_version = sqlx::query_scalar::<_, String>(
             "SELECT value FROM schema_metadata WHERE key = 'application_schema_version'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(schema_version, "10");
+        assert_eq!(schema_version, "11");
 
         let tables = sqlx::query_scalar::<_, String>(
             "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
@@ -189,6 +196,7 @@ mod tests {
             "audit_records",
             "capabilities",
             "creation_idempotency_records",
+            "current_ratings",
             "execution_reservation_scopes",
             "execution_reservations",
             "game_snapshots",
@@ -203,6 +211,10 @@ mod tests {
             "matches",
             "private_events",
             "public_events",
+            "rating_match_inputs",
+            "rating_period_inputs",
+            "rating_periods",
+            "rating_updates",
             "rulesets",
             "schema_metadata",
             "scheduler_buckets",

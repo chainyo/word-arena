@@ -433,13 +433,13 @@ finish with exactly one terminal result per scheduled match.
 
 ### TOUR-004: Compute scoped Glicko-2 ratings
 
-- [ ] Implement tested Glicko-2 periods, volatility iteration, inactivity, and
+- [x] Implement tested Glicko-2 periods, volatility iteration, inactivity, and
   numeric bounds without nondeterministic floating serialization.
-- [ ] Scope ratings by entrant, language, ruleset, and rated-format policy;
+- [x] Scope ratings by entrant, language, ruleset, and rated-format policy;
   paired seat swaps must enter the configured rating period exactly once each.
-- [ ] Persist immutable rating inputs and versioned derived updates so ratings
+- [x] Persist immutable rating inputs and versioned derived updates so ratings
   can be rebuilt and audited from match results.
-- [ ] Add published-example vectors, convergence/boundary tests, deterministic
+- [x] Add published-example vectors, convergence/boundary tests, deterministic
   rebuilds, ties, inactivity, and transaction/idempotency tests.
 
 Verification: rebuilding every rating period from immutable results yields the

@@ -65,6 +65,9 @@ The repository foundation is in place:
 - Persisted global/tournament/harness/provider scheduling controls with exact
   token buckets, pause/drain/cancel recovery, immutable retries, and exactly-once
   terminal publication ([scheduler contract](docs/SCHEDULER.md))
+- Scoped Glicko-2 rating periods with deterministic fixed-point output,
+  exact paired-game accounting, transactional SQLx persistence, and audited
+  rebuilds ([ratings contract](docs/RATINGS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,

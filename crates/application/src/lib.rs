@@ -11,6 +11,7 @@ mod error;
 mod job;
 mod operations;
 mod ports;
+mod rating;
 mod scheduler;
 mod service;
 mod tournament;
@@ -53,6 +54,11 @@ pub use operations::{
 pub use ports::{
     ApplicationClock, BoxFuture, CapabilityRepository, GameIdSource, GameRepository,
     LexiconResolver, SeedSource, StoredGame,
+};
+pub use rating::{
+    RATING_SCHEMA_VERSION, RatedMatchInput, RatingCommitResult, RatingError, RatingOpponent,
+    RatingPeriod, RatingPool, RatingRepository, RatingRepositoryError, RatingUpdateInput,
+    RatingValue, SCORE_SCALE, StoredRatingPeriod, update_rating,
 };
 pub use scheduler::{
     ExecutionReservation, MAX_CONCURRENCY_LIMIT, MAX_RATE_CAPACITY, MAX_RESERVATION_MS, RatePolicy,
