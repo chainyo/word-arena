@@ -30,6 +30,8 @@ The repository foundation is in place:
   and byte-deterministic replay
 - Explicit public, one-seat, human-spectator, and administrator projection
   schemas with replay-first snapshot validation
+- Feature-gated deterministic random-legal/greedy bots and an in-memory match
+  runner, covered by English/French golden, property, and 1,000-game stress tests
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
@@ -39,6 +41,8 @@ The repository foundation is in place:
 Persistence adapters, role credentials, MCP tools, agent drivers, and tournament
 orchestration are planned next. The current lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
+The non-production baseline bot and whole-match verification boundary is
+documented in [`docs/BASELINE_MATCHES.md`](docs/BASELINE_MATCHES.md).
 
 ## Quick start
 

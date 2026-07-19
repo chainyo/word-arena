@@ -148,17 +148,17 @@ Verification:
 
 ### GAME-006: Add baseline bots and whole-game verification
 
-- [ ] Implement a deterministic random-legal bot for broad engine exploration.
-- [ ] Implement a deterministic greedy bot that chooses the highest immediate
+- [x] Implement a deterministic random-legal bot for broad engine exploration.
+- [x] Implement a deterministic greedy bot that chooses the highest immediate
   legal score with stable tie-breaking.
-- [ ] Keep move generation behind an engine/test boundary and do not expose a
+- [x] Keep move generation behind an engine/test boundary and do not expose a
   best-move solver to competitive agent transports.
-- [ ] Add complete English and French golden games using small hand-authored
+- [x] Add complete English and French golden games using small hand-authored
   lexicons plus scenarios against the installed V1 pack boundary.
-- [ ] Add property/state-machine tests for determinism, tile conservation,
+- [x] Add property/state-machine tests for determinism, tile conservation,
   ownership, legal turns, scoring, event sequencing, privacy, replay, and every
   terminal reason.
-- [ ] Run a deterministic stress suite of at least 1,000 generated complete
+- [x] Run a deterministic stress suite of at least 1,000 generated complete
   games without panics, nontermination, privacy leakage, conservation failures,
   or invalid terminal states.
 

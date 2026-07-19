@@ -12,6 +12,13 @@ mod model;
 mod random;
 mod ruleset;
 
+/// Deterministic baseline bots and an in-memory runner for engine verification.
+///
+/// This module is deliberately absent from default builds so competitive HTTP
+/// and MCP transports cannot accidentally expose a best-move surface.
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
 pub use error::GameError;
 pub use game::{
     AdministratorProjection, BOARD_SIZE, BoardTile, EventVisibility, FormedWord, Game, GameEvent,

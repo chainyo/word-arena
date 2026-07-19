@@ -1210,6 +1210,21 @@ impl Game {
         self.state.result.clone()
     }
 
+    #[cfg(feature = "test-support")]
+    pub(crate) fn preview_placement(
+        &self,
+        player: Player,
+        placements: Vec<Placement>,
+    ) -> Result<u32, GameError> {
+        self.validate_action(player, self.state.version)?;
+        Ok(self.prepare_placement(player, placements)?.score)
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) const fn ruleset(&self) -> &Ruleset {
+        &self.ruleset
+    }
+
     fn validate_action(&self, player: Player, expected_version: u64) -> Result<(), GameError> {
         if self.state.phase == GamePhase::Finished {
             return Err(GameError::GameFinished);

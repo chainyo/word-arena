@@ -115,9 +115,9 @@ workspace foundation, and pass every command documented in `AGENTS.md`.
 - [x] Add `cargo xtask setup` to install Bun dependencies and download, verify,
   and install missing English and French packs during first-time local setup.
 - [x] Inject a fixed and versioned RNG algorithm; add seed commitment/reveal.
-- [ ] Add golden games, property tests, and small hand-authored validation
+- [x] Add golden games, property tests, and small hand-authored validation
   fixtures that do not copy a third-party word list.
-- [ ] Build random-legal and greedy baseline bots for engine verification.
+- [x] Build random-legal and greedy baseline bots for engine verification.
 
 Exit criterion: games replay to byte-equivalent public state from the same
 ruleset, lexicon pack, event stream, and RNG inputs; both V1 packs validate words
