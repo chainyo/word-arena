@@ -1,7 +1,7 @@
 use thiserror::Error;
 use word_arena_lexicon::{CompatibilityError, NormalizedKeyError, PackIdentity};
 
-use crate::{Coordinate, Language, Player, RulesetId};
+use crate::{Coordinate, Language, Player, RulesetId, TileId};
 
 /// Deterministic rules, lexicon, resume, and replay failures.
 #[derive(Debug, Error)]
@@ -71,6 +71,36 @@ pub enum GameError {
         expected: Player,
         /// Caller.
         actual: Player,
+    },
+
+    /// Optimistic concurrency version differs from the authoritative state.
+    #[error("stale game version {actual}; expected {expected}")]
+    StaleVersion {
+        /// Current authoritative version.
+        expected: u64,
+        /// Caller-supplied version.
+        actual: u64,
+    },
+
+    /// One stable tile identity appears more than once in a placement.
+    #[error("placement contains tile ID {tile_id:?} more than once")]
+    DuplicatePlacementTile {
+        /// Repeated physical identity.
+        tile_id: TileId,
+    },
+
+    /// The acting rack does not contain a requested tile identity.
+    #[error("acting rack does not own tile ID {tile_id:?}")]
+    TileNotOwned {
+        /// Forged or stale physical identity.
+        tile_id: TileId,
+    },
+
+    /// Submitted letter/blank data differs from the owned physical face.
+    #[error("submitted assignment for tile ID {tile_id:?} does not match its physical face")]
+    TileFaceMismatch {
+        /// Physical identity whose face was substituted.
+        tile_id: TileId,
     },
 
     /// No tiles were placed.
@@ -161,6 +191,21 @@ pub enum GameError {
     /// Defensive checked arithmetic rejected an exhausted event sequence.
     #[error("game version exceeds the supported u64 range")]
     VersionOverflow,
+
+    /// Defensive checked arithmetic rejected an exhausted scoreless counter.
+    #[error("scoreless-turn counter exceeds the supported u8 range")]
+    ScorelessTurnOverflow,
+
+    /// Persisted authoritative tile ownership is malformed.
+    #[error("authoritative tile state violates conservation: {reason}")]
+    InvalidTileState {
+        /// Stable conservation diagnostic.
+        reason: String,
+    },
+
+    /// Snapshot seed does not match its recorded commitment.
+    #[error("snapshot seed reveal does not match its pre-game commitment")]
+    SeedCommitmentMismatch,
 
     /// Finished games cannot accept another mutation.
     #[error("the game is already finished")]

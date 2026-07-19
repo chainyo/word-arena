@@ -79,13 +79,25 @@ impl SeedCommitment {
 }
 
 /// Authoritative private output of deterministic setup.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialDeal {
     algorithm: RngAlgorithm,
     commitment: SeedCommitment,
     bag: Bag,
     racks: [Rack; 2],
+}
+
+impl fmt::Debug for InitialDeal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("InitialDeal")
+            .field("algorithm", &self.algorithm)
+            .field("commitment", &self.commitment)
+            .field("bag", &"[REDACTED]")
+            .field("racks", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl InitialDeal {
@@ -121,6 +133,10 @@ impl InitialDeal {
     /// face-substituted tiles.
     pub fn verify_conservation(&self, ruleset: &Ruleset) -> Result<(), ConservationError> {
         verify_tile_conservation(ruleset, &self.bag, &self.racks, &[])
+    }
+
+    pub(crate) fn into_parts(self) -> (Bag, [Rack; 2]) {
+        (self.bag, self.racks)
     }
 }
 
@@ -488,10 +504,15 @@ mod tests {
             game_id: "public-contract".to_owned(),
             ruleset_id: ruleset.id,
             lexicon: ruleset.lexicon,
+            seed_commitment: GameSeed::from_bytes([0; 32])
+                .commitment(RngAlgorithm::Xoshiro256StarStarV1),
             board: vec![None; 225],
             scores: [0, 0],
             current_player: Seat::One,
             version: 0,
+            scoreless_turns: 0,
+            rack_counts: [7, 7],
+            bag_count: 86,
             phase: GamePhase::Active,
         };
         let value = serde_json::to_value(state).unwrap();

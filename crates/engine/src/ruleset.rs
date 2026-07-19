@@ -255,12 +255,6 @@ impl Ruleset {
         ensure_exact_pack(context, &self.lexicon, actual)?;
         Ok(())
     }
-
-    pub(crate) fn letter_score(&self, letter: char) -> u32 {
-        let mut token = [0_u8; 4];
-        self.letter_value(letter.encode_utf8(&mut token))
-            .map_or(0, u32::from)
-    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -33,11 +33,14 @@ is never selected implicitly even if it is installed beside the required one.
 
 ## Atomic placement validation
 
-For the current placement vertical slice, all new tiles must be in bounds,
-unique, empty, aligned, contiguous through new or existing tiles, and connected
-to the board. The opening move must cover the center. Tile values are string
-tokens rather than `char`s, and blanks retain an explicit assigned token with a
-zero point value.
+All new physical tile IDs must belong to the acting rack and be unique. The
+command also carries the acting seat and expected game version, so wrong-seat
+and stale actions fail before placement work. New tiles must be in bounds,
+target unique empty squares, align, remain contiguous through new or existing
+tiles, and connect to the board. The opening move must cover the center. Tile
+values are string tokens rather than `char`s, and blanks retain an explicit
+assigned token with a zero point value. A regular face cannot be submitted as a
+blank or another letter, and a blank cannot be forged from a regular face.
 
 The engine builds the main word and every perpendicular cross word against a
 proposed read-only board overlay. Each visible spelling is normalized through
@@ -49,14 +52,19 @@ form: `ÉTÉ` is placed, displayed, scored, emitted, and replayed as `ETE`; `ŒU
 uses the four physical tiles `O`, `E`, `U`, `F`, never one `Œ` tile. Accented
 source forms remain only in lexicon provenance and audit data.
 
-Only after every word and all checked score/version arithmetic succeeds does a
-single transition publish tiles, score, next player, version, and event. An
-invalid main or cross word leaves the board, score, turn, version, and event
-stream byte-for-byte unchanged.
+Newly covered letter and word premiums apply independently to every main and
+cross word; existing premiums never apply again. Using all seven rack tiles
+adds the configured bingo bonus once. Only after ownership, every word, score,
+version, refill, public count, and full tile-conservation validation succeeds
+does one transaction replace the board, acting rack, bag, scores, scoreless
+counter, turn, version, and event streams. Invalid inputs leave an authoritative
+snapshot and both event streams byte-for-byte unchanged.
 
-This slice intentionally uses base language letter values. Board premiums,
-racks, bag conservation, exchanges, bingo bonuses, and endgame scoring remain
-separate Phase 1 rules work and are not implied by this contract.
+Public move events contain placed tile IDs, score decomposition, draw count,
+rack counts, and bag count. A separate seat-private event contains the acting
+seat's exact played tiles, exact draws, and resulting rack; it is not included
+in another seat's live projection. Pass, exchange, resignation, and endgame
+scoring remain the next Phase 1 rules slice.
 
 ## Persisted identity
 
@@ -64,14 +72,18 @@ The complete `PackIdentity` is recorded in:
 
 - creation state and the creation event;
 - every move and finish event;
-- public state and `GameSnapshot`;
+- public state and the public portion of the authoritative `GameSnapshot`;
 - `GameResult`;
 - `ReplayBundle`.
 
-Replay first verifies the bundle ruleset and exact recorded pack, then
-recomputes every placement, normalized word, score, state transition, and event.
-Any event-byte difference fails replay. Golden English and French tests serialize
-and deserialize replay bundles, reconstruct the games, and compare serialized
-public state bytes. They also cover three words formed by one placement and an
-accent-folded French blank input, canonical board display, and rejection of a
-ligature encoded as one physical tile.
+`GameSnapshot` is an operator persistence artifact, not a player response: it
+contains both racks, exact bag order, and the private seed needed to resume.
+Public state contains only the commitment, bag count, and rack counts. A replay
+bundle is available only after finish and makes the seed reveal explicit.
+
+Replay verifies the reveal against the creation commitment, then recomputes
+every placement, normalized word, premium, refill, public event, and seat-private
+transition. Any public or private event-byte difference fails replay. Golden
+English and French scenarios cover cross words, blanks, accents, a seven-tile
+bingo, depleted-bag refill, and the requirement that `ŒUF` uses the four
+physical tiles `O`, `E`, `U`, `F`.

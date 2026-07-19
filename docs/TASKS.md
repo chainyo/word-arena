@@ -71,17 +71,17 @@ Verification:
 
 ### GAME-003: Make tile placement a complete atomic transaction
 
-- [ ] Require every placed tile ID to exist in the acting seat's rack and reject
+- [x] Require every placed tile ID to exist in the acting seat's rack and reject
   duplicates, token substitutions, forged blanks, and stale/wrong turns before
   mutation.
-- [ ] Retain alignment, contiguity, connectivity, main/cross-word construction,
+- [x] Retain alignment, contiguity, connectivity, main/cross-word construction,
   blank handling, and exact offline lexicon validation for every formed word.
-- [ ] Apply letter and word premiums only when newly covered, score all cross
+- [x] Apply letter and word premiums only when newly covered, score all cross
   words, and award the configured bingo bonus when the full rack is played.
-- [ ] Atomically remove tiles from the rack, place them, score the move, refill
+- [x] Atomically remove tiles from the rack, place them, score the move, refill
   from the bag up to rack capacity, append events, update scoreless state, and
   advance the turn.
-- [ ] Record enough public and private transition data to verify ownership,
+- [x] Record enough public and private transition data to verify ownership,
   draws, scoring, and deterministic replay without leaking another rack.
 
 Verification:
