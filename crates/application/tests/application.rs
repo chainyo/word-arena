@@ -6,11 +6,12 @@ use word_arena_application::{
     ActionRejection, AdministratorCredential, AdministratorGameQuery, ApplicationClock,
     ApplicationError, ApplicationRuntime, AuthenticatedCredential, Authorizes, CapabilityAdapters,
     CapabilityDigestKey, CapabilityError, CapabilityRole, CapabilityScope,
-    CompetitiveSeatCredential, GameActionCommand, GameId, GameIdSource, GameRepository,
-    HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey,
-    InvalidAttemptResponse, IssueCapabilityRequest, LexiconResolver, MovePreviewCommand,
-    OperationalPolicy, PreviewPolicy, PublicGameQuery, PublicViewerCredential, RepositoryError,
-    SeatGameQuery, SeatGameView, SeedSource, TimeoutCommand, TimeoutResponse, UnixMillis,
+    CompetitiveGameCredentials, CompetitiveSeatCredential, GameActionCommand, GameId, GameIdSource,
+    GameRepository, HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView,
+    IdempotencyKey, InvalidAttemptResponse, IssueCapabilityRequest, LexiconResolver,
+    MovePreviewCommand, OperationalPolicy, PreviewPolicy, PublicGameQuery, PublicViewerCredential,
+    RepositoryError, SeatGameQuery, SeatGameView, SeedSource, TimeoutCommand, TimeoutResponse,
+    UnixMillis,
     test_support::{
         FixedClock, InMemoryCapabilityRepository, InMemoryGameRepository, InMemoryLexiconResolver,
         ManualClock, SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
@@ -65,6 +66,7 @@ assert_not_authorizes!(AdministratorCredential, HumanSpectatorGameQuery);
 
 assert_not_serializable!(PublicViewerCredential);
 assert_not_serializable!(CompetitiveSeatCredential);
+assert_not_serializable!(CompetitiveGameCredentials);
 assert_not_serializable!(HumanSpectatorCredential);
 assert_not_serializable!(AdministratorCredential);
 

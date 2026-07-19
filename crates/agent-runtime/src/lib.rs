@@ -4,10 +4,17 @@
 //! privacy-safe telemetry. It does not read provider credentials or know game
 //! rules.
 
+mod authority;
 mod driver;
 mod harness;
 mod workspace;
 
+pub use authority::{
+    AUTHORITY_BOUNDARY_AUDIT_SCHEMA_VERSION, AuthorityAuditError, AuthorityBoundaryAuditEvent,
+    AuthorityBoundaryAuditSink, AuthorityBoundaryOutcome, AuthorityBoundarySurface,
+    AuthorityPolicyError, ForbiddenAuthorityFingerprint, ForbiddenAuthorityKind,
+    ForbiddenAuthorityPolicy,
+};
 pub use driver::{
     AgentDriver, DRIVER_CHECKPOINT_SCHEMA_VERSION, DRIVER_TELEMETRY_SCHEMA_VERSION,
     DiagnosticRecord, DiagnosticStream, DriverCheckpoint, DriverClock, DriverError, DriverFuture,
@@ -22,9 +29,10 @@ pub use harness::{
     NativeHarnessKind, PI_MINIMUM_VERSION, SupportedAgentDriver, SupportedDriverCheckpoint,
 };
 pub use workspace::{
-    MAX_SEAT_CAPABILITY_TTL_MS, SEAT_CAPABILITY_ENV, SEAT_WORKSPACE_SCHEMA_VERSION, SeatCapability,
-    SeatSandboxBackend, SeatWorkspaceLease, SeatWorkspaceManager, SeatWorkspaceRequest,
-    WorkspaceDisposition, WorkspaceError, WorkspaceManagerConfig, WorkspaceOutcome,
+    AuthorityBoundaryConfig, MAX_SEAT_CAPABILITY_TTL_MS, SEAT_CAPABILITY_ENV,
+    SEAT_WORKSPACE_SCHEMA_VERSION, SeatCapability, SeatSandboxBackend, SeatWorkspaceLease,
+    SeatWorkspaceManager, SeatWorkspaceRequest, WorkspaceDisposition, WorkspaceError,
+    WorkspaceManagerConfig, WorkspaceOutcome,
 };
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -312,6 +320,8 @@ pub enum ManifestError {
     },
     #[error("agent manifest contains a forbidden secret-bearing key or value")]
     SecretBearing,
+    #[error("agent manifest attempts to name human-spectator or administrator authority")]
+    ForbiddenAuthority,
     #[error("generic command must name a direct non-shell executable")]
     UnsafeCommand,
     #[error("agent manifest canonical serialization failed: {0}")]
@@ -555,6 +565,9 @@ fn reject_secrets(value: &Value) -> Result<(), ManifestError> {
                 {
                     return Err(ManifestError::SecretBearing);
                 }
+                if authority::forbidden_authority_marker(key).is_some() {
+                    return Err(ManifestError::ForbiddenAuthority);
+                }
                 reject_secrets(child)?;
             }
         }
@@ -565,6 +578,9 @@ fn reject_secrets(value: &Value) -> Result<(), ManifestError> {
         }
         Value::String(value) => {
             let lower = value.to_ascii_lowercase();
+            if authority::forbidden_authority_marker(value).is_some() {
+                return Err(ManifestError::ForbiddenAuthority);
+            }
             if lower.starts_with("sk-")
                 || lower.starts_with("ghp_")
                 || lower.starts_with("bearer ")
@@ -572,6 +588,7 @@ fn reject_secrets(value: &Value) -> Result<(), ManifestError> {
                 || lower.contains("api-key=")
                 || lower.contains("_token=")
                 || lower.contains("password=")
+                || authority::contains_capability_wire(value.as_bytes())
             {
                 return Err(ManifestError::SecretBearing);
             }

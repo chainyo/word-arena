@@ -178,7 +178,7 @@ game without using the command line.
 - [x] Add Codex, Claude Code, Cline, and Pi integrations plus a generic command
   adapter.
 - [x] Give every seat an isolated persistent workspace and separate credentials.
-- [ ] Keep human-spectator credentials outside every agent workspace and process
+- [x] Keep human-spectator credentials outside every agent workspace and process
   environment.
 - [ ] Enforce wall-clock, CPU, memory, network, token, attempt, and tool budgets.
 - [ ] Record visible transcripts, tool calls, timings, usage, failures, and cost

@@ -77,7 +77,12 @@ fail:
 
 ```bash
 cargo test -p word-arena-agent-runtime --all-features --test workspace
+cargo test -p word-arena-agent-runtime --all-features --test authority
 ```
 
 Runtime sandbox detection is fail closed. A missing platform sandbox is an
 explicit deployment error, not a skipped isolation policy.
+The authority suite additionally injects known human-spectator and administrator
+tokens into each untyped startup surface, requires a non-disclosing V1 audit,
+and proves execution and allocation fail when authority or audit persistence is
+unsafe.

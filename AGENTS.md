@@ -202,6 +202,11 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
   lease's process adapter so the child gets an empty allowlisted environment,
   one seat capability, managed config integrity checks, and the platform
   sandbox. Never fall back to an unsandboxed process.
+- Keep raw human-spectator and administrator capabilities exclusively in the
+  operator issuance/storage path. Register only their digest-only
+  `ForbiddenAuthorityFingerprint` values with the workspace manager, provide a
+  mandatory audit sink, and treat every boundary denial or audit failure as a
+  startup failure.
 
 ## Documentation and dependencies
 

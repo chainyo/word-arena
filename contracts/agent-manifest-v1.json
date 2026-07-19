@@ -42,6 +42,12 @@
     "provider_secret",
     "secret"
   ],
+  "forbidden_agent_authority": [
+    "human_spectator",
+    "administrator",
+    "observe_human_spectator",
+    "observe_administrator"
+  ],
   "examples": [
     "examples/agents/claude-code-v1.json",
     "examples/agents/cline-v1.json",

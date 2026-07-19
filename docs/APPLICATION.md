@@ -48,6 +48,9 @@ correctly scoped capability; there is no unaudited direct issuance path. Agent
 drivers and transport handlers receive `ApplicationService` plus a
 `CompetitiveGameCredentials` value containing one seat and its public viewer;
 that shape cannot contain or request an operator credential.
+`CompetitiveGameCredentials` is itself non-serializable, and the runtime's
+agent manifest/configuration types contain no field into which a human
+spectator or administrator credential can be placed.
 
 Game creation returns public and both seat credentials to trusted orchestration,
 but never returns spectator or administrator credentials. The runtime and its

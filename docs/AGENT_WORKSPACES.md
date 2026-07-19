@@ -44,8 +44,18 @@ state variables.
 Opponent, human-spectator, administrator, database, provider, shell-session,
 and arbitrary inherited variables are absent. Raw capability values are
 redacted from complete and chunk-split stdout/stderr before driver parsing or
-telemetry can observe them. RUN-005 adds an explicit forbidden-authority audit
-boundary in addition to this allowlist.
+telemetry can observe them.
+
+Human-only bearer tokens are consumed at the trusted operator boundary and
+reduced to non-serializable SHA-256 fingerprints. Only that digest registry is
+given to `SeatWorkspaceManager`; the raw credentials and their issuance/storage
+remain outside all agent runtime state. Allocation scans the intended seat
+capability, and every spawn scans the fixed environment, executable/arguments,
+and regular files recursively beneath the seat root. A known spectator or
+administrator capability, or an explicit privileged-authority request, emits a
+V1 denial audit and prevents process execution. The audit contains only run,
+seat, authority class, surface, time, and outcome. If its mandatory sink cannot
+record the event, startup still fails closed.
 
 ## OS process isolation
 
@@ -76,6 +86,7 @@ Run the focused suite with:
 
 ```bash
 cargo test -p word-arena-agent-runtime --all-features --test workspace
+cargo test -p word-arena-agent-runtime --all-features --test authority
 ```
 
 The suite covers private modes, collisions, traversal, symlinks, invalid and
@@ -84,3 +95,6 @@ capability rotation, cleanup, retention, inherited-environment removal, output
 redaction, and runtime path binding. On supported hosts, two concurrent hostile
 shell fixtures attempt direct and symlinked cross-seat reads under the real OS
 sandbox and must fail while retaining access to their own writable directory.
+The authority suite covers type/serialization boundaries, invalid and duplicate
+fingerprints, environment injection, process arguments, deep workspace files,
+non-disclosing audits, and audit-sink failure.

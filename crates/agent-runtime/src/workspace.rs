@@ -16,9 +16,12 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    DriverClock, DriverFuture, ExitStatus, HarnessConfig, HarnessExecutables, HarnessRuntimeConfig,
-    NetworkPolicy, ProcessAdapter, ProcessError, ProcessEvent, ProcessHandle, ProcessInstance,
-    ProcessSpec, ValidatedAgentManifest, WorkspaceRetention, driver::spawn_tokio_process,
+    AuthorityBoundaryAuditSink, AuthorityBoundarySurface, DriverClock, DriverFuture, ExitStatus,
+    ForbiddenAuthorityKind, ForbiddenAuthorityPolicy, HarnessConfig, HarnessExecutables,
+    HarnessRuntimeConfig, NetworkPolicy, ProcessAdapter, ProcessError, ProcessEvent, ProcessHandle,
+    ProcessInstance, ProcessSpec, ValidatedAgentManifest, WorkspaceRetention,
+    authority::{audit_denial, forbidden_authority_marker},
+    driver::spawn_tokio_process,
 };
 
 pub const SEAT_WORKSPACE_SCHEMA_VERSION: u32 = 1;
@@ -50,6 +53,10 @@ pub enum WorkspaceError {
     Filesystem,
     #[error("no supported fail-closed process sandbox is available")]
     SandboxUnavailable,
+    #[error("human-spectator or administrator authority reached an agent boundary")]
+    ForbiddenAuthority,
+    #[error("forbidden-authority audit could not be recorded")]
+    AuditUnavailable,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -150,6 +157,7 @@ pub struct WorkspaceManagerConfig {
     pub root: PathBuf,
     pub safe_path: String,
     pub sandbox: SeatSandboxBackend,
+    pub authority: AuthorityBoundaryConfig,
 }
 
 impl WorkspaceManagerConfig {
@@ -158,12 +166,43 @@ impl WorkspaceManagerConfig {
     /// # Errors
     ///
     /// Returns an error when no supported OS sandbox is installed.
-    pub fn detect(root: PathBuf) -> Result<Self, WorkspaceError> {
+    pub fn detect(
+        root: PathBuf,
+        authority: AuthorityBoundaryConfig,
+    ) -> Result<Self, WorkspaceError> {
         Ok(Self {
             root,
             safe_path: "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin".to_owned(),
             sandbox: SeatSandboxBackend::detect()?,
+            authority,
         })
+    }
+}
+
+/// Digest-only forbidden-authority policy plus its mandatory denial sink.
+#[derive(Clone)]
+pub struct AuthorityBoundaryConfig {
+    policy: Arc<ForbiddenAuthorityPolicy>,
+    audit: Arc<dyn AuthorityBoundaryAuditSink>,
+}
+
+impl fmt::Debug for AuthorityBoundaryConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AuthorityBoundaryConfig")
+            .field("policy", &self.policy)
+            .field("audit", &"<authority-audit-sink>")
+            .finish()
+    }
+}
+
+impl AuthorityBoundaryConfig {
+    #[must_use]
+    pub fn new(
+        policy: Arc<ForbiddenAuthorityPolicy>,
+        audit: Arc<dyn AuthorityBoundaryAuditSink>,
+    ) -> Self {
+        Self { policy, audit }
     }
 }
 
@@ -293,6 +332,7 @@ pub struct SeatWorkspaceManager {
     sandbox: SeatSandboxBackend,
     owner: u32,
     clock: Arc<dyn DriverClock>,
+    authority: AuthorityBoundaryConfig,
 }
 
 impl SeatWorkspaceManager {
@@ -320,6 +360,7 @@ impl SeatWorkspaceManager {
             sandbox: config.sandbox,
             owner,
             clock,
+            authority: config.authority,
         })
     }
 
@@ -368,6 +409,19 @@ impl SeatWorkspaceManager {
         validate_identifier(&request.seat_id)?;
         validate_identifier(&request.game_id)?;
         validate_mcp_url(&request.mcp_url)?;
+        if let Some(authority) = self
+            .authority
+            .policy
+            .find(request.capability.raw.as_bytes())
+        {
+            self.record_authority_denial(
+                &request.run_id,
+                &request.seat_id,
+                authority,
+                AuthorityBoundarySurface::ProcessEnvironment,
+            )?;
+            return Err(WorkspaceError::ForbiddenAuthority);
+        }
         if request.capability.expires_at_unix_ms <= self.clock.now_unix_ms() {
             return Err(WorkspaceError::InvalidCapability);
         }
@@ -439,8 +493,31 @@ impl SeatWorkspaceManager {
             redactions,
             integrity,
             capability: Some(request.capability),
+            authority: self.authority.clone(),
+            clock: Arc::clone(&self.clock),
+            run_id: request.run_id,
+            seat_id: request.seat_id,
+            workspace_scan_limit: manifest.manifest().workspace.max_bytes,
             active: true,
         })
+    }
+
+    fn record_authority_denial(
+        &self,
+        run_id: &str,
+        seat_id: &str,
+        authority: ForbiddenAuthorityKind,
+        surface: AuthorityBoundarySurface,
+    ) -> Result<(), WorkspaceError> {
+        audit_denial(
+            self.authority.audit.as_ref(),
+            self.clock.as_ref(),
+            run_id,
+            seat_id,
+            authority,
+            surface,
+        )
+        .map_err(|_| WorkspaceError::AuditUnavailable)
     }
 }
 
@@ -456,6 +533,11 @@ pub struct SeatWorkspaceLease {
     redactions: Vec<Vec<u8>>,
     integrity: Vec<IntegrityFile>,
     capability: Option<SeatCapability>,
+    authority: AuthorityBoundaryConfig,
+    clock: Arc<dyn DriverClock>,
+    run_id: String,
+    seat_id: String,
+    workspace_scan_limit: u64,
     active: bool,
 }
 
@@ -529,6 +611,11 @@ impl SeatWorkspaceLease {
             environment: self.environment.clone(),
             redactions: self.redactions.clone(),
             integrity: self.integrity.clone(),
+            authority: self.authority.clone(),
+            clock: Arc::clone(&self.clock),
+            run_id: self.run_id.clone(),
+            seat_id: self.seat_id.clone(),
+            workspace_scan_limit: self.workspace_scan_limit,
         })
     }
 
@@ -657,6 +744,11 @@ struct IsolatedSeatProcessAdapter {
     environment: Arc<SeatProcessEnvironment>,
     redactions: Vec<Vec<u8>>,
     integrity: Vec<IntegrityFile>,
+    authority: AuthorityBoundaryConfig,
+    clock: Arc<dyn DriverClock>,
+    run_id: String,
+    seat_id: String,
+    workspace_scan_limit: u64,
 }
 
 impl fmt::Debug for IsolatedSeatProcessAdapter {
@@ -669,6 +761,7 @@ impl fmt::Debug for IsolatedSeatProcessAdapter {
             .field("environment", &self.environment)
             .field("redactions", &self.redactions.len())
             .field("integrity_files", &self.integrity.len())
+            .field("authority", &self.authority)
             .finish_non_exhaustive()
     }
 }
@@ -679,7 +772,10 @@ impl ProcessAdapter for IsolatedSeatProcessAdapter {
         spec: &'a ProcessSpec,
     ) -> DriverFuture<'a, Result<Box<dyn ProcessInstance>, ProcessError>> {
         Box::pin(async move {
-            if !self.verify_integrity() || !self.spec_is_scoped(spec) {
+            if !self.verify_integrity()
+                || !self.spec_is_scoped(spec)
+                || !self.authority_is_clean(spec)
+            {
                 return Err(ProcessError::Spawn);
             }
             let sandboxed = self.sandbox_spec(spec);
@@ -710,6 +806,53 @@ impl IsolatedSeatProcessAdapter {
         spec.working_directory.as_ref().is_some_and(|directory| {
             fs::canonicalize(directory).is_ok_and(|path| path.starts_with(&self.root))
         })
+    }
+
+    fn authority_is_clean(&self, spec: &ProcessSpec) -> bool {
+        let argument_authority = std::iter::once(spec.executable.as_str())
+            .chain(spec.arguments.iter().map(String::as_str))
+            .find_map(|value| {
+                self.authority
+                    .policy
+                    .find(value.as_bytes())
+                    .or_else(|| forbidden_authority_marker(value))
+            });
+        if let Some(authority) = argument_authority {
+            self.record_denial(authority, AuthorityBoundarySurface::ProcessArgument);
+            return false;
+        }
+        if let Some(authority) = self.environment.variables.iter().find_map(|(key, value)| {
+            self.authority
+                .policy
+                .find(value.as_bytes())
+                .or_else(|| forbidden_authority_marker(key))
+        }) {
+            self.record_denial(authority, AuthorityBoundarySurface::ProcessEnvironment);
+            return false;
+        }
+        match find_forbidden_workspace_authority(
+            &self.root,
+            self.workspace_scan_limit,
+            &self.authority.policy,
+        ) {
+            Ok(Some(authority)) => {
+                self.record_denial(authority, AuthorityBoundarySurface::WorkspaceFile);
+                false
+            }
+            Ok(None) => true,
+            Err(_) => false,
+        }
+    }
+
+    fn record_denial(&self, authority: ForbiddenAuthorityKind, surface: AuthorityBoundarySurface) {
+        let _ = audit_denial(
+            self.authority.audit.as_ref(),
+            self.clock.as_ref(),
+            &self.run_id,
+            &self.seat_id,
+            authority,
+            surface,
+        );
     }
 
     fn sandbox_spec(&self, spec: &ProcessSpec) -> ProcessSpec {
@@ -1128,6 +1271,54 @@ fn integrity_file(path: &Path) -> Result<IntegrityFile, WorkspaceError> {
         path: path.to_owned(),
         sha256: Sha256::digest(bytes).into(),
     })
+}
+
+fn find_forbidden_workspace_authority(
+    root: &Path,
+    maximum_bytes: u64,
+    policy: &ForbiddenAuthorityPolicy,
+) -> Result<Option<ForbiddenAuthorityKind>, WorkspaceError> {
+    let mut pending = vec![root.to_owned()];
+    let mut scanned_bytes = 0_u64;
+    let mut entry_count = 0_u64;
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory).map_err(|_| WorkspaceError::Filesystem)? {
+            let entry = entry.map_err(|_| WorkspaceError::Filesystem)?;
+            entry_count = entry_count.saturating_add(1);
+            if entry_count > 100_000 {
+                return Err(WorkspaceError::Corrupt);
+            }
+            let path = entry.path();
+            let file_type = entry.file_type().map_err(|_| WorkspaceError::Filesystem)?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            if let Some(authority) = entry
+                .file_name()
+                .to_str()
+                .and_then(forbidden_authority_marker)
+            {
+                return Ok(Some(authority));
+            }
+            if file_type.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                return Err(WorkspaceError::Corrupt);
+            }
+            let metadata = entry.metadata().map_err(|_| WorkspaceError::Filesystem)?;
+            scanned_bytes = scanned_bytes.saturating_add(metadata.len());
+            if scanned_bytes > maximum_bytes {
+                return Err(WorkspaceError::Corrupt);
+            }
+            let bytes = fs::read(path).map_err(|_| WorkspaceError::Filesystem)?;
+            if let Some(authority) = policy.find(&bytes) {
+                return Ok(Some(authority));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn safe_remove_workspace(path: &Path) -> Result<(), WorkspaceError> {

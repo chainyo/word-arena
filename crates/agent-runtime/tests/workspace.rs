@@ -10,11 +10,12 @@ use std::{
 use serde_json::{Value, json};
 use tempfile::TempDir;
 use word_arena_agent_runtime::{
-    DriverClock, HarnessExecutables, MAX_SEAT_CAPABILITY_TTL_MS, ProcessAdapter, ProcessError,
-    ProcessEvent, ProcessSpec, SEAT_CAPABILITY_ENV, SEAT_WORKSPACE_SCHEMA_VERSION, SeatCapability,
-    SeatSandboxBackend, SeatWorkspaceManager, SeatWorkspaceRequest, SystemDriverClock,
-    ValidatedAgentManifest, WorkspaceDisposition, WorkspaceError, WorkspaceManagerConfig,
-    WorkspaceOutcome,
+    AuthorityAuditError, AuthorityBoundaryAuditEvent, AuthorityBoundaryAuditSink,
+    AuthorityBoundaryConfig, DriverClock, ForbiddenAuthorityPolicy, HarnessExecutables,
+    MAX_SEAT_CAPABILITY_TTL_MS, ProcessAdapter, ProcessError, ProcessEvent, ProcessSpec,
+    SEAT_CAPABILITY_ENV, SEAT_WORKSPACE_SCHEMA_VERSION, SeatCapability, SeatSandboxBackend,
+    SeatWorkspaceManager, SeatWorkspaceRequest, SystemDriverClock, ValidatedAgentManifest,
+    WorkspaceDisposition, WorkspaceError, WorkspaceManagerConfig, WorkspaceOutcome,
 };
 
 #[derive(Debug)]
@@ -24,6 +25,22 @@ impl DriverClock for FixedClock {
     fn now_unix_ms(&self) -> i64 {
         self.0
     }
+}
+
+#[derive(Debug)]
+struct AcceptAudit;
+
+impl AuthorityBoundaryAuditSink for AcceptAudit {
+    fn record(&self, _event: AuthorityBoundaryAuditEvent) -> Result<(), AuthorityAuditError> {
+        Ok(())
+    }
+}
+
+fn authority_config() -> AuthorityBoundaryConfig {
+    AuthorityBoundaryConfig::new(
+        Arc::new(ForbiddenAuthorityPolicy::default()),
+        Arc::new(AcceptAudit),
+    )
 }
 
 fn example() -> Value {
@@ -74,6 +91,7 @@ fn manager(temporary: &TempDir, sandbox: SeatSandboxBackend) -> SeatWorkspaceMan
             root: temporary.path().join("arena-workspaces"),
             safe_path: "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin".to_owned(),
             sandbox,
+            authority: authority_config(),
         },
         Arc::new(FixedClock(1_000)),
     )
@@ -100,6 +118,10 @@ fn reviewed_contract_matches_public_runtime_constants() {
     assert_eq!(
         contract["sandbox"]["unsupported_platform_behavior"],
         json!("fail_closed")
+    );
+    assert_eq!(
+        contract["authority_boundary_contract"],
+        json!("agent-authority-boundary-v1")
     );
 }
 
@@ -262,6 +284,7 @@ fn traversal_collisions_symlinks_and_invalid_credentials_fail_closed() {
                 root: linked_root,
                 safe_path: "/usr/bin:/bin".to_owned(),
                 sandbox: test_backend(),
+                authority: authority_config(),
             },
             Arc::new(SystemDriverClock)
         ),

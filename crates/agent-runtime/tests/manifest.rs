@@ -35,6 +35,15 @@ fn published_contract_matches_runtime_and_reviewed_examples() {
         contract["examples"].as_array().unwrap().len(),
         EXAMPLES.len()
     );
+    assert_eq!(
+        contract["forbidden_agent_authority"],
+        json!([
+            "human_spectator",
+            "administrator",
+            "observe_human_spectator",
+            "observe_administrator"
+        ])
+    );
 }
 
 #[test]

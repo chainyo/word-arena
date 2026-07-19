@@ -47,6 +47,9 @@ The repository foundation is in place:
 - Per-run/seat persistent workspaces with secret-free configuration,
   short-lived capability injection, strict retention, and fail-closed macOS or
   Linux process isolation ([workspace contract](docs/AGENT_WORKSPACES.md))
+- Digest-only human-authority leak detection across agent manifests,
+  environments, arguments, and workspace files, with mandatory privacy-safe
+  startup-denial audits
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,

@@ -41,7 +41,10 @@ are rejected before a process starts.
 Tagged model sources make provider and local settings mutually exclusive.
 Provider settings contain only a provider enum and model ID. Keys or values
 that resemble API keys, passwords, bearer values, credentials, or tokens fail
-before deserialization/persistence, and unknown fields fail closed.
+before deserialization/persistence, and unknown fields fail closed. Human
+spectator and administrator roles, scopes, credential/capability requests, and
+raw `wa_cap_v1` values are also forbidden everywhere in a manifest, including
+generic arguments and labels.
 
 ## Persistence and replay attribution
 

@@ -56,6 +56,15 @@ privileged authentication append structured audits. Audit records contain only
 the public capability ID, game, role/seat, requested scope, outcome, and time.
 They cannot contain a bearer token, rack, future bag, seed, or game snapshot.
 
+When human-spectator or administrator capabilities are active alongside local
+autonomous agents, trusted orchestration consumes each raw token once to build
+the digest-only `ForbiddenAuthorityPolicy`. The raw operator credential remains
+in the human delivery/storage path; only its SHA-256 fingerprint crosses into
+the agent-startup guard. Any matching token found in an agent environment,
+argument, or workspace is denied and audited without storing either the token
+or fingerprint. This runtime guard supplements the server's keyed persistence
+digest; it is not an authentication database or an alternative issuance path.
+
 Run the focused verification with:
 
 ```bash

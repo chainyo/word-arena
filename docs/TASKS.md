@@ -347,13 +347,13 @@ another's workspace, capability, rack, transcript, or operator configuration.
 
 ### RUN-005: Enforce human-spectator credential separation
 
-- [ ] Make agent run manifests/configuration unable to name or request
+- [x] Make agent run manifests/configuration unable to name or request
   human-spectator/admin credentials.
-- [ ] Keep operator credential issuance and storage outside agent driver state,
+- [x] Keep operator credential issuance and storage outside agent driver state,
   inherited environment, child process arguments, and workspace files.
-- [ ] Add startup assertions and audit events for forbidden authority presence,
+- [x] Add startup assertions and audit events for forbidden authority presence,
   failing closed before process execution.
-- [ ] Add type-level, serialization, environment, process-argument, and
+- [x] Add type-level, serialization, environment, process-argument, and
   recursive-workspace scanning tests.
 
 Verification: injecting any spectator/admin secret into an agent boundary is

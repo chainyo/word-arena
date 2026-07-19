@@ -35,6 +35,13 @@ a platform sandbox (`sandbox-exec` on macOS or Bubblewrap on Linux) that exposes
 only reviewed runtime paths and that seat's tree; unsupported platforms fail
 closed.
 
+Human-spectator and administrator bearer values stay in the operator issuance
+and storage path. Trusted orchestration consumes them into a digest-only,
+non-serializable forbidden-authority registry. Allocation and every process
+spawn scan all untyped agent inputs against this registry and emit a mandatory
+privacy-safe denial audit before failing closed. The registry is only a leak
+detector; application credential types remain the authorization boundary.
+
 The manifest can identify provider/model/harness versions but cannot represent
 provider secrets, game capabilities, operator authority, assigned paths, or
 process state. The persistence adapter stores canonical bytes and repeats their
@@ -61,5 +68,7 @@ the engine.
   configuration are reverified before each spawn and tampering fails closed.
 - Local deployments require a supported sandbox executable before autonomous
   agent processes can start.
+- Operator credentials are not driver configuration or state; only one-way
+  leak-detection fingerprints may be retained by the startup guard.
 - Export code must explicitly join agent attribution when producing tournament
   results or public replay bundles.

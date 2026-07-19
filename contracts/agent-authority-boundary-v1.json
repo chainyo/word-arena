@@ -1,0 +1,36 @@
+{
+  "kind": "word_arena_agent_authority_boundary_contract",
+  "schema_version": 1,
+  "forbidden_authority": ["human_spectator", "administrator"],
+  "credential_registry": {
+    "stored_form": "sha256_fingerprint",
+    "raw_credentials_retained": false,
+    "serializable": false
+  },
+  "startup_scan_surfaces": [
+    "process_argument",
+    "process_environment",
+    "workspace_file"
+  ],
+  "audit": {
+    "outcome": "denied_before_spawn",
+    "fields": [
+      "schema_version",
+      "run_id",
+      "seat_id",
+      "authority",
+      "surface",
+      "occurred_at_unix_ms",
+      "outcome"
+    ],
+    "forbidden_fields": [
+      "raw_credential",
+      "credential_fingerprint",
+      "capability_id",
+      "rack",
+      "transcript",
+      "operator_configuration"
+    ],
+    "failure_behavior": "fail_closed"
+  }
+}

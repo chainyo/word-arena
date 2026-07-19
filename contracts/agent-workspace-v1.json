@@ -23,6 +23,7 @@
     "state/config.toml"
   ],
   "managed_file_behavior": "hash_verified_before_each_spawn",
+  "authority_boundary_contract": "agent-authority-boundary-v1",
   "sandbox": {
     "macos": "sandbox-exec",
     "linux": "bubblewrap",
