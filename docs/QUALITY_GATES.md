@@ -180,3 +180,16 @@ structurally smaller public projection:
 cargo test -p word-arena-application --all-features --test statistics
 cargo test -p word-arena-persistence --all-features --test statistics
 ```
+
+## Export reproducibility and privacy
+
+The export suites reproduce public game state without serialized private
+events, lock a golden JSONL record, cover every record schema and audience,
+verify record/stream checksums, stream 2,000 bounded records twice with identical
+bytes, reject ordering/size/schema/tamper failures, and scan public output for
+private keys and credential-shaped values:
+
+```bash
+cargo test -p word-arena-engine --all-features --test public_replay
+cargo test -p word-arena-application --all-features --test export
+```

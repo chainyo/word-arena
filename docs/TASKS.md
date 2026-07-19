@@ -462,14 +462,14 @@ contains only policy-approved fields with stable rounding/ordering.
 
 ### TOUR-006: Export replays and analytics data
 
-- [ ] Define versioned public replay, tournament result, standings, rating, and
+- [x] Define versioned public replay, tournament result, standings, rating, and
   analytics export schemas with content type, checksums, and provenance.
-- [ ] Stream bounded JSON/JSONL or documented archival output in deterministic
+- [x] Stream bounded JSON/JSONL or documented archival output in deterministic
   order without embedding lexicon contents, private capabilities, racks, or
   nonpublic transcripts.
-- [ ] Support operator-authorized complete exports separately from public
+- [x] Support operator-authorized complete exports separately from public
   exports with explicit policy and redaction metadata.
-- [ ] Add golden files, schema compatibility, large streaming, checksum,
+- [x] Add golden files, schema compatibility, large streaming, checksum,
   deterministic rebuild, and secret/privacy tests.
 
 Verification: an exported paired tournament can be independently checked and

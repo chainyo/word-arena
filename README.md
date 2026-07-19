@@ -71,6 +71,9 @@ The repository foundation is in place:
 - Versioned match/agent statistics with exact language/ruleset/pack/manifest
   scopes, explicit usage availability, privacy-separated public/operator
   projections, and checked SQLx rebuilds ([statistics](docs/STATISTICS.md))
+- Checksummed public/operator replay, tournament, standings, rating, and
+  analytics records with bounded deterministic JSONL streaming and public
+  replay verification without serialized racks ([exports](docs/EXPORTS.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,

@@ -8,6 +8,7 @@ mod authority;
 mod capability;
 mod command;
 mod error;
+mod export;
 mod job;
 mod operations;
 mod ports;
@@ -39,6 +40,16 @@ pub use command::{
     TimeoutCommand, UnixMillis,
 };
 pub use error::{ApplicationError, RepositoryError};
+pub use export::{
+    ANALYTICS_EXPORT_SCHEMA_VERSION, DEFAULT_MAX_EXPORT_RECORD_BYTES,
+    DEFAULT_MAX_EXPORT_TOTAL_BYTES, EXPORT_POLICY_VERSION, EXPORT_SCHEMA_VERSION, ExportAudience,
+    ExportEnvelope, ExportError, ExportPolicy, ExportProvenance, ExportRecord, ExportSummary,
+    JSONL_EXPORT_CONTENT_TYPE, JsonlExporter, OPERATOR_REPLAY_EXPORT_SCHEMA_VERSION,
+    OperatorAnalyticsExport, OperatorReplayExport, PUBLIC_REPLAY_EXPORT_SCHEMA_VERSION,
+    PublicAnalyticsExport, PublicReplayExport, RATING_EXPORT_SCHEMA_VERSION, RatingExport,
+    RatingRowExport, STANDINGS_EXPORT_SCHEMA_VERSION, StandingRowExport, StandingsExport,
+    TOURNAMENT_RESULT_EXPORT_SCHEMA_VERSION, TournamentMatchExport, TournamentResultExport,
+};
 pub use job::{
     CancellationResult, ClaimJobs, CompletionResult, EnqueueResult, JOB_MAX_ATTEMPTS,
     JOB_MAX_BACKOFF_MS, JOB_MAX_LEASE_MS, JOB_PAYLOAD_MAX_BYTES, JOB_SCHEMA_VERSION, JobError,

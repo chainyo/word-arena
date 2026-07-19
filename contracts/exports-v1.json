@@ -1,0 +1,61 @@
+{
+  "kind": "word_arena_exports_contract",
+  "schema_version": 1,
+  "stream_content_type": "application/vnd.word-arena.export+jsonl;version=1",
+  "record_schemas": {
+    "public_replay": 1,
+    "operator_replay": 1,
+    "tournament_result": 1,
+    "standings": 1,
+    "ratings": 1,
+    "public_analytics": 1,
+    "operator_analytics": 1
+  },
+  "envelope_fields": [
+    "schema_version",
+    "content_type",
+    "provenance",
+    "policy",
+    "content_sha256",
+    "record"
+  ],
+  "checksum_scope": [
+    "schema_version",
+    "content_type",
+    "provenance",
+    "policy",
+    "record"
+  ],
+  "ordering": "strictly_increasing_record_type_then_stable_identity",
+  "default_limits": {
+    "record_bytes": 16777216,
+    "stream_bytes": 1073741824
+  },
+  "public_replay": {
+    "contains": [
+      "ruleset_identity",
+      "ruleset_definition",
+      "lexicon_pack_reference",
+      "rng_algorithm",
+      "post_game_seed_reveal",
+      "public_events"
+    ],
+    "omits": ["lexicon_contents", "private_events", "racks"]
+  },
+  "public_forbidden": [
+    "capabilities",
+    "credentials",
+    "diagnostics",
+    "private_events",
+    "racks",
+    "tool_arguments",
+    "tool_results",
+    "transcripts",
+    "word_frequencies"
+  ],
+  "operator_forbidden": [
+    "capabilities",
+    "hidden_reasoning",
+    "provider_credentials"
+  ]
+}

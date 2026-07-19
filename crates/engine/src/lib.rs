@@ -23,9 +23,9 @@ pub use error::GameError;
 pub use game::{
     AdministratorProjection, BOARD_SIZE, BoardTile, EventVisibility, FormedWord, Game, GameEvent,
     GameEventKind, GameMode, GamePhase, GameResult, GameSnapshot, HumanSpectatorProjection, Move,
-    PROJECTION_SCHEMA_VERSION, Placement, PrivateGameEvent, PublicGameState, PublicProjection,
-    REPLAY_SCHEMA_VERSION, ReplayBundle, SNAPSHOT_SCHEMA_VERSION, SeatProjection, TerminalReason,
-    Tile,
+    PROJECTION_SCHEMA_VERSION, PUBLIC_REPLAY_SCHEMA_VERSION, Placement, PrivateGameEvent,
+    PublicGameState, PublicProjection, PublicReplayBundle, REPLAY_SCHEMA_VERSION, ReplayBundle,
+    SNAPSHOT_SCHEMA_VERSION, SeatProjection, TerminalReason, Tile,
 };
 pub use language::Language;
 pub use lexicon::WordValidator;

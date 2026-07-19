@@ -139,6 +139,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Derive statistics only from immutable public referee events, authoritative
   counters, and content-free normalized telemetry. Keep word-level drill-down
   operator-only and make missing/estimated provider usage explicit.
+- Keep public and operator exports as separate typed records. Public replay must
+  reproduce events from a seed and immutable pack reference without serializing
+  private transitions, racks, credentials, transcripts, or lexicon contents.
 - Keep public and seat-private events distinguishable from their creation.
 - Never commit proprietary word lists. Every lexicon pack needs source,
   version, locale, license, normalization, and checksum metadata.

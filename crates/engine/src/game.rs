@@ -21,6 +21,8 @@ const CENTER: Coordinate = Coordinate { row: 7, column: 7 };
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
 /// Current post-game replay schema.
 pub const REPLAY_SCHEMA_VERSION: u32 = 3;
+/// Current privacy-safe public replay schema.
+pub const PUBLIC_REPLAY_SCHEMA_VERSION: u32 = 1;
 /// Current role projection schema.
 pub const PROJECTION_SCHEMA_VERSION: u32 = 1;
 
@@ -430,6 +432,40 @@ pub struct ReplayBundle {
     pub events: Vec<GameEvent>,
     /// Complete ordered seat-private placement transitions.
     pub private_events: Vec<PrivateGameEvent>,
+}
+
+/// Portable post-game replay that can reproduce public state without racks.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicReplayBundle {
+    /// Public replay schema, independent from the complete operator replay.
+    pub schema_version: u32,
+    /// Full immutable ruleset content identity.
+    pub ruleset_identity: RulesetIdentity,
+    /// Full versioned physical/scoring rules, but no lexicon contents.
+    pub ruleset: Ruleset,
+    /// Exact external pack reference required for verification.
+    pub lexicon: PackIdentity,
+    /// Versioned random contract.
+    pub rng_algorithm: RngAlgorithm,
+    /// Post-game seed reveal used to reconstruct the bag and both racks.
+    pub seed_reveal: [u8; 32],
+    /// Complete ordered public event stream only.
+    pub events: Vec<GameEvent>,
+}
+
+impl From<&ReplayBundle> for PublicReplayBundle {
+    fn from(bundle: &ReplayBundle) -> Self {
+        Self {
+            schema_version: PUBLIC_REPLAY_SCHEMA_VERSION,
+            ruleset_identity: bundle.ruleset_identity.clone(),
+            ruleset: bundle.ruleset.clone(),
+            lexicon: bundle.lexicon.clone(),
+            rng_algorithm: bundle.rng_algorithm,
+            seed_reveal: bundle.seed_reveal,
+            events: bundle.events.clone(),
+        }
+    }
 }
 
 /// Public role projection with no rack, seed, private draw, or bag-order data.
@@ -1083,6 +1119,154 @@ impl Game {
             });
         }
         Ok(game)
+    }
+
+    /// Replays and verifies every public transition from a privacy-safe bundle.
+    ///
+    /// The seed deterministically reconstructs private bag/rack state inside the
+    /// referee; that state is never serialized in the public artifact.
+    ///
+    /// # Errors
+    ///
+    /// Rejects absent/substituted packs, seed substitutions, unsupported
+    /// schemas, malformed ordering, or any public recomputation mismatch.
+    pub fn replay_public(
+        bundle: &PublicReplayBundle,
+        lexicon: Option<Arc<dyn WordValidator>>,
+    ) -> Result<Self, GameError> {
+        if bundle.schema_version != PUBLIC_REPLAY_SCHEMA_VERSION {
+            return Err(GameError::UnsupportedSchema {
+                artifact: "public replay",
+                found: bundle.schema_version,
+                expected: PUBLIC_REPLAY_SCHEMA_VERSION,
+            });
+        }
+        let complete_shape = ReplayBundle {
+            schema_version: REPLAY_SCHEMA_VERSION,
+            ruleset_identity: bundle.ruleset_identity.clone(),
+            ruleset: bundle.ruleset.clone(),
+            lexicon: bundle.lexicon.clone(),
+            rng_algorithm: bundle.rng_algorithm,
+            seed_reveal: bundle.seed_reveal,
+            events: bundle.events.clone(),
+            private_events: Vec::new(),
+        };
+        let mut game = Self::begin_replay(&complete_shape, lexicon)?;
+        for expected in &bundle.events[1..] {
+            game.replay_public_event(&bundle.lexicon, expected)?;
+        }
+        Ok(game)
+    }
+
+    fn begin_replay(
+        bundle: &ReplayBundle,
+        lexicon: Option<Arc<dyn WordValidator>>,
+    ) -> Result<Self, GameError> {
+        bundle.ruleset.validate()?;
+        if bundle.ruleset_identity != bundle.ruleset.identity() {
+            return Err(GameError::InvalidTileState {
+                reason: "replay ruleset identity differs from embedded ruleset".to_owned(),
+            });
+        }
+        let lexicon = lexicon.ok_or_else(|| GameError::MissingLexicon {
+            ruleset: bundle.ruleset.id,
+            required: Box::new(bundle.lexicon.clone()),
+        })?;
+        bundle
+            .ruleset
+            .ensure_lexicon(CompatibilityContext::Replay, lexicon.identity())?;
+        word_arena_lexicon::ensure_exact_pack(
+            CompatibilityContext::Replay,
+            &bundle.lexicon,
+            lexicon.identity(),
+        )?;
+        let Some(created) = bundle.events.first() else {
+            return Err(GameError::InvalidReplayEvent {
+                sequence: 0,
+                reason: "creation event is required",
+            });
+        };
+        let GameEventKind::Created {
+            game_id,
+            ruleset,
+            mode,
+            rng_algorithm,
+            seed_commitment,
+            ..
+        } = &created.kind
+        else {
+            return Err(GameError::InvalidReplayEvent {
+                sequence: created.sequence,
+                reason: "first event must create the game",
+            });
+        };
+        if created.sequence != 0
+            || ruleset != &bundle.ruleset
+            || created.lexicon != bundle.lexicon
+            || *rng_algorithm != bundle.rng_algorithm
+            || seed_commitment.algorithm != bundle.rng_algorithm
+        {
+            return Err(GameError::ReplayEventMismatch {
+                sequence: created.sequence,
+            });
+        }
+        let seed = GameSeed::from_bytes(bundle.seed_reveal);
+        if !seed_commitment.verify(&seed) {
+            return Err(GameError::SeedCommitmentMismatch);
+        }
+        let game = Self::create_with_mode(
+            game_id.clone(),
+            bundle.ruleset.clone(),
+            Some(lexicon),
+            seed,
+            *mode,
+        )?;
+        if game.events[0] != *created {
+            return Err(GameError::ReplayEventMismatch { sequence: 0 });
+        }
+        Ok(game)
+    }
+
+    fn replay_public_event(
+        &mut self,
+        lexicon: &PackIdentity,
+        expected: &GameEvent,
+    ) -> Result<(), GameError> {
+        if expected.lexicon != *lexicon {
+            return Err(GameError::ReplayEventMismatch {
+                sequence: expected.sequence,
+            });
+        }
+        match &expected.kind {
+            GameEventKind::Created { .. } => {
+                return Err(GameError::InvalidReplayEvent {
+                    sequence: expected.sequence,
+                    reason: "creation may occur only once",
+                });
+            }
+            GameEventKind::MovePlayed {
+                player, placements, ..
+            } => {
+                self.play_tiles(*player, self.state.version, placements.clone())?;
+            }
+            GameEventKind::Passed { player, .. } => {
+                self.pass(*player, self.state.version)?;
+            }
+            GameEventKind::Exchanged {
+                player, tile_ids, ..
+            } => {
+                self.exchange_tiles(*player, self.state.version, tile_ids.clone())?;
+            }
+            GameEventKind::Resigned { player, .. } => {
+                self.resign(*player, self.state.version)?;
+            }
+        }
+        if self.events.last() != Some(expected) {
+            return Err(GameError::ReplayEventMismatch {
+                sequence: expected.sequence,
+            });
+        }
+        Ok(())
     }
 
     fn replay_event(

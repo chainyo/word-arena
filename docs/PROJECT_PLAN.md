@@ -197,7 +197,7 @@ policy without accessing its opponent's workspace or credentials.
 - [x] Report win rate, spread, average move score, bingos, invalid actions,
   passes, exchanges, turn latency, premium use, vocabulary, tool calls, tokens,
   and cost where available.
-- [ ] Export complete public replay bundles and analytics-friendly data.
+- [x] Export complete public replay bundles and analytics-friendly data.
 
 Exit criterion: an operator can run a reproducible paired tournament at a fixed
 concurrency and publish its standings and replay bundle.

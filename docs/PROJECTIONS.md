@@ -53,6 +53,12 @@ algorithm and seed reveal, public events, and all deterministic private events.
 It never embeds dictionary contents. Replay verifies the seed commitment and
 recomputes public and private transitions; exact event mismatches fail.
 
+`PublicReplayBundle` schema V1 is the export-safe counterpart. It includes the
+post-game seed reveal and public events but structurally omits private
+transitions and racks. The referee reconstructs those internally from the seed
+to independently verify the exported public history. Complete `ReplayBundle`
+output remains an explicit operator-only export.
+
 Serialization and tamper tests cover both built-in languages, every role,
 forbidden projection fields, schema versions, ruleset hashes, pack versions,
 seed substitution, physical tile IDs, private draws, event ordering, missing
