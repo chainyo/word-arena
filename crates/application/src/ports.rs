@@ -3,7 +3,10 @@ use std::{fmt::Debug, future::Future, pin::Pin, sync::Arc};
 use word_arena_engine::{GameSeed, GameSnapshot, WordValidator};
 use word_arena_lexicon::PackIdentity;
 
-use crate::{GameId, RepositoryError, UnixMillis};
+use crate::{
+    AuditRecord, CapabilityId, CapabilityRecord, CapabilityRepositoryError, GameId,
+    RepositoryError, UnixMillis,
+};
 
 /// Sendable boxed future used by adapter ports without an async-trait macro.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -36,6 +39,45 @@ pub trait GameRepository: Debug + Send + Sync {
         expected_version: u64,
         game: StoredGame,
     ) -> BoxFuture<'_, Result<(), RepositoryError>>;
+}
+
+/// Capability and privacy-safe audit persistence boundary.
+pub trait CapabilityRepository: Debug + Send + Sync {
+    /// Inserts one capability and its issuance audit atomically.
+    fn insert(
+        &self,
+        capability: CapabilityRecord,
+        audit: AuditRecord,
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>>;
+
+    /// Loads one record by its public capability ID.
+    fn load(
+        &self,
+        capability_id: &CapabilityId,
+    ) -> BoxFuture<'_, Result<CapabilityRecord, CapabilityRepositoryError>>;
+
+    /// Revokes one active capability and appends its audit atomically.
+    fn revoke(
+        &self,
+        capability_id: &CapabilityId,
+        revoked_at: UnixMillis,
+        audit: AuditRecord,
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>>;
+
+    /// Replaces one active capability and appends rotation audits atomically.
+    fn rotate(
+        &self,
+        prior_id: &CapabilityId,
+        revoked_at: UnixMillis,
+        replacement: CapabilityRecord,
+        audits: [AuditRecord; 2],
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>>;
+
+    /// Appends one authentication or privileged-access audit record.
+    fn append_audit(
+        &self,
+        audit: AuditRecord,
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>>;
 }
 
 /// Exact immutable lexicon lookup resolver.

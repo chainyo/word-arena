@@ -24,6 +24,13 @@ pub static MIGRATOR: LazyLock<Migrator> = LazyLock::new(|| {
             include_str!("../migrations/0002_operations.sql").into_sql_str(),
             false,
         ),
+        Migration::new(
+            3,
+            "capability agent runs".into(),
+            MigrationType::Simple,
+            include_str!("../migrations/0003_capability_agent_runs.sql").into_sql_str(),
+            false,
+        ),
     ])
 });
 
@@ -109,14 +116,14 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(versions, [1, 2]);
+        assert_eq!(versions, [1, 2, 3]);
         let schema_version = sqlx::query_scalar::<_, String>(
             "SELECT value FROM schema_metadata WHERE key = 'application_schema_version'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(schema_version, "2");
+        assert_eq!(schema_version, "3");
 
         let tables = sqlx::query_scalar::<_, String>(
             "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
@@ -206,6 +213,11 @@ mod tests {
             capability_columns
                 .iter()
                 .any(|column| column == "token_digest")
+        );
+        assert!(
+            capability_columns
+                .iter()
+                .any(|column| column == "agent_run_id")
         );
         assert!(!capability_columns.iter().any(|column| column == "token"));
         assert!(

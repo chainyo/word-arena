@@ -5,6 +5,7 @@
 //! parsing are adapters around this crate rather than alternate game rules.
 
 mod authority;
+mod capability;
 mod command;
 mod error;
 mod ports;
@@ -17,6 +18,13 @@ pub use authority::{
     AdministratorCredential, Authorizes, CompetitiveGameCredentials, CompetitiveSeatCredential,
     CreatedGameAccess, HumanSpectatorCredential, PublicViewerCredential,
 };
+pub use capability::{
+    AgentRunId, AuditAction, AuditActor, AuditOutcome, AuditRecord, AuthenticatedCredential,
+    CAPABILITY_DIGEST_VERSION, CapabilityDescriptor, CapabilityDigestKey, CapabilityError,
+    CapabilityId, CapabilityMaterial, CapabilityRecord, CapabilityRepositoryError, CapabilityRole,
+    CapabilityScope, CapabilityToken, CapabilityTokenSource, IssueCapabilityRequest,
+    IssuedCapability, SystemCapabilityTokenSource,
+};
 pub use command::{
     AdministratorGameQuery, AdministratorGameView, CreateGameCommand, CreatedGame,
     GameActionCommand, GameActionResult, GameId, HumanSpectatorGameQuery, HumanSpectatorGameView,
@@ -24,7 +32,7 @@ pub use command::{
 };
 pub use error::{ApplicationError, RepositoryError};
 pub use ports::{
-    ApplicationClock, BoxFuture, GameIdSource, GameRepository, LexiconResolver, SeedSource,
-    StoredGame,
+    ApplicationClock, BoxFuture, CapabilityRepository, GameIdSource, GameRepository,
+    LexiconResolver, SeedSource, StoredGame,
 };
-pub use service::{ApplicationRuntime, ApplicationService};
+pub use service::{ApplicationRuntime, ApplicationService, CapabilityAdapters};

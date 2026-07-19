@@ -38,6 +38,8 @@ The repository foundation is in place:
   game, credential, tournament, match, agent-run, idempotency, and audit schema
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
+- Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,
+  isolated revocation/rotation, and privacy-safe SQLite audit records
 - Vite, React 19, Tailwind CSS 4, and shadcn/ui with Base UI primitives
 - A local-first game workspace preview centered on the board and seat state
 - Bun-managed frontend dependencies
@@ -128,6 +130,8 @@ The application command/query boundary is documented in
 [`docs/APPLICATION.md`](docs/APPLICATION.md).
 The transactional SQLite repository contract is documented in
 [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md).
+The credential and bearer-capability security contract is documented in
+[`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
 
 ## License
 

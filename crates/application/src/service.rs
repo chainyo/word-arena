@@ -2,11 +2,16 @@ use std::sync::Arc;
 
 use word_arena_engine::{Game, Ruleset, RulesetId};
 
+use crate::capability::{actor, credential, validate_issue};
 use crate::{
     AdministratorCredential, AdministratorGameQuery, AdministratorGameView, ApplicationClock,
-    ApplicationError, CompetitiveSeatCredential, CreateGameCommand, CreatedGame, CreatedGameAccess,
-    GameActionCommand, GameActionResult, GameId, GameIdSource, GameRepository,
-    HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey,
+    ApplicationError, AuditAction, AuditActor, AuditOutcome, AuditRecord, AuthenticatedCredential,
+    CAPABILITY_DIGEST_VERSION, CapabilityDescriptor, CapabilityDigestKey, CapabilityError,
+    CapabilityId, CapabilityRecord, CapabilityRepository, CapabilityRepositoryError,
+    CapabilityScope, CapabilityToken, CapabilityTokenSource, CompetitiveSeatCredential,
+    CreateGameCommand, CreatedGame, CreatedGameAccess, GameActionCommand, GameActionResult, GameId,
+    GameIdSource, GameRepository, HumanSpectatorCredential, HumanSpectatorGameQuery,
+    HumanSpectatorGameView, IdempotencyKey, IssueCapabilityRequest, IssuedCapability,
     LexiconResolver, PublicGameQuery, PublicGameView, PublicViewerCredential, RepositoryError,
     SeatGameQuery, SeatGameView, SeedSource, StoredGame,
 };
@@ -20,6 +25,33 @@ use crate::{
 #[derive(Debug)]
 pub struct ApplicationRuntime {
     service: ApplicationService,
+    capabilities: Arc<dyn CapabilityRepository>,
+    capability_tokens: Arc<dyn CapabilityTokenSource>,
+    capability_digest_key: CapabilityDigestKey,
+}
+
+/// Injected capability security and persistence adapters.
+#[derive(Debug)]
+pub struct CapabilityAdapters {
+    repository: Arc<dyn CapabilityRepository>,
+    tokens: Arc<dyn CapabilityTokenSource>,
+    digest_key: CapabilityDigestKey,
+}
+
+impl CapabilityAdapters {
+    /// Groups the capability adapters and secret digest key for process setup.
+    #[must_use]
+    pub fn new(
+        repository: Arc<dyn CapabilityRepository>,
+        tokens: Arc<dyn CapabilityTokenSource>,
+        digest_key: CapabilityDigestKey,
+    ) -> Self {
+        Self {
+            repository,
+            tokens,
+            digest_key,
+        }
+    }
 }
 
 impl ApplicationRuntime {
@@ -31,9 +63,13 @@ impl ApplicationRuntime {
         ids: Arc<dyn GameIdSource>,
         seeds: Arc<dyn SeedSource>,
         clock: Arc<dyn ApplicationClock>,
+        capability_adapters: CapabilityAdapters,
     ) -> Self {
         Self {
             service: ApplicationService::new(repository, lexicons, ids, seeds, clock),
+            capabilities: capability_adapters.repository,
+            capability_tokens: capability_adapters.tokens,
+            capability_digest_key: capability_adapters.digest_key,
         }
     }
 
@@ -56,30 +92,271 @@ impl ApplicationRuntime {
         Ok(PublicViewerCredential::new(game_id))
     }
 
-    /// Issues a human-only spectator credential from the operator boundary.
+    /// Issues one scoped opaque capability from the operator boundary.
+    ///
+    /// Only the returned value contains the raw token. Persistence receives a
+    /// versioned keyed digest and privacy-safe audit metadata.
     ///
     /// # Errors
     ///
-    /// Returns an application error when the game cannot be loaded exactly.
-    pub async fn issue_human_spectator(
+    /// Rejects invalid game, time, role, agent-run, or scope bindings and fails
+    /// closed when entropy or persistence is unavailable.
+    pub async fn issue_capability(
         &self,
-        game_id: &GameId,
-    ) -> Result<HumanSpectatorCredential, ApplicationError> {
-        self.service.load_game(game_id).await?;
-        Ok(HumanSpectatorCredential::new(game_id))
+        request: IssueCapabilityRequest,
+    ) -> Result<IssuedCapability, CapabilityError> {
+        self.service
+            .load_game(&request.game_id)
+            .await
+            .map_err(|error| match error {
+                ApplicationError::Repository(error) => CapabilityError::Game(error),
+                _ => CapabilityError::InvalidRequest,
+            })?;
+        let issued_at = self.service.clock.now();
+        validate_issue(&request, issued_at)?;
+        let material = self.capability_tokens.next_material()?;
+        let capability_id = CapabilityId::new(encode_id(material.capability_id()))?;
+        let token = CapabilityToken::from_material(&material);
+        let descriptor = CapabilityDescriptor {
+            capability_id: capability_id.clone(),
+            game_id: request.game_id,
+            role: request.role,
+            scopes: request.scopes,
+            issued_at,
+            expires_at: request.expires_at,
+            agent_run_id: request.agent_run_id,
+        };
+        let record = CapabilityRecord {
+            descriptor: descriptor.clone(),
+            token_digest: self.capability_digest_key.digest(token.secret()),
+            digest_version: CAPABILITY_DIGEST_VERSION,
+            revoked_at: None,
+        };
+        let audit = capability_audit(
+            Some(&descriptor),
+            AuditActor::System,
+            AuditAction::Issue,
+            AuditOutcome::Success,
+            None,
+            issued_at,
+        );
+        self.capabilities.insert(record, audit).await?;
+        Ok(IssuedCapability { descriptor, token })
     }
 
-    /// Issues an administrator credential from the operator boundary.
+    /// Authenticates one token for one game and scope.
+    ///
+    /// Digest verification uses `HMAC-SHA-256`'s constant-time verifier. Every
+    /// result is audited without storing the token or any game payload.
     ///
     /// # Errors
     ///
-    /// Returns an application error when the game cannot be loaded exactly.
-    pub async fn issue_administrator(
+    /// Returns one deliberately generic unauthorized error for malformed,
+    /// unknown, expired, revoked, cross-game, or wrong-scope credentials.
+    pub async fn authenticate_capability(
         &self,
+        token: &str,
         game_id: &GameId,
-    ) -> Result<AdministratorCredential, ApplicationError> {
-        self.service.load_game(game_id).await?;
-        Ok(AdministratorCredential::new(game_id))
+        scope: CapabilityScope,
+    ) -> Result<AuthenticatedCredential, CapabilityError> {
+        let now = self.service.clock.now();
+        let Ok(capability_id) = CapabilityToken::parse(token) else {
+            self.audit_denial(
+                None,
+                Some(game_id.clone()),
+                scope,
+                AuditOutcome::DeniedMalformed,
+                now,
+            )
+            .await?;
+            return Err(CapabilityError::Unauthorized);
+        };
+        let record = match self.capabilities.load(&capability_id).await {
+            Ok(record) => record,
+            Err(CapabilityRepositoryError::NotFound) => {
+                self.audit_denial(
+                    Some(capability_id),
+                    Some(game_id.clone()),
+                    scope,
+                    AuditOutcome::DeniedUnknown,
+                    now,
+                )
+                .await?;
+                return Err(CapabilityError::Unauthorized);
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let denied = if record.digest_version != CAPABILITY_DIGEST_VERSION
+            || !self
+                .capability_digest_key
+                .verifies(token, &record.token_digest)
+        {
+            Some(AuditOutcome::DeniedUnknown)
+        } else if record.revoked_at.is_some() {
+            Some(AuditOutcome::DeniedRevoked)
+        } else if now >= record.descriptor.expires_at {
+            Some(AuditOutcome::DeniedExpired)
+        } else if &record.descriptor.game_id != game_id {
+            Some(AuditOutcome::DeniedGame)
+        } else if !record.descriptor.scopes.contains(&scope) {
+            Some(AuditOutcome::DeniedScope)
+        } else {
+            None
+        };
+        if let Some(outcome) = denied {
+            self.capabilities
+                .append_audit(capability_audit(
+                    Some(&record.descriptor),
+                    AuditActor::System,
+                    AuditAction::Authenticate,
+                    outcome,
+                    Some(scope),
+                    now,
+                ))
+                .await?;
+            return Err(CapabilityError::Unauthorized);
+        }
+
+        self.capabilities
+            .append_audit(capability_audit(
+                Some(&record.descriptor),
+                actor(record.descriptor.role),
+                AuditAction::Authenticate,
+                AuditOutcome::Success,
+                Some(scope),
+                now,
+            ))
+            .await?;
+        if matches!(
+            scope,
+            CapabilityScope::ObserveHumanSpectator | CapabilityScope::ObserveAdministrator
+        ) {
+            self.capabilities
+                .append_audit(capability_audit(
+                    Some(&record.descriptor),
+                    actor(record.descriptor.role),
+                    AuditAction::PrivilegedAccess,
+                    AuditOutcome::Success,
+                    Some(scope),
+                    now,
+                ))
+                .await?;
+        }
+        Ok(credential(&record))
+    }
+
+    /// Immediately revokes exactly one capability.
+    ///
+    /// # Errors
+    ///
+    /// Returns a repository error for missing, already-revoked, corrupt, or
+    /// unavailable records.
+    pub async fn revoke_capability(
+        &self,
+        capability_id: &CapabilityId,
+    ) -> Result<(), CapabilityError> {
+        let record = self.capabilities.load(capability_id).await?;
+        let revoked_at = self.service.clock.now();
+        let audit = capability_audit(
+            Some(&record.descriptor),
+            AuditActor::System,
+            AuditAction::Revoke,
+            AuditOutcome::Success,
+            None,
+            revoked_at,
+        );
+        self.capabilities
+            .revoke(capability_id, revoked_at, audit)
+            .await?;
+        Ok(())
+    }
+
+    /// Atomically revokes one capability and returns a same-binding replacement.
+    ///
+    /// # Errors
+    ///
+    /// Rejects expired replacement time and fails on missing, revoked,
+    /// concurrent, entropy, or storage errors.
+    pub async fn rotate_capability(
+        &self,
+        capability_id: &CapabilityId,
+        expires_at: crate::UnixMillis,
+    ) -> Result<IssuedCapability, CapabilityError> {
+        let prior = self.capabilities.load(capability_id).await?;
+        let now = self.service.clock.now();
+        let request = IssueCapabilityRequest {
+            game_id: prior.descriptor.game_id.clone(),
+            role: prior.descriptor.role,
+            scopes: prior.descriptor.scopes.clone(),
+            expires_at,
+            agent_run_id: prior.descriptor.agent_run_id.clone(),
+        };
+        validate_issue(&request, now)?;
+        if prior.revoked_at.is_some() || now >= prior.descriptor.expires_at {
+            return Err(CapabilityError::Unauthorized);
+        }
+        let material = self.capability_tokens.next_material()?;
+        let replacement_id = CapabilityId::new(encode_id(material.capability_id()))?;
+        let token = CapabilityToken::from_material(&material);
+        let descriptor = CapabilityDescriptor {
+            capability_id: replacement_id,
+            game_id: request.game_id,
+            role: request.role,
+            scopes: request.scopes,
+            issued_at: now,
+            expires_at: request.expires_at,
+            agent_run_id: request.agent_run_id,
+        };
+        let replacement = CapabilityRecord {
+            descriptor: descriptor.clone(),
+            token_digest: self.capability_digest_key.digest(token.secret()),
+            digest_version: CAPABILITY_DIGEST_VERSION,
+            revoked_at: None,
+        };
+        let audits = [
+            capability_audit(
+                Some(&prior.descriptor),
+                AuditActor::System,
+                AuditAction::Rotate,
+                AuditOutcome::Success,
+                None,
+                now,
+            ),
+            capability_audit(
+                Some(&descriptor),
+                AuditActor::System,
+                AuditAction::Issue,
+                AuditOutcome::Success,
+                None,
+                now,
+            ),
+        ];
+        self.capabilities
+            .rotate(capability_id, now, replacement, audits)
+            .await?;
+        Ok(IssuedCapability { descriptor, token })
+    }
+
+    async fn audit_denial(
+        &self,
+        capability_id: Option<CapabilityId>,
+        game_id: Option<GameId>,
+        scope: CapabilityScope,
+        outcome: AuditOutcome,
+        occurred_at: crate::UnixMillis,
+    ) -> Result<(), CapabilityError> {
+        self.capabilities
+            .append_audit(AuditRecord {
+                game_id,
+                actor: AuditActor::System,
+                action: AuditAction::Authenticate,
+                outcome,
+                capability_id,
+                scope: Some(scope),
+                occurred_at,
+            })
+            .await?;
+        Ok(())
     }
 }
 
@@ -324,4 +601,33 @@ fn validate_record(record: &StoredGame, requested: &crate::GameId) -> Result<(),
     } else {
         Err(RepositoryError::Corrupt.into())
     }
+}
+
+fn capability_audit(
+    descriptor: Option<&CapabilityDescriptor>,
+    actor: AuditActor,
+    action: AuditAction,
+    outcome: AuditOutcome,
+    scope: Option<CapabilityScope>,
+    occurred_at: crate::UnixMillis,
+) -> AuditRecord {
+    AuditRecord {
+        game_id: descriptor.map(|value| value.game_id.clone()),
+        actor,
+        action,
+        outcome,
+        capability_id: descriptor.map(|value| value.capability_id.clone()),
+        scope,
+        occurred_at,
+    }
+}
+
+fn encode_id(bytes: &[u8; 16]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(32);
+    for byte in bytes {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
 }

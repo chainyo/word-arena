@@ -42,14 +42,18 @@ map them to these application types.
 ## Operator separation
 
 `ApplicationRuntime` is the trusted process-bootstrap boundary. It alone can
-issue human-spectator and administrator credentials after loading the bound
-game. Agent drivers and transport handlers receive `ApplicationService` plus a
+issue bearer capabilities after loading the bound game. Human-spectator and
+administrator application credentials are produced only by authenticating a
+correctly scoped capability; there is no unaudited direct issuance path. Agent
+drivers and transport handlers receive `ApplicationService` plus a
 `CompetitiveGameCredentials` value containing one seat and its public viewer;
 that shape cannot contain or request an operator credential.
 
 Game creation returns public and both seat credentials to trusted orchestration,
-but never returns spectator or administrator credentials. The runtime itself
-must remain outside every agent process and workspace.
+but never returns spectator or administrator credentials. The runtime and its
+HMAC key must remain outside every agent process and workspace. See
+[`CAPABILITIES.md`](CAPABILITIES.md) for issuance, authentication, rotation, and
+audit rules.
 
 ## Injected ports
 

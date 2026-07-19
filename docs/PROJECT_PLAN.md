@@ -133,7 +133,7 @@ without network access after setup.
 - [x] Wire the completed engine public, per-seat private, human-spectator, and
   administrator projections to separate application credential types. Never
   grant spectator credentials to an agent process.
-- [ ] Add capability-style seat tokens, expiry, revocation, and audit logging.
+- [x] Add capability-style seat tokens, expiry, revocation, and audit logging.
 - [ ] Add REST snapshots and WebSocket invalidation/event streams.
 - [ ] Add idempotency, turn deadlines, invalid-attempt policy, and recovery tests.
 

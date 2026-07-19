@@ -13,7 +13,10 @@ default = []
 test-support = []
 
 [dependencies]
+getrandom.workspace = true
+hmac.workspace = true
 serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 word-arena-engine = { path = "../engine" }
 word-arena-lexicon = { path = "../lexicon" }

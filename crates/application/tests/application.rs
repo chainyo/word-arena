@@ -1,15 +1,18 @@
 #![cfg(feature = "test-support")]
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use word_arena_application::{
     AdministratorCredential, AdministratorGameQuery, ApplicationClock, ApplicationError,
-    ApplicationRuntime, Authorizes, CompetitiveSeatCredential, GameActionCommand, GameId,
-    GameIdSource, GameRepository, HumanSpectatorCredential, HumanSpectatorGameQuery,
-    HumanSpectatorGameView, IdempotencyKey, LexiconResolver, PublicGameQuery,
-    PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView, SeedSource, UnixMillis,
+    ApplicationRuntime, AuthenticatedCredential, Authorizes, CapabilityAdapters,
+    CapabilityDigestKey, CapabilityError, CapabilityRole, CapabilityScope,
+    CompetitiveSeatCredential, GameActionCommand, GameId, GameIdSource, GameRepository,
+    HumanSpectatorCredential, HumanSpectatorGameQuery, HumanSpectatorGameView, IdempotencyKey,
+    IssueCapabilityRequest, LexiconResolver, PublicGameQuery, PublicViewerCredential,
+    RepositoryError, SeatGameQuery, SeatGameView, SeedSource, UnixMillis,
     test_support::{
-        FixedClock, InMemoryGameRepository, InMemoryLexiconResolver, SequenceGameIds, SequenceSeeds,
+        FixedClock, InMemoryCapabilityRepository, InMemoryGameRepository, InMemoryLexiconResolver,
+        SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
     },
 };
 use word_arena_engine::{
@@ -150,10 +153,7 @@ async fn english_and_french_finish_through_typed_application_apis() {
         assert_eq!(seat_two.game.seat, Seat::Two);
         assert_ne!(seat_one.game.rack, seat_two.game.rack);
 
-        let spectator_credential = runtime
-            .issue_human_spectator(&created.game_id)
-            .await
-            .unwrap();
+        let spectator_credential = human_spectator_credential(&runtime, &created.game_id).await;
         let spectator = service
             .human_spectator_game(
                 &spectator_credential,
@@ -166,7 +166,7 @@ async fn english_and_french_finish_through_typed_application_apis() {
         assert_eq!(spectator.game.racks[0], seat_one.game.rack);
         assert_eq!(spectator.game.racks[1], seat_two.game.rack);
 
-        let administrator_credential = runtime.issue_administrator(&created.game_id).await.unwrap();
+        let administrator_credential = administrator_credential(&runtime, &created.game_id).await;
         let administrator = service
             .administrator_game(
                 &administrator_credential,
@@ -310,7 +310,7 @@ async fn every_credential_rejects_cross_game_reuse() {
             .await,
         Err(ApplicationError::WrongGameAuthority { .. })
     ));
-    let spectator = runtime.issue_human_spectator(&first.game_id).await.unwrap();
+    let spectator = human_spectator_credential(&runtime, &first.game_id).await;
     assert!(matches!(
         service
             .human_spectator_game(
@@ -322,7 +322,7 @@ async fn every_credential_rejects_cross_game_reuse() {
             .await,
         Err(ApplicationError::WrongGameAuthority { .. })
     ));
-    let administrator = runtime.issue_administrator(&first.game_id).await.unwrap();
+    let administrator = administrator_credential(&runtime, &first.game_id).await;
     assert!(matches!(
         service
             .administrator_game(
@@ -413,18 +413,18 @@ async fn authorization_staleness_missing_inputs_and_engine_errors_fail_closed() 
             .await,
         Err(ApplicationError::Repository(RepositoryError::NotFound))
     ));
-    assert!(matches!(
-        runtime
-            .issue_human_spectator(&GameId::new("missing").unwrap())
-            .await,
-        Err(ApplicationError::Repository(RepositoryError::NotFound))
-    ));
-    assert!(matches!(
-        runtime
-            .issue_administrator(&GameId::new("missing").unwrap())
-            .await,
-        Err(ApplicationError::Repository(RepositoryError::NotFound))
-    ));
+    let missing_game = GameId::new("missing").unwrap();
+    for role in [
+        CapabilityRole::HumanSpectator,
+        CapabilityRole::Administrator,
+    ] {
+        assert!(matches!(
+            runtime
+                .issue_capability(privileged_request(missing_game.clone(), role))
+                .await,
+            Err(CapabilityError::Game(RepositoryError::NotFound))
+        ));
+    }
 
     let english_only = setup_runtime(&[Language::English]);
     let missing_pack = english_only
@@ -462,10 +462,7 @@ async fn role_results_are_serialization_isolated() {
         )
         .await
         .unwrap();
-    let spectator_credential = runtime
-        .issue_human_spectator(&created.game_id)
-        .await
-        .unwrap();
+    let spectator_credential = human_spectator_credential(&runtime, &created.game_id).await;
     let spectator = service
         .human_spectator_game(
             &spectator_credential,
@@ -502,7 +499,83 @@ fn setup_runtime(languages: &[Language]) -> ApplicationRuntime {
     let ids: Arc<dyn GameIdSource> = Arc::new(SequenceGameIds::new("game"));
     let seeds: Arc<dyn SeedSource> = Arc::new(SequenceSeeds::new(7));
     let clock: Arc<dyn ApplicationClock> = Arc::new(FixedClock(UnixMillis(1_700_000_000_000)));
-    ApplicationRuntime::new(repository, resolver, ids, seeds, clock)
+    ApplicationRuntime::new(
+        repository,
+        resolver,
+        ids,
+        seeds,
+        clock,
+        CapabilityAdapters::new(
+            Arc::new(InMemoryCapabilityRepository::default()),
+            Arc::new(SequenceCapabilityTokens::new(1)),
+            CapabilityDigestKey::new([7; 32]),
+        ),
+    )
+}
+
+async fn human_spectator_credential(
+    runtime: &ApplicationRuntime,
+    game_id: &GameId,
+) -> HumanSpectatorCredential {
+    let issued = runtime
+        .issue_capability(privileged_request(
+            game_id.clone(),
+            CapabilityRole::HumanSpectator,
+        ))
+        .await
+        .unwrap();
+    match runtime
+        .authenticate_capability(
+            &issued.token.into_secret(),
+            game_id,
+            CapabilityScope::ObserveHumanSpectator,
+        )
+        .await
+        .unwrap()
+    {
+        AuthenticatedCredential::HumanSpectator(credential) => credential,
+        _ => panic!("spectator capability returned another credential role"),
+    }
+}
+
+async fn administrator_credential(
+    runtime: &ApplicationRuntime,
+    game_id: &GameId,
+) -> AdministratorCredential {
+    let issued = runtime
+        .issue_capability(privileged_request(
+            game_id.clone(),
+            CapabilityRole::Administrator,
+        ))
+        .await
+        .unwrap();
+    match runtime
+        .authenticate_capability(
+            &issued.token.into_secret(),
+            game_id,
+            CapabilityScope::ObserveAdministrator,
+        )
+        .await
+        .unwrap()
+    {
+        AuthenticatedCredential::Administrator(credential) => credential,
+        _ => panic!("administrator capability returned another credential role"),
+    }
+}
+
+fn privileged_request(game_id: GameId, role: CapabilityRole) -> IssueCapabilityRequest {
+    let scope = match role {
+        CapabilityRole::HumanSpectator => CapabilityScope::ObserveHumanSpectator,
+        CapabilityRole::Administrator => CapabilityScope::ObserveAdministrator,
+        _ => panic!("fixture supports only privileged roles"),
+    };
+    IssueCapabilityRequest {
+        game_id,
+        role,
+        scopes: BTreeSet::from([scope]),
+        expires_at: UnixMillis(1_700_000_001_000),
+        agent_run_id: None,
+    }
 }
 
 fn key(value: &str) -> IdempotencyKey {

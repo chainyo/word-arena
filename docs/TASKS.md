@@ -88,13 +88,13 @@ seed, administrator snapshot, or spectator projection.
 
 ### APP-005: Add capability tokens, expiry, revocation, and audit logging
 
-- [ ] Generate cryptographically strong opaque capabilities, persist only
+- [x] Generate cryptographically strong opaque capabilities, persist only
   versioned keyed digests, and return raw tokens only once at issuance.
-- [ ] Bind capabilities to game, role/seat, scopes, issued/expiry times, and an
+- [x] Bind capabilities to game, role/seat, scopes, issued/expiry times, and an
   optional agent run; inject the clock and token source for deterministic tests.
-- [ ] Support rotation and immediate revocation without invalidating unrelated
+- [x] Support rotation and immediate revocation without invalidating unrelated
   seats, and use constant-time digest comparison.
-- [ ] Append privacy-safe audit records for issuance, authentication outcome,
+- [x] Append privacy-safe audit records for issuance, authentication outcome,
   revocation, and privileged access without recording tokens or rack content.
 
 Verification: expired, revoked, malformed, cross-game, cross-seat, and

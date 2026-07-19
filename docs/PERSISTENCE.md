@@ -41,6 +41,11 @@ transaction rollback, ordered public/private history, restart and resume,
 byte-equivalent replay, incompatible schemas, pack mismatch, corruption, and
 unavailable storage.
 
+The same crate implements capability storage as digest-only records. Issuance,
+revocation, and rotation update their privacy-safe audit rows in the same SQL
+transaction. Migration 3 adds the optional foreign-keyed agent-run binding
+without rewriting the already-published operations migration.
+
 Run them with:
 
 ```bash

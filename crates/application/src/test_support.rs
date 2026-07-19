@@ -2,16 +2,215 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicI64, Ordering},
+    },
 };
 
 use word_arena_engine::{GameSeed, WordValidator};
 use word_arena_lexicon::PackIdentity;
 
 use crate::{
-    ApplicationClock, BoxFuture, GameId, GameIdSource, GameRepository, LexiconResolver,
-    RepositoryError, SeedSource, StoredGame, UnixMillis,
+    ApplicationClock, AuditRecord, BoxFuture, CapabilityId, CapabilityMaterial, CapabilityRecord,
+    CapabilityRepository, CapabilityRepositoryError, CapabilityTokenSource, GameId, GameIdSource,
+    GameRepository, LexiconResolver, RepositoryError, SeedSource, StoredGame, UnixMillis,
 };
+
+#[derive(Debug, Default)]
+struct CapabilityState {
+    records: BTreeMap<CapabilityId, CapabilityRecord>,
+    audits: Vec<AuditRecord>,
+}
+
+/// Deterministic, atomic capability/audit repository for tests.
+#[derive(Debug, Default)]
+pub struct InMemoryCapabilityRepository {
+    state: Mutex<CapabilityState>,
+}
+
+impl InMemoryCapabilityRepository {
+    /// Returns a secret-free snapshot of all audit rows.
+    ///
+    /// # Panics
+    ///
+    /// Panics only when another test poisoned the fixture mutex.
+    #[must_use]
+    pub fn audits(&self) -> Vec<AuditRecord> {
+        self.state
+            .lock()
+            .expect("test capability mutex is not poisoned")
+            .audits
+            .clone()
+    }
+
+    /// Returns one persisted digest-only record.
+    ///
+    /// # Panics
+    ///
+    /// Panics only when another test poisoned the fixture mutex.
+    #[must_use]
+    pub fn record(&self, capability_id: &CapabilityId) -> Option<CapabilityRecord> {
+        self.state
+            .lock()
+            .expect("test capability mutex is not poisoned")
+            .records
+            .get(capability_id)
+            .cloned()
+    }
+}
+
+impl CapabilityRepository for InMemoryCapabilityRepository {
+    fn insert(
+        &self,
+        capability: CapabilityRecord,
+        audit: AuditRecord,
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>> {
+        Box::pin(async move {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| CapabilityRepositoryError::Unavailable)?;
+            if state
+                .records
+                .contains_key(&capability.descriptor.capability_id)
+                || state
+                    .records
+                    .values()
+                    .any(|record| record.token_digest == capability.token_digest)
+            {
+                return Err(CapabilityRepositoryError::AlreadyExists);
+            }
+            state
+                .records
+                .insert(capability.descriptor.capability_id.clone(), capability);
+            state.audits.push(audit);
+            Ok(())
+        })
+    }
+
+    fn load(
+        &self,
+        capability_id: &CapabilityId,
+    ) -> BoxFuture<'_, Result<CapabilityRecord, CapabilityRepositoryError>> {
+        let capability_id = capability_id.clone();
+        Box::pin(async move {
+            self.state
+                .lock()
+                .map_err(|_| CapabilityRepositoryError::Unavailable)?
+                .records
+                .get(&capability_id)
+                .cloned()
+                .ok_or(CapabilityRepositoryError::NotFound)
+        })
+    }
+
+    fn revoke(
+        &self,
+        capability_id: &CapabilityId,
+        revoked_at: UnixMillis,
+        audit: AuditRecord,
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>> {
+        let capability_id = capability_id.clone();
+        Box::pin(async move {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| CapabilityRepositoryError::Unavailable)?;
+            let record = state
+                .records
+                .get_mut(&capability_id)
+                .ok_or(CapabilityRepositoryError::NotFound)?;
+            if record.revoked_at.is_some() {
+                return Err(CapabilityRepositoryError::Conflict);
+            }
+            record.revoked_at = Some(revoked_at);
+            state.audits.push(audit);
+            Ok(())
+        })
+    }
+
+    fn rotate(
+        &self,
+        prior_id: &CapabilityId,
+        revoked_at: UnixMillis,
+        replacement: CapabilityRecord,
+        audits: [AuditRecord; 2],
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>> {
+        let prior_id = prior_id.clone();
+        Box::pin(async move {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| CapabilityRepositoryError::Unavailable)?;
+            if state
+                .records
+                .contains_key(&replacement.descriptor.capability_id)
+                || state
+                    .records
+                    .values()
+                    .any(|record| record.token_digest == replacement.token_digest)
+            {
+                return Err(CapabilityRepositoryError::AlreadyExists);
+            }
+            let prior = state
+                .records
+                .get_mut(&prior_id)
+                .ok_or(CapabilityRepositoryError::NotFound)?;
+            if prior.revoked_at.is_some() {
+                return Err(CapabilityRepositoryError::Conflict);
+            }
+            prior.revoked_at = Some(revoked_at);
+            state
+                .records
+                .insert(replacement.descriptor.capability_id.clone(), replacement);
+            state.audits.extend(audits);
+            Ok(())
+        })
+    }
+
+    fn append_audit(
+        &self,
+        audit: AuditRecord,
+    ) -> BoxFuture<'_, Result<(), CapabilityRepositoryError>> {
+        Box::pin(async move {
+            self.state
+                .lock()
+                .map_err(|_| CapabilityRepositoryError::Unavailable)?
+                .audits
+                .push(audit);
+            Ok(())
+        })
+    }
+}
+
+/// Deterministic sequence-backed capability material source.
+#[derive(Debug)]
+pub struct SequenceCapabilityTokens {
+    next: Mutex<u8>,
+}
+
+impl SequenceCapabilityTokens {
+    /// Starts at one explicit non-secret fixture byte.
+    #[must_use]
+    pub const fn new(first: u8) -> Self {
+        Self {
+            next: Mutex::new(first),
+        }
+    }
+}
+
+impl CapabilityTokenSource for SequenceCapabilityTokens {
+    fn next_material(&self) -> Result<CapabilityMaterial, crate::CapabilityError> {
+        let mut next = self.next.lock().expect("test token mutex is not poisoned");
+        let value = *next;
+        *next = next.wrapping_add(1);
+        Ok(CapabilityMaterial::new(
+            [value; 16],
+            [value.wrapping_add(128); 32],
+        ))
+    }
+}
 
 /// Thread-safe optimistic in-memory game repository.
 #[derive(Debug, Default)]
@@ -159,5 +358,28 @@ pub struct FixedClock(pub UnixMillis);
 impl ApplicationClock for FixedClock {
     fn now(&self) -> UnixMillis {
         self.0
+    }
+}
+
+/// Mutable atomic application clock for expiry/deadline tests.
+#[derive(Debug)]
+pub struct ManualClock(AtomicI64);
+
+impl ManualClock {
+    /// Starts at one explicit Unix-millisecond value.
+    #[must_use]
+    pub const fn new(now: UnixMillis) -> Self {
+        Self(AtomicI64::new(now.0))
+    }
+
+    /// Advances or rewinds the test clock explicitly.
+    pub fn set(&self, now: UnixMillis) {
+        self.0.store(now.0, Ordering::SeqCst);
+    }
+}
+
+impl ApplicationClock for ManualClock {
+    fn now(&self) -> UnixMillis {
+        UnixMillis(self.0.load(Ordering::SeqCst))
     }
 }
