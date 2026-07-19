@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, fmt::Write as _, sync::Arc, time::Duration};
 
 use axum::{
     body::{Body, to_bytes},
@@ -6,6 +6,7 @@ use axum::{
 };
 use futures_util::StreamExt;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 use tokio_tungstenite::{
     connect_async,
@@ -334,7 +335,7 @@ async fn websocket_reconnects_from_version_and_rest_converges() {
 }
 
 #[tokio::test]
-async fn authenticated_mcp_handshake_exposes_metadata_without_game_tools() {
+async fn authenticated_mcp_handshake_exposes_competitive_tools() {
     let fixture = fixture();
     let game_id = create_game(&fixture, "mcp-handshake").await;
     let seat_token = issue(
@@ -352,7 +353,7 @@ async fn authenticated_mcp_handshake_exposes_metadata_without_game_tools() {
         MCP_PROTOCOL_VERSION
     );
     assert_eq!(initialized["result"]["serverInfo"]["name"], "word-arena");
-    assert_eq!(initialized["result"]["capabilities"], json!({}));
+    assert_eq!(initialized["result"]["capabilities"], json!({"tools":{}}));
 
     let tools = app
         .oneshot(mcp_request(
@@ -365,7 +366,306 @@ async fn authenticated_mcp_handshake_exposes_metadata_without_game_tools() {
         .await
         .unwrap();
     assert_eq!(tools.status(), StatusCode::OK);
-    assert_eq!(mcp_response_json(tools).await["result"]["tools"], json!([]));
+    let tools = mcp_response_json(tools).await;
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 6);
+    let schema_bytes = serde_json::to_vec(&tools["result"]["tools"]).unwrap();
+    let schema_digest =
+        Sha256::digest(schema_bytes)
+            .iter()
+            .fold(String::with_capacity(64), |mut hex, byte| {
+                write!(&mut hex, "{byte:02x}").unwrap();
+                hex
+            });
+    assert_eq!(
+        schema_digest,
+        include_str!("snapshots/mcp_competitive_tools_v1.sha256").trim()
+    );
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one end-to-end narrative proves all six tools compose across both languages"
+)]
+async fn competitive_mcp_tools_complete_english_and_french_games_with_retry_and_privacy() {
+    for (language, expected_ruleset) in [
+        (Language::English, "english-v1"),
+        (Language::French, "french-v1"),
+    ] {
+        let fixture = fixture();
+        let language_key = language.code();
+        let game_id = create_game_language(&fixture, language_key, language).await;
+        let seat_one = issue(
+            &fixture,
+            &game_id,
+            CapabilityRole::Seat(Seat::One),
+            [CapabilityScope::Act],
+            Some(&format!("mcp-{language_key}-one")),
+        )
+        .await;
+        let seat_two = issue(
+            &fixture,
+            &game_id,
+            CapabilityRole::Seat(Seat::Two),
+            [CapabilityScope::Act],
+            Some(&format!("mcp-{language_key}-two")),
+        )
+        .await;
+        let app = api_app(Arc::clone(&fixture.state));
+        let (session_one, _) = mcp_initialize(app.clone(), &game_id, &seat_one).await;
+        let (session_two, _) = mcp_initialize(app.clone(), &game_id, &seat_two).await;
+
+        let observed_one = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_one,
+            &session_one,
+            10,
+            "observe_game",
+            json!({"schema_version":1}),
+        )
+        .await;
+        let observed_two = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_two,
+            &session_two,
+            11,
+            "observe_game",
+            json!({"schema_version":1}),
+        )
+        .await;
+        assert_eq!(observed_one["isError"], false);
+        assert_eq!(observed_two["isError"], false);
+        assert_eq!(observed_one["structuredContent"]["schema_version"], 1);
+        assert_eq!(observed_one["structuredContent"]["game"]["seat"], "one");
+        assert_eq!(observed_two["structuredContent"]["game"]["seat"], "two");
+        assert_no_keys(
+            &observed_one["structuredContent"],
+            &["racks", "bag", "seed", "snapshot"],
+        );
+        assert_no_keys(
+            &observed_two["structuredContent"],
+            &["racks", "bag", "seed", "snapshot"],
+        );
+
+        let rules = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_one,
+            &session_one,
+            12,
+            "get_ruleset",
+            json!({"schema_version":1}),
+        )
+        .await;
+        assert_eq!(rules["isError"], false);
+        assert_eq!(
+            rules["structuredContent"]["ruleset"]["id"],
+            expected_ruleset
+        );
+
+        let invalid = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_one,
+            &session_one,
+            13,
+            "play_tiles",
+            json!({
+                "schema_version":1,
+                "expected_version":0,
+                "turn_id":0,
+                "idempotency_key":format!("{language_key}-invalid"),
+                "placements":[]
+            }),
+        )
+        .await;
+        assert_eq!(invalid["isError"], true);
+        assert!(
+            invalid["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("illegal_action")
+        );
+
+        let rack_one = observed_one["structuredContent"]["game"]["rack"]
+            .as_array()
+            .unwrap();
+        let placements = rack_one
+            .iter()
+            .take(2)
+            .enumerate()
+            .map(|(offset, tile)| {
+                let face = &tile["face"];
+                let is_blank = face["kind"] == "blank";
+                json!({
+                    "tile_id":tile["id"],
+                    "row":7,
+                    "column":7 + offset,
+                    "letter":if is_blank { "A" } else { face["token"].as_str().unwrap() },
+                    "is_blank":is_blank
+                })
+            })
+            .collect::<Vec<_>>();
+        let play_arguments = json!({
+            "schema_version":1,
+            "expected_version":0,
+            "turn_id":0,
+            "idempotency_key":format!("{language_key}-play"),
+            "placements":placements
+        });
+        let played = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_one,
+            &session_one,
+            14,
+            "play_tiles",
+            play_arguments.clone(),
+        )
+        .await;
+        assert_eq!(played["isError"], false);
+        assert_eq!(
+            played["structuredContent"]["game"]["public"]["state"]["version"],
+            1
+        );
+        let retried = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_one,
+            &session_one,
+            15,
+            "play_tiles",
+            play_arguments,
+        )
+        .await;
+        assert_eq!(retried["structuredContent"], played["structuredContent"]);
+
+        let stale = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_two,
+            &session_two,
+            16,
+            "pass_turn",
+            json!({
+                "schema_version":1,
+                "expected_version":0,
+                "turn_id":0,
+                "idempotency_key":format!("{language_key}-stale")
+            }),
+        )
+        .await;
+        assert_eq!(stale["isError"], true);
+        assert!(
+            stale["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("version_conflict")
+        );
+
+        let rack_two = observed_two["structuredContent"]["game"]["rack"]
+            .as_array()
+            .unwrap();
+        let exchanged = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_two,
+            &session_two,
+            17,
+            "exchange_tiles",
+            json!({
+                "schema_version":1,
+                "expected_version":1,
+                "turn_id":1,
+                "idempotency_key":format!("{language_key}-exchange"),
+                "tile_ids":[rack_two[0]["id"]]
+            }),
+        )
+        .await;
+        assert_eq!(exchanged["isError"], false);
+        assert_eq!(
+            exchanged["structuredContent"]["game"]["public"]["state"]["version"],
+            2
+        );
+
+        let passed = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_one,
+            &session_one,
+            18,
+            "pass_turn",
+            json!({
+                "schema_version":1,
+                "expected_version":2,
+                "turn_id":2,
+                "idempotency_key":format!("{language_key}-pass")
+            }),
+        )
+        .await;
+        assert_eq!(passed["isError"], false);
+        assert_eq!(
+            passed["structuredContent"]["game"]["public"]["state"]["version"],
+            3
+        );
+
+        let resigned = mcp_call(
+            app.clone(),
+            &game_id,
+            &seat_two,
+            &session_two,
+            19,
+            "resign",
+            json!({
+                "schema_version":1,
+                "expected_version":3,
+                "turn_id":3,
+                "idempotency_key":format!("{language_key}-resign")
+            }),
+        )
+        .await;
+        assert_eq!(resigned["isError"], false);
+        assert_eq!(
+            resigned["structuredContent"]["game"]["public"]["state"]["phase"],
+            "finished"
+        );
+        assert_no_keys(
+            &resigned["structuredContent"],
+            &["racks", "bag", "seed", "snapshot"],
+        );
+
+        for (token, session, request_id) in
+            [(&seat_one, &session_one, 20), (&seat_two, &session_two, 21)]
+        {
+            let replay_view = mcp_call(
+                app.clone(),
+                &game_id,
+                token,
+                session,
+                request_id,
+                "observe_game",
+                json!({"schema_version":1}),
+            )
+            .await;
+            assert_eq!(
+                replay_view["structuredContent"]["game"]["public"]["events"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                5
+            );
+            assert_eq!(
+                replay_view["structuredContent"]["game"]["public"]["state"]["phase"],
+                "finished"
+            );
+            assert_no_keys(
+                &replay_view["structuredContent"],
+                &["racks", "bag", "seed", "snapshot"],
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -588,11 +888,13 @@ fn fixture() -> Fixture {
 }
 
 async fn create_game(fixture: &Fixture, key: &str) -> GameId {
+    create_game_language(fixture, key, Language::English).await
+}
+
+async fn create_game_language(fixture: &Fixture, key: &str, language: Language) -> GameId {
     let service = fixture.runtime.service();
     service
-        .create_game(
-            service.prepare_create_game(Language::English, IdempotencyKey::new(key).unwrap()),
-        )
+        .create_game(service.prepare_create_game(language, IdempotencyKey::new(key).unwrap()))
         .await
         .unwrap()
         .game_id
@@ -705,6 +1007,39 @@ async fn mcp_initialize(app: axum::Router, game_id: &GameId, token: &str) -> (St
         .unwrap();
     assert_eq!(notification.status(), StatusCode::ACCEPTED);
     (session_id, initialized)
+}
+
+async fn mcp_call(
+    app: axum::Router,
+    game_id: &GameId,
+    token: &str,
+    session_id: &str,
+    id: u64,
+    name: &str,
+    arguments: Value,
+) -> Value {
+    let response = app
+        .oneshot(mcp_request(
+            Method::POST,
+            game_id,
+            Some(token),
+            Some(session_id),
+            Some(&json!({
+                "jsonrpc":"2.0",
+                "id":id,
+                "method":"tools/call",
+                "params":{"name":name,"arguments":arguments}
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = mcp_response_json(response).await;
+    assert!(
+        response.get("error").is_none(),
+        "MCP protocol error: {response}"
+    );
+    response["result"].clone()
 }
 
 async fn mcp_response_json(response: axum::response::Response) -> Value {

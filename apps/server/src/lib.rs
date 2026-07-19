@@ -12,6 +12,7 @@ use word_arena_lexicon::{
 };
 
 mod mcp;
+mod mcp_tools;
 mod runtime;
 mod transport;
 

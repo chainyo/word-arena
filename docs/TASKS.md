@@ -146,13 +146,13 @@ cannot create or reuse a session with an invalid or different-seat capability.
 
 ### MCP-002: Implement competitive game tools
 
-- [ ] Add versioned `observe_game`, `get_ruleset`, `play_tiles`,
+- [x] Add versioned `observe_game`, `get_ruleset`, `play_tiles`,
   `exchange_tiles`, `pass_turn`, and `resign` input/output schemas.
-- [ ] Keep tools as thin adapters over application use cases with accurate
+- [x] Keep tools as thin adapters over application use cases with accurate
   read-only/destructive/idempotent annotations and concise model-readable text.
-- [ ] Require expected version, turn ID, and idempotency key for mutations; bind
+- [x] Require expected version, turn ID, and idempotency key for mutations; bind
   the acting seat exclusively from the authenticated session.
-- [ ] Add schema snapshots and successful/invalid/stale/retry/privacy tests for
+- [x] Add schema snapshots and successful/invalid/stale/retry/privacy tests for
   every tool in English and French games.
 
 Verification: two authenticated seats can complete and replay a game using only

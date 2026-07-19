@@ -143,7 +143,7 @@ private state, and a restarted server resumes active games correctly.
 ## Phase 3: MCP and universal agent access
 
 - [x] Add the official Rust MCP SDK and expose authenticated Streamable HTTP.
-- [ ] Implement `observe_game`, `get_ruleset`, `play_tiles`, `exchange_tiles`,
+- [x] Implement `observe_game`, `get_ruleset`, `play_tiles`, `exchange_tiles`,
   `pass_turn`, and `resign` with versioned input/output schemas.
 - [ ] Expose equivalent authenticated resources for public state, private seat
   state, history, rules, and the active lexicon manifest.

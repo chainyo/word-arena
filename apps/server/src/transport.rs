@@ -56,10 +56,10 @@ impl ServerState {
     #[must_use]
     pub fn new(runtime: Arc<ApplicationRuntime>) -> Self {
         Self {
+            mcp: McpGateway::new(&runtime),
             runtime,
             notifications: NotificationHub::default(),
             websocket_slots: Arc::new(Semaphore::new(MAX_WEBSOCKETS)),
-            mcp: McpGateway::new(),
         }
     }
 

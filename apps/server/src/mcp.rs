@@ -10,12 +10,8 @@ use axum::{
     http::{Method, Request, Response, StatusCode, header::CONTENT_TYPE},
     response::IntoResponse,
 };
-use rmcp::{
-    ServerHandler,
-    model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo},
-    transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
-    },
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -26,30 +22,15 @@ use word_arena_application::{
     ApplicationRuntime, AuthenticatedCredential, CapabilityScope, GameId,
 };
 
-use crate::API_SCHEMA_VERSION;
+use crate::{
+    API_SCHEMA_VERSION,
+    mcp_tools::{McpRequestAuthority, WordArenaMcp},
+};
 
 /// Stable MCP protocol release implemented by the server.
 pub const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const SESSION_HEADER: &str = "mcp-session-id";
 const MAX_MCP_SESSIONS: usize = 64;
-
-#[derive(Clone, Debug, Default)]
-struct WordArenaMcp;
-
-impl ServerHandler for WordArenaMcp {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::default())
-            .with_protocol_version(ProtocolVersion::V_2025_11_25)
-            .with_server_info(
-                Implementation::new("word-arena", env!("CARGO_PKG_VERSION"))
-                    .with_title("Word Arena")
-                    .with_description("Authenticated competitive word-tile game server"),
-            )
-            .with_instructions(
-                "This endpoint is authenticated and seat-isolated. Game tools are introduced in MCP-002.",
-            )
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SessionBinding {
@@ -77,23 +58,21 @@ impl fmt::Debug for McpGateway {
     }
 }
 
-impl Default for McpGateway {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl McpGateway {
     /// Builds one stateful local MCP service with bounded idle sessions.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(runtime: &Arc<ApplicationRuntime>) -> Self {
         let cancellation = CancellationToken::new();
         let sessions = Arc::new(LocalSessionManager::default());
         let config = StreamableHttpServerConfig::default()
             .with_allowed_origins(["http://127.0.0.1:5173", "http://localhost:5173"])
             .with_cancellation_token(cancellation.child_token());
-        let service =
-            StreamableHttpService::new(|| Ok(WordArenaMcp), Arc::clone(&sessions), config);
+        let service_runtime = Arc::clone(runtime);
+        let service = StreamableHttpService::new(
+            move || Ok(WordArenaMcp::new(Arc::clone(&service_runtime))),
+            Arc::clone(&sessions),
+            config,
+        );
         Self {
             service,
             sessions,
@@ -113,7 +92,7 @@ impl McpGateway {
         runtime: &ApplicationRuntime,
         game_id: GameId,
         bearer: &str,
-        request: Request<Body>,
+        mut request: Request<Body>,
     ) -> Response<Body> {
         let authenticated = runtime
             .authenticate_capability(bearer, &game_id, CapabilityScope::Act)
@@ -130,6 +109,9 @@ impl McpGateway {
             seat: credential.seat(),
             token_digest: Sha256::digest(bearer.as_bytes()).into(),
         };
+        request
+            .extensions_mut()
+            .insert(McpRequestAuthority::new(credential));
         self.remove_closed_bindings().await;
 
         let method = request.method().clone();
