@@ -1,5 +1,6 @@
 export const API_SCHEMA_VERSION = 1
 export const PROJECTION_SCHEMA_VERSION = 1
+export const REPLAY_SCHEMA_VERSION = 3
 export const WEBSOCKET_PROTOCOL = "word-arena-v1"
 
 export type GameAuthority = "public" | "seat" | "spectator"
@@ -75,6 +76,7 @@ export type Ruleset = {
   schema_version: number
   id: "english-v1" | "french-v1"
   language: "english" | "french"
+  lexicon: LexiconIdentity
   game: {
     board: {
       width: number
@@ -125,3 +127,71 @@ export type GameSession = {
 }
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "offline"
+
+export type CreateGameRequest = {
+  language: "english" | "french"
+  mode: "competitive" | "practice"
+  idempotency_key: string
+}
+
+export type CreatedGame = {
+  gameId: string
+  public: PublicProjection
+  publicCapability: string
+  spectatorCapability: string
+}
+
+export type RulesetIdentity = {
+  schemaVersion: number
+  rulesetId: Ruleset["id"]
+  contentSha256: string
+}
+
+export type LexiconIdentity = {
+  packId: string
+  packVersion: string
+  formatVersion: number
+  locale: string
+  normalization: Record<string, unknown>
+  contentSha256: string
+}
+
+export type ReplayBundle = {
+  schemaVersion: number
+  observedAt: number
+  rulesetIdentity: RulesetIdentity
+  ruleset: Ruleset
+  rulesetWire: Record<string, unknown>
+  lexicon: LexiconIdentity
+  rngAlgorithm: "xoshiro256-star-star-v1"
+  seedReveal: number[]
+  events: GameEvent[]
+  eventsWire: Array<Record<string, unknown>>
+  privateEvents: Array<Record<string, unknown>>
+}
+
+export type PublicReplayExport = {
+  schema_version: 1
+  kind: "word_arena_public_replay"
+  replay: {
+    schema_version: number
+    ruleset_identity: {
+      schema_version: number
+      ruleset_id: Ruleset["id"]
+      content_sha256: string
+    }
+    ruleset: Record<string, unknown>
+    lexicon: {
+      pack_id: string
+      pack_version: string
+      format_version: number
+      locale: string
+      normalization: Record<string, unknown>
+      content_sha256: string
+    }
+    rng_algorithm: ReplayBundle["rngAlgorithm"]
+    seed_reveal: number[]
+    events: Array<Record<string, unknown>>
+  }
+  redactions: ["private_events", "capabilities"]
+}

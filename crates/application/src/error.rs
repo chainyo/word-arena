@@ -78,6 +78,9 @@ pub enum ApplicationError {
     /// The in-process preview limiter could not safely access its state.
     #[error("move preview limiter is unavailable")]
     PreviewUnavailable,
+    /// Finished-game replay was requested before the game reached a terminal state.
+    #[error("replay is available only after the game is finished")]
+    ReplayNotReady,
     /// Stable deterministic mutation rejection, including cached retries.
     #[error("action rejected: {0:?}")]
     ActionRejected(ActionRejection),

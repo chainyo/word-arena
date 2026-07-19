@@ -2,14 +2,18 @@ import {
   API_SCHEMA_VERSION,
   type ApiErrorPayload,
   type BoardTile,
+  type CreatedGame,
   type GameAuthority,
   type GameEvent,
   type GameInvalidation,
   type GameView,
+  type LexiconIdentity,
   type PhysicalTile,
   PROJECTION_SCHEMA_VERSION,
   type PublicGameState,
   type PublicProjection,
+  REPLAY_SCHEMA_VERSION,
+  type ReplayBundle,
   type Ruleset,
   type Seat,
 } from "@/api/types"
@@ -113,12 +117,20 @@ function coordinate(value: unknown, label: string) {
   }
 }
 
-export function decodeRuleset(value: unknown): Ruleset {
-  const envelope = record(value, "rules envelope")
-  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
-    throw new DecodeError("unsupported API schema")
+function lexiconIdentity(value: unknown, label: string): LexiconIdentity {
+  const lexicon = record(value, label)
+  return {
+    packId: string(lexicon.pack_id, `${label}.pack_id`),
+    packVersion: string(lexicon.pack_version, `${label}.pack_version`),
+    formatVersion: integer(lexicon.format_version, `${label}.format_version`),
+    locale: string(lexicon.locale, `${label}.locale`),
+    normalization: record(lexicon.normalization, `${label}.normalization`),
+    contentSha256: string(lexicon.content_sha256, `${label}.content_sha256`),
   }
-  const rules = record(envelope.data, "ruleset")
+}
+
+function rulesetData(value: unknown): Ruleset {
+  const rules = record(value, "ruleset")
   const game = record(rules.game, "ruleset.game")
   const board = record(game.board, "ruleset.game.board")
   const width = integer(board.width, "ruleset.game.board.width")
@@ -168,6 +180,7 @@ export function decodeRuleset(value: unknown): Ruleset {
       ["english", "french"],
       "ruleset.language"
     ),
+    lexicon: lexiconIdentity(rules.lexicon, "ruleset.lexicon"),
     game: {
       board: { width, height, squares },
       rack_capacity: integer(game.rack_capacity, "ruleset.game.rack_capacity"),
@@ -183,6 +196,14 @@ export function decodeRuleset(value: unknown): Ruleset {
       tiles,
     },
   }
+}
+
+export function decodeRuleset(value: unknown): Ruleset {
+  const envelope = record(value, "rules envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  return rulesetData(envelope.data)
 }
 
 function gameEvent(value: unknown, label: string): GameEvent {
@@ -367,5 +388,97 @@ export function decodeApiError(value: unknown): ApiErrorPayload | undefined {
     }
   } catch {
     return undefined
+  }
+}
+
+export function decodeCreatedGame(value: unknown): CreatedGame {
+  const envelope = record(value, "create game envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const data = record(envelope.data, "created game")
+  assertPrivacy(data.public, "public")
+  return {
+    gameId: string(data.game_id, "created game.game_id"),
+    public: publicProjection(data.public),
+    publicCapability: string(
+      data.public_capability,
+      "created game.public_capability"
+    ),
+    spectatorCapability: string(
+      data.spectator_capability,
+      "created game.spectator_capability"
+    ),
+  }
+}
+
+export function decodeReplayBundle(value: unknown): ReplayBundle {
+  const envelope = record(value, "replay envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const data = record(envelope.data, "replay view")
+  const replay = record(data.replay, "replay")
+  const replaySchema = integer(replay.schema_version, "replay.schema_version")
+  if (replaySchema !== REPLAY_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported replay schema")
+  }
+  const identity = record(replay.ruleset_identity, "replay.ruleset_identity")
+  const lexicon = lexiconIdentity(replay.lexicon, "replay.lexicon")
+  const seedReveal = array(replay.seed_reveal, "replay.seed_reveal").map(
+    (byte, index) => {
+      const value = integer(byte, `replay.seed_reveal[${index}]`)
+      if (value < 0 || value > 255) {
+        throw new DecodeError("replay seed bytes must be between 0 and 255")
+      }
+      return value
+    }
+  )
+  if (seedReveal.length !== 32) {
+    throw new DecodeError("replay seed reveal must contain 32 bytes")
+  }
+  const events = array(replay.events, "replay.events").map((event, index) =>
+    gameEvent(event, `replay.events[${index}]`)
+  )
+  const eventsWire = array(replay.events, "replay.events").map((event, index) =>
+    record(event, `replay.events[${index}]`)
+  )
+  events.forEach((event, index) => {
+    if (event.sequence !== index) {
+      throw new DecodeError("replay event sequence must be contiguous")
+    }
+  })
+  return {
+    schemaVersion: replaySchema,
+    observedAt: integer(data.observed_at, "replay view.observed_at"),
+    rulesetIdentity: {
+      schemaVersion: integer(
+        identity.schema_version,
+        "replay.ruleset_identity.schema_version"
+      ),
+      rulesetId: literal(
+        identity.ruleset_id,
+        ["english-v1", "french-v1"],
+        "replay.ruleset_identity.ruleset_id"
+      ),
+      contentSha256: string(
+        identity.content_sha256,
+        "replay.ruleset_identity.content_sha256"
+      ),
+    },
+    ruleset: rulesetData(replay.ruleset),
+    rulesetWire: record(replay.ruleset, "replay.ruleset"),
+    lexicon,
+    rngAlgorithm: literal(
+      replay.rng_algorithm,
+      ["xoshiro256-star-star-v1"],
+      "replay.rng_algorithm"
+    ),
+    seedReveal,
+    events,
+    eventsWire,
+    privateEvents: array(replay.private_events, "replay.private_events").map(
+      (event, index) => record(event, `replay.private_events[${index}]`)
+    ),
   }
 }

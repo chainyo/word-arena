@@ -24,8 +24,8 @@ use tower_http::{
 use word_arena_application::{
     AdministratorGameQuery, ApplicationError, ApplicationRuntime, AuthenticatedCredential,
     CapabilityError, CapabilityRole, CapabilityScope, GameActionCommand, GameId,
-    HumanSpectatorGameQuery, IdempotencyKey, IssueCapabilityRequest, PublicGameQuery,
-    RepositoryError, SeatGameQuery,
+    HumanSpectatorGameQuery, HumanSpectatorReplayQuery, IdempotencyKey, IssueCapabilityRequest,
+    PublicGameQuery, RepositoryError, SeatGameQuery,
 };
 use word_arena_engine::{GameMode, Language, Move, Ruleset, RulesetId, Turn};
 
@@ -41,6 +41,8 @@ pub const PUBLIC_GAME_PATH: &str = "/api/v1/games/{game_id}/public";
 pub const SEAT_GAME_PATH: &str = "/api/v1/games/{game_id}/seat";
 /// V1 trusted-human spectator projection route contract.
 pub const SPECTATOR_GAME_PATH: &str = "/api/v1/games/{game_id}/spectator";
+/// V1 trusted-human finished replay route contract.
+pub const SPECTATOR_REPLAY_PATH: &str = "/api/v1/games/{game_id}/spectator/replay";
 /// V1 public-only invalidation stream route contract.
 pub const GAME_EVENTS_PATH: &str = "/api/v1/games/{game_id}/events";
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
@@ -49,6 +51,7 @@ const MAX_WEBSOCKETS: usize = 64;
 const WEBSOCKET_BUFFER: usize = 64;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PUBLIC_CAPABILITY_LIFETIME_MS: i64 = 24 * 60 * 60 * 1_000;
+const SPECTATOR_CAPABILITY_LIFETIME_MS: i64 = 24 * 60 * 60 * 1_000;
 const DEADLINE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEADLINE_BATCH_SIZE: u32 = 64;
 
@@ -149,7 +152,7 @@ pub struct CreateGameRequest {
     pub idempotency_key: IdempotencyKey,
 }
 
-/// Newly created public game plus its one-time public observer capability.
+/// Newly created game plus one-time local-operator observer capabilities.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateGameResponse {
@@ -159,6 +162,8 @@ pub struct CreateGameResponse {
     pub public: word_arena_engine::PublicProjection,
     /// One-time raw public observer capability.
     pub public_capability: String,
+    /// One-time raw trusted-human spectator capability.
+    pub spectator_capability: String,
 }
 
 /// Seat action body; role and seat are deliberately absent.
@@ -235,6 +240,7 @@ pub fn api_app(state: Arc<ServerState>) -> Router {
         .route(PUBLIC_GAME_PATH, get(public_game))
         .route(SEAT_GAME_PATH, get(seat_game))
         .route(SPECTATOR_GAME_PATH, get(spectator_game))
+        .route(SPECTATOR_REPLAY_PATH, get(spectator_replay))
         .route(
             "/api/v1/games/{game_id}/administrator",
             get(administrator_game),
@@ -340,7 +346,7 @@ async fn create_game(
         .checked_add(PUBLIC_CAPABILITY_LIFETIME_MS)
         .map(word_arena_application::UnixMillis)
         .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "time", "time overflow"))?;
-    let capability = state
+    let public_capability = state
         .runtime
         .issue_capability(IssueCapabilityRequest {
             game_id: created.game_id.clone(),
@@ -351,12 +357,35 @@ async fn create_game(
         })
         .await
         .map_err(|error| map_capability_error(&error))?;
+    let spectator_expires_at = created
+        .created_at
+        .0
+        .checked_add(SPECTATOR_CAPABILITY_LIFETIME_MS)
+        .map(word_arena_application::UnixMillis)
+        .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "time", "time overflow"))?;
+    let spectator_capability = state
+        .runtime
+        .issue_capability(IssueCapabilityRequest {
+            game_id: created.game_id.clone(),
+            role: CapabilityRole::HumanSpectator,
+            scopes: [
+                CapabilityScope::ObservePublic,
+                CapabilityScope::ObserveHumanSpectator,
+            ]
+            .into_iter()
+            .collect(),
+            expires_at: spectator_expires_at,
+            agent_run_id: None,
+        })
+        .await
+        .map_err(|error| map_capability_error(&error))?;
     Ok(Json(ApiEnvelope {
         schema_version: API_SCHEMA_VERSION,
         data: CreateGameResponse {
             game_id: created.game_id,
             public: created.public,
-            public_capability: capability.token.into_secret(),
+            public_capability: public_capability.token.into_secret(),
+            spectator_capability: spectator_capability.token.into_secret(),
         },
     }))
 }
@@ -423,6 +452,31 @@ async fn spectator_game(
         .runtime
         .service()
         .human_spectator_game(&credential, HumanSpectatorGameQuery { game_id })
+        .await
+        .map_err(|error| map_application_error(&error))?;
+    Ok(envelope(view))
+}
+
+async fn spectator_replay(
+    State(state): State<Arc<ServerState>>,
+    Path(game_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiEnvelope<word_arena_application::HumanSpectatorReplayView>>, ApiError> {
+    let game_id = parse_game_id(game_id)?;
+    let authenticated = authenticate(
+        &state,
+        &headers,
+        &game_id,
+        CapabilityScope::ObserveHumanSpectator,
+    )
+    .await?;
+    let AuthenticatedCredential::HumanSpectator(credential) = authenticated else {
+        return Err(ApiError::unauthorized());
+    };
+    let view = state
+        .runtime
+        .service()
+        .human_spectator_replay(&credential, HumanSpectatorReplayQuery { game_id })
         .await
         .map_err(|error| map_application_error(&error))?;
     Ok(envelope(view))
@@ -810,6 +864,11 @@ fn map_application_error(error: &ApplicationError) -> ApiError {
             StatusCode::TOO_MANY_REQUESTS,
             "preview_rate_limited",
             "move preview rate limit reached",
+        ),
+        ApplicationError::ReplayNotReady => ApiError::new(
+            StatusCode::CONFLICT,
+            "replay_not_ready",
+            "replay is available after the game finishes",
         ),
         ApplicationError::MissingLexicon { .. }
         | ApplicationError::PreviewUnavailable

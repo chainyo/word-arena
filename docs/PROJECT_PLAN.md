@@ -160,7 +160,7 @@ using internal APIs.
 - [x] Establish typed API clients, query caching, routing, and error boundaries.
 - [x] Build responsive board, square, tile, rack, score, clock, and move-history
   components using shadcn primitives and semantic design tokens.
-- [ ] Add tournament lobby, live spectator, private player, replay, standings,
+- [x] Add tournament lobby, live spectator, private player, replay, standings,
   and agent-detail views.
 - [ ] Add reconnect behavior, keyboard controls, accessible board narration,
   reduced motion, light/dark themes, and mobile layouts.

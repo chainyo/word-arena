@@ -1,12 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
   AlertCircle,
+  Bot,
+  History,
   Languages,
   Layers3,
+  LoaderCircle,
   Moon,
+  Plus,
   Radio,
   RefreshCw,
+  ShieldCheck,
   Sun,
+  Trophy,
   Unplug,
 } from "lucide-react"
 import {
@@ -30,7 +36,9 @@ import {
 } from "react-router-dom"
 
 import {
+  createLocalGame,
   DEFAULT_SERVER_ORIGIN,
+  fetchSpectatorReplay,
   normalizeServerOrigin,
   submitGameAction,
 } from "@/api/client"
@@ -66,6 +74,7 @@ import {
 } from "@/components/game/move-draft"
 import { MoveHistory, type MoveRecord } from "@/components/game/move-history"
 import { PlayerCard } from "@/components/game/player-card"
+import { ReplayView } from "@/components/replay/replay-view"
 import { useTheme } from "@/components/theme-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -170,7 +179,7 @@ function isAuthority(value: string | undefined): value is GameAuthority {
 }
 
 function HomeWorkspace() {
-  return <WorkspaceConnect />
+  return <OperatorWorkspace />
 }
 
 function GameRoute() {
@@ -184,8 +193,67 @@ function GameRoute() {
   return <LiveWorkspace session={session} />
 }
 
+function AuthorityGameRoute({ authority }: { authority: GameAuthority }) {
+  const { gameId } = useParams()
+  if (!gameId) return <Navigate replace to="/" />
+  return (
+    <LiveWorkspace
+      session={{
+        authority,
+        gameId,
+        serverOrigin: normalizeServerOrigin(DEFAULT_SERVER_ORIGIN),
+      }}
+    />
+  )
+}
+
 const router = createBrowserRouter([
   { path: "/", element: <HomeWorkspace />, errorElement: <RouteError /> },
+  {
+    path: "/operator",
+    element: <HomeWorkspace />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/connect",
+    element: <WorkspaceConnect />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/games/:gameId/player",
+    element: <AuthorityGameRoute authority="seat" />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/games/:gameId/spectator",
+    element: <AuthorityGameRoute authority="spectator" />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/games/:gameId/public",
+    element: <AuthorityGameRoute authority="public" />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/games/:gameId/replay",
+    element: <ReplayRoute />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/tournaments",
+    element: <HomeWorkspace />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/tournaments/:tournamentId/standings",
+    element: <DeferredDataRoute kind="standings" />,
+    errorElement: <RouteError />,
+  },
+  {
+    path: "/agents/:agentId",
+    element: <DeferredDataRoute kind="agent" />,
+    errorElement: <RouteError />,
+  },
   {
     path: "/games/:gameId/:authority",
     element: <GameRoute />,
@@ -201,6 +269,374 @@ export function App() {
         <RouterProvider router={router} />
       </QueryClientProvider>
     </AppErrorBoundary>
+  )
+}
+
+function OperatorWorkspace() {
+  const navigate = useNavigate()
+  const serverOrigin = normalizeServerOrigin(DEFAULT_SERVER_ORIGIN)
+  const [language, setLanguage] = useState<"english" | "french">("english")
+  const [mode, setMode] = useState<"competitive" | "practice">("competitive")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string>()
+
+  const createGame = async (event: FormEvent) => {
+    event.preventDefault()
+    setPending(true)
+    setError(undefined)
+    try {
+      const created = await createLocalGame(serverOrigin, {
+        language,
+        mode,
+        idempotency_key: `web-create-${crypto.randomUUID()}`,
+      })
+      const publicSession: GameSession = {
+        authority: "public",
+        gameId: created.gameId,
+        serverOrigin,
+      }
+      const spectatorSession: GameSession = {
+        ...publicSession,
+        authority: "spectator",
+      }
+      credentialVault.set(publicSession, created.publicCapability)
+      credentialVault.set(spectatorSession, created.spectatorCapability)
+      queryClient.setQueryData(gameQueryKey(publicSession), {
+        authority: "public",
+        observedAt: Date.now(),
+        public: created.public,
+      } satisfies GameView)
+      navigate(`/games/${encodeURIComponent(created.gameId)}/spectator`)
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to create this game"
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className="min-h-svh bg-background">
+      <WorkspaceHeader subtitle="Local game operator" />
+      <main className="mx-auto grid max-w-[1400px] items-start gap-4 p-3 sm:p-5 lg:grid-cols-[23rem_minmax(0,1fr)]">
+        <section className="space-y-4">
+          <Card size="sm">
+            <CardHeader className="border-b">
+              <div className="mb-1 flex items-center gap-2">
+                <Badge variant="secondary">
+                  <ShieldCheck /> Local operator
+                </Badge>
+              </div>
+              <CardTitle>Create a game</CardTitle>
+              <CardDescription>
+                Start one authoritative game and open its human-spectator view.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="space-y-4"
+                onSubmit={(event) => void createGame(event)}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="create-language">Language pack</Label>
+                  <Select
+                    onValueChange={(value) =>
+                      setLanguage(value as "english" | "french")
+                    }
+                    value={language}
+                  >
+                    <SelectTrigger className="w-full" id="create-language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">English</SelectItem>
+                      <SelectItem value="french">French</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="create-mode">Game mode</Label>
+                  <Select
+                    onValueChange={(value) =>
+                      setMode(value as "competitive" | "practice")
+                    }
+                    value={mode}
+                  >
+                    <SelectTrigger className="w-full" id="create-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="competitive">Competitive</SelectItem>
+                      <SelectItem value="practice">Practice</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Referee: {serverOrigin}. Observer capabilities remain only in
+                  this tab's memory.
+                </p>
+                {error ? (
+                  <Alert variant="destructive">
+                    <AlertCircle />
+                    <AlertTitle>Game was not created</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                ) : null}
+                <Button className="w-full" disabled={pending} type="submit">
+                  {pending ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Plus />
+                  )}
+                  Create and spectate
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+          <Button
+            className="w-full"
+            onClick={() => navigate("/connect")}
+            variant="outline"
+          >
+            <Radio /> Open an existing game
+          </Button>
+        </section>
+        <section className="space-y-4">
+          <Card size="sm">
+            <CardHeader className="border-b sm:grid-cols-[1fr_auto]">
+              <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <Badge variant="outline">Phase 6 data source pending</Badge>
+                </div>
+                <CardTitle>Tournament lobby</CardTitle>
+                <CardDescription>
+                  Scheduled and live matches will appear here once tournament
+                  orchestration supplies authoritative records.
+                </CardDescription>
+              </div>
+              <Trophy className="size-5 self-center text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_12rem]">
+                <Input
+                  aria-label="Filter tournaments"
+                  placeholder="Filter tournaments"
+                />
+                <Select defaultValue="all">
+                  <SelectTrigger aria-label="Tournament status filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="running">Running</SelectItem>
+                    <SelectItem value="finished">Finished</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid min-h-52 place-items-center rounded-xl border border-dashed p-6 text-center">
+                <div>
+                  <Trophy className="mx-auto mb-3 size-8 text-muted-foreground" />
+                  <p className="font-heading font-medium">
+                    No tournament records
+                  </p>
+                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                    The route is ready without fabricating standings or agent
+                    statistics before their persisted Phase 6 sources exist.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>0 tournaments</span>
+                <span>Page 1 of 1</span>
+              </div>
+            </CardContent>
+          </Card>
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              {
+                icon: <Radio />,
+                title: "Live spectator",
+                text: "Human-only authority can inspect both racks, never the future bag.",
+              },
+              {
+                icon: <History />,
+                title: "Recorded replay",
+                text: "Finished games reveal exact deterministic inputs and public export.",
+              },
+              {
+                icon: <Bot />,
+                title: "Private player",
+                text: "A seat capability sees only its own rack and can act only for itself.",
+              },
+            ].map((item) => (
+              <Card key={item.title} size="sm">
+                <CardHeader>
+                  <span className="text-muted-foreground">{item.icon}</span>
+                  <CardTitle>{item.title}</CardTitle>
+                  <CardDescription>{item.text}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function ReplayRoute() {
+  const { gameId } = useParams()
+  const session = useMemo<GameSession | undefined>(
+    () =>
+      gameId
+        ? {
+            authority: "spectator",
+            gameId,
+            serverOrigin: normalizeServerOrigin(DEFAULT_SERVER_ORIGIN),
+          }
+        : undefined,
+    [gameId]
+  )
+  const [token, setToken] = useState(() =>
+    session ? credentialVault.get(session) : undefined
+  )
+  const [replay, setReplay] =
+    useState<Awaited<ReturnType<typeof fetchSpectatorReplay>>>()
+  const [error, setError] = useState<string>()
+  useEffect(() => {
+    if (!session || !token) return undefined
+    const controller = new AbortController()
+    setError(undefined)
+    void fetchSpectatorReplay(session, token, controller.signal)
+      .then(setReplay)
+      .catch((caught) => {
+        if (!controller.signal.aborted) {
+          setError(caught instanceof Error ? caught.message : "Replay failed")
+        }
+      })
+    return () => controller.abort()
+  }, [session, token])
+  if (!session) return <Navigate replace to="/" />
+  if (!token) {
+    return <WorkspaceConnect onConnected={setToken} session={session} />
+  }
+  return (
+    <div className="min-h-svh bg-background">
+      <WorkspaceHeader
+        subtitle={`Game ${session.gameId} · human-spectator replay`}
+      />
+      {error ? (
+        <main className="mx-auto max-w-xl p-4 sm:p-8">
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertTitle>Replay unavailable</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+          <Button
+            className="mt-4"
+            onClick={() => {
+              credentialVault.delete(session)
+              setToken(undefined)
+            }}
+            variant="outline"
+          >
+            Use another spectator capability
+          </Button>
+        </main>
+      ) : replay ? (
+        <ReplayView
+          gameId={session.gameId}
+          onShare={() =>
+            void navigator.clipboard?.writeText(
+              `${window.location.origin}/games/${encodeURIComponent(session.gameId)}/public`
+            )
+          }
+          replay={replay}
+        />
+      ) : (
+        <main className="mx-auto grid max-w-[1200px] gap-4 p-4 lg:grid-cols-[1fr_18rem]">
+          <Skeleton className="aspect-square rounded-xl" />
+          <div className="space-y-4">
+            <Skeleton className="h-36" />
+            <Skeleton className="h-64" />
+          </div>
+        </main>
+      )}
+    </div>
+  )
+}
+
+function DeferredDataRoute({ kind }: { kind: "agent" | "standings" }) {
+  const params = useParams()
+  const identifier = kind === "agent" ? params.agentId : params.tournamentId
+  const title = kind === "agent" ? "Agent detail" : "Tournament standings"
+  return (
+    <div className="min-h-svh bg-background">
+      <WorkspaceHeader subtitle={`${title} · public aggregate authority`} />
+      <main className="mx-auto max-w-5xl p-3 sm:p-5">
+        <Card size="sm">
+          <CardHeader className="border-b">
+            <div className="mb-1 flex items-center gap-2">
+              <Badge variant="outline">Public aggregate</Badge>
+              <span className="font-mono text-xs text-muted-foreground">
+                {identifier}
+              </span>
+            </div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>
+              This route accepts only policy-approved aggregate data; it never
+              receives racks, transcripts, or capabilities.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-[1fr_13rem]">
+              <Input
+                aria-label={`Filter ${title}`}
+                placeholder={`Filter ${title.toLowerCase()}`}
+              />
+              <Select defaultValue="all">
+                <SelectTrigger aria-label="Language filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All languages</SelectItem>
+                  <SelectItem value="english">English</SelectItem>
+                  <SelectItem value="french">French</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid min-h-64 place-items-center rounded-xl border border-dashed p-6 text-center">
+              <div>
+                {kind === "agent" ? (
+                  <Bot className="mx-auto mb-3 size-8 text-muted-foreground" />
+                ) : (
+                  <Trophy className="mx-auto mb-3 size-8 text-muted-foreground" />
+                )}
+                <p className="font-heading font-medium">
+                  No aggregate record yet
+                </p>
+                <p className="mt-1 max-w-lg text-sm text-muted-foreground">
+                  Tournament and statistics repositories arrive in Phase 6.
+                  Until then this is an explicit empty state, not sample data.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>0 records</span>
+              <div className="flex gap-1">
+                <Button disabled size="sm" variant="outline">
+                  Previous
+                </Button>
+                <Button disabled size="sm" variant="outline">
+                  Next
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
   )
 }
 
@@ -516,6 +952,7 @@ function GameWorkspace({
   token: string
   view: GameView
 }) {
+  const navigate = useNavigate()
   const state = view.public.state
   const [draft, setDraft] = useState<MoveDraft>(EMPTY_MOVE_DRAFT)
   const [pending, setPending] = useState(false)
@@ -769,6 +1206,17 @@ function GameWorkspace({
                   : "Only public board and history data are available."}
             </CardContent>
           </Card>
+          {view.authority === "spectator" && state.phase === "finished" ? (
+            <Button
+              className="mt-3 w-full"
+              onClick={() =>
+                navigate(`/games/${encodeURIComponent(state.game_id)}/replay`)
+              }
+              variant="outline"
+            >
+              <History /> Open recorded replay
+            </Button>
+          ) : null}
         </aside>
       </main>
       <BlankAssignmentDialog

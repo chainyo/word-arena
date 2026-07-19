@@ -246,13 +246,13 @@ pointer, and the UI never applies speculative score or draw state as authority.
 
 ### WEB-003: Add operator, spectator, replay, and statistics views
 
-- [ ] Add tournament lobby, live human-spectator, private player, replay,
+- [x] Add tournament lobby, live human-spectator, private player, replay,
   standings, and agent-detail routes with explicit authority requirements.
-- [ ] Render replay controls from recorded public/private artifacts according to
+- [x] Render replay controls from recorded public/private artifacts according to
   operator policy, including seed reveal and exact input identities post-game.
-- [ ] Add filters, pagination/virtualization where measured, empty/loading/error
+- [x] Add filters, pagination/virtualization where measured, empty/loading/error
   states, and share/export actions that contain public data only.
-- [ ] Test route authorization, opponent rack isolation, replay stepping,
+- [x] Test route authorization, opponent rack isolation, replay stepping,
   statistics formatting, and public export privacy.
 
 Verification: a human operator can create, watch, inspect, replay, and export a

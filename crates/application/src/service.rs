@@ -21,13 +21,13 @@ use crate::{
     CapabilityTokenSource, CompetitiveSeatCredential, CreateGameCommand, CreatedGame,
     CreatedGameAccess, CreationIdempotencyLookup, CreationIdempotencyRecord, GameActionCommand,
     GameActionResult, GameId, GameIdSource, GameRepository, HumanSpectatorCredential,
-    HumanSpectatorGameQuery, HumanSpectatorGameView, IDEMPOTENCY_DIGEST_VERSION, IdempotencyKey,
-    IdempotencyLookup, IdempotencyRecord, InvalidAttemptResponse, InvalidAttemptState,
-    IssueCapabilityRequest, IssuedCapability, LexiconResolver, MovePreviewCommand,
-    MovePreviewResult, OperationalPolicy, PersistedActionResult, PersistedCreateResult,
-    PreviewPolicy, PublicGameQuery, PublicGameView, PublicViewerCredential, RepositoryError,
-    SeatGameQuery, SeatGameView, SeedSource, StoredGame, TimeoutCommand, TimeoutResponse,
-    TurnDeadline, UnixMillis,
+    HumanSpectatorGameQuery, HumanSpectatorGameView, HumanSpectatorReplayQuery,
+    HumanSpectatorReplayView, IDEMPOTENCY_DIGEST_VERSION, IdempotencyKey, IdempotencyLookup,
+    IdempotencyRecord, InvalidAttemptResponse, InvalidAttemptState, IssueCapabilityRequest,
+    IssuedCapability, LexiconResolver, MovePreviewCommand, MovePreviewResult, OperationalPolicy,
+    PersistedActionResult, PersistedCreateResult, PreviewPolicy, PublicGameQuery, PublicGameView,
+    PublicViewerCredential, RepositoryError, SeatGameQuery, SeatGameView, SeedSource, StoredGame,
+    TimeoutCommand, TimeoutResponse, TurnDeadline, UnixMillis,
 };
 
 /// Process-bootstrap boundary that owns operator-only credential issuance.
@@ -704,6 +704,31 @@ impl ApplicationService {
             observed_at: self.clock.now(),
             turn_deadline,
             game: game.human_spectator_projection(),
+        })
+    }
+
+    /// Loads the complete immutable replay after game completion for a trusted human.
+    ///
+    /// The repository exposes replay records only for finished games. Active,
+    /// missing, and corrupt games retain their existing privacy-safe errors.
+    ///
+    /// # Errors
+    ///
+    /// Rejects cross-game authority before loading, then returns repository
+    /// failures unchanged.
+    pub async fn human_spectator_replay(
+        &self,
+        credential: &HumanSpectatorCredential,
+        query: HumanSpectatorReplayQuery,
+    ) -> Result<HumanSpectatorReplayView, ApplicationError> {
+        ensure_game(credential.game_id(), &query.game_id)?;
+        if self.load_game(&query.game_id).await?.public_state().phase != GamePhase::Finished {
+            return Err(ApplicationError::ReplayNotReady);
+        }
+        let recovery = self.repository.load_recovery(&query.game_id).await?;
+        Ok(HumanSpectatorReplayView {
+            observed_at: self.clock.now(),
+            replay: recovery.replay,
         })
     }
 

@@ -29,8 +29,9 @@ pub use capability::{
 pub use command::{
     AdministratorGameQuery, AdministratorGameView, CreateGameCommand, CreatedGame,
     GameActionCommand, GameActionResult, GameId, HumanSpectatorGameQuery, HumanSpectatorGameView,
-    IdempotencyKey, MovePreviewCommand, MovePreviewResult, PublicGameQuery, PublicGameView,
-    SeatGameQuery, SeatGameView, TimeoutCommand, UnixMillis,
+    HumanSpectatorReplayQuery, HumanSpectatorReplayView, IdempotencyKey, MovePreviewCommand,
+    MovePreviewResult, PublicGameQuery, PublicGameView, SeatGameQuery, SeatGameView,
+    TimeoutCommand, UnixMillis,
 };
 pub use error::{ApplicationError, RepositoryError};
 pub use operations::{

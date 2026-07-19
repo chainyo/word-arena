@@ -1,12 +1,14 @@
 {
   "api_schema_version": 1,
   "projection_schema_version": 1,
+  "replay_schema_version": 3,
   "browser_websocket_protocol": "word-arena-v1",
   "projection_paths": {
     "public": "/api/v1/games/{game_id}/public",
     "seat": "/api/v1/games/{game_id}/seat",
     "spectator": "/api/v1/games/{game_id}/spectator"
   },
+  "spectator_replay_path": "/api/v1/games/{game_id}/spectator/replay",
   "events_path": "/api/v1/games/{game_id}/events",
   "view_fields": ["observed_at", "turn_deadline", "game"],
   "turn_deadline_fields": ["turn", "seat", "deadline_at", "policy_version"],

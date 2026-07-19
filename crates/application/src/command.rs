@@ -3,7 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use word_arena_engine::{
     AdministratorProjection, GameEvent, GameMode, HumanSpectatorProjection, Language, Move,
-    Placement, PublicProjection, SeatProjection, Turn,
+    Placement, PublicProjection, ReplayBundle, SeatProjection, Turn,
 };
 
 use crate::CreatedGameAccess;
@@ -189,6 +189,14 @@ pub struct HumanSpectatorGameQuery {
     pub game_id: GameId,
 }
 
+/// Human-only finished replay query with no caller-selectable role.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HumanSpectatorReplayQuery {
+    /// Requested game.
+    pub game_id: GameId,
+}
+
 /// Administrator query with no caller-selectable role input.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -244,6 +252,16 @@ pub struct HumanSpectatorGameView {
     pub turn_deadline: Option<crate::TurnDeadline>,
     /// Both-rack projection with no future bag.
     pub game: HumanSpectatorProjection,
+}
+
+/// Trusted-human finished replay result.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HumanSpectatorReplayView {
+    /// Injected observation time.
+    pub observed_at: UnixMillis,
+    /// Complete post-game replay, including seed reveal and private history.
+    pub replay: ReplayBundle,
 }
 
 /// Administrator query result.

@@ -1,8 +1,17 @@
-import { decodeApiError, decodeGameView, decodeRuleset } from "@/api/decode"
+import {
+  decodeApiError,
+  decodeCreatedGame,
+  decodeGameView,
+  decodeReplayBundle,
+  decodeRuleset,
+} from "@/api/decode"
 import type {
+  CreatedGame,
+  CreateGameRequest,
   GameActionRequest,
   GameSession,
   GameView,
+  ReplayBundle,
   Ruleset,
 } from "@/api/types"
 
@@ -19,6 +28,44 @@ export class GameApiError extends Error {
     this.status = status
     this.code = code
   }
+}
+
+export async function createLocalGame(
+  serverOrigin: string,
+  request: CreateGameRequest,
+  signal?: AbortSignal
+): Promise<CreatedGame> {
+  const response = await fetch(`${serverOrigin}/api/v1/games`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    cache: "no-store",
+    signal,
+  })
+  return decodeCreatedGame(await responseBody(response))
+}
+
+export async function fetchSpectatorReplay(
+  session: GameSession,
+  token: string,
+  signal?: AbortSignal
+): Promise<ReplayBundle> {
+  if (session.authority !== "spectator") {
+    throw new GameApiError(
+      403,
+      "spectator_required",
+      "Replay requires a human-spectator capability"
+    )
+  }
+  const response = await fetch(
+    `${session.serverOrigin}/api/v1/games/${encodeURIComponent(session.gameId)}/spectator/replay`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal,
+    }
+  )
+  return decodeReplayBundle(await responseBody(response))
 }
 
 export function normalizeServerOrigin(value: string): string {

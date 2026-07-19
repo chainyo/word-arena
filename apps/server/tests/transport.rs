@@ -36,7 +36,8 @@ use word_arena_cli::{
     error::CliError,
 };
 use word_arena_engine::{
-    Game, GameMode, Language, PROJECTION_SCHEMA_VERSION, Ruleset, Seat, WordValidator,
+    Game, GameMode, Language, PROJECTION_SCHEMA_VERSION, REPLAY_SCHEMA_VERSION, Ruleset, Seat,
+    WordValidator,
 };
 use word_arena_lexicon::{
     BuilderDescriptor, FileDescriptor, NormalizedKey, PackIdentity, PackManifest, PolicyDescriptor,
@@ -44,8 +45,8 @@ use word_arena_lexicon::{
 };
 use word_arena_server::{
     API_SCHEMA_VERSION, BROWSER_WEBSOCKET_PROTOCOL, GAME_EVENTS_PATH, GameInvalidation,
-    MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH, ServerState,
-    api_app,
+    MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH,
+    SPECTATOR_REPLAY_PATH, ServerState, api_app,
 };
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
@@ -59,6 +60,7 @@ fn web_api_contract_matches_authoritative_server_constants() {
         contract["projection_schema_version"],
         PROJECTION_SCHEMA_VERSION
     );
+    assert_eq!(contract["replay_schema_version"], REPLAY_SCHEMA_VERSION);
     assert_eq!(
         contract["browser_websocket_protocol"],
         BROWSER_WEBSOCKET_PROTOCOL
@@ -70,6 +72,7 @@ fn web_api_contract_matches_authoritative_server_constants() {
         SPECTATOR_GAME_PATH
     );
     assert_eq!(contract["events_path"], GAME_EVENTS_PATH);
+    assert_eq!(contract["spectator_replay_path"], SPECTATOR_REPLAY_PATH);
     assert_eq!(
         contract["view_fields"],
         json!(["observed_at", "turn_deadline", "game"])
@@ -138,6 +141,8 @@ async fn create_public_observe_and_errors_use_strict_scoped_http() {
     assert_eq!(created["schema_version"], 1);
     let game_id = created["data"]["game_id"].as_str().unwrap();
     let token = created["data"]["public_capability"].as_str().unwrap();
+    let spectator_token = created["data"]["spectator_capability"].as_str().unwrap();
+    assert!(spectator_token.starts_with("wa_cap_v1."));
     assert_no_keys(&created, &["rack", "racks", "seed", "bag", "snapshot"]);
 
     let missing_auth = app
@@ -282,6 +287,103 @@ async fn role_routes_serialize_only_their_bound_projection() {
     )
     .await;
     assert!(administrator.to_string().contains("snapshot"));
+}
+
+#[tokio::test]
+async fn finished_replay_requires_human_spectator_authority_and_reveals_exact_inputs() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "replay-route").await;
+    let seat_token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        None,
+    )
+    .await;
+    let public_token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Public,
+        [CapabilityScope::ObservePublic],
+        None,
+    )
+    .await;
+    let spectator_token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::HumanSpectator,
+        [CapabilityScope::ObserveHumanSpectator],
+        None,
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+
+    let active = app
+        .clone()
+        .oneshot(empty_request(
+            Method::GET,
+            &format!("/api/v1/games/{game_id}/spectator/replay"),
+            Some(&spectator_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(active.status(), StatusCode::CONFLICT);
+
+    let finished = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            &format!("/api/v1/games/{game_id}/actions"),
+            Some(&seat_token),
+            &json!({
+                "expected_version": 0,
+                "turn_number": 0,
+                "idempotency_key": "replay-resign",
+                "action": {"type": "resign"}
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(finished.status(), StatusCode::OK);
+
+    let denied = app
+        .clone()
+        .oneshot(empty_request(
+            Method::GET,
+            &format!("/api/v1/games/{game_id}/spectator/replay"),
+            Some(&public_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+
+    let replay = get_json(
+        app,
+        &format!("/api/v1/games/{game_id}/spectator/replay"),
+        &spectator_token,
+    )
+    .await;
+    assert_eq!(
+        replay["data"]["replay"]["schema_version"],
+        REPLAY_SCHEMA_VERSION
+    );
+    assert!(replay["data"]["replay"]["seed_reveal"].is_array());
+    assert_eq!(
+        replay["data"]["replay"]["ruleset_identity"]["ruleset_id"],
+        "english-v1"
+    );
+    assert_eq!(replay["data"]["replay"]["lexicon"]["locale"], "en");
+    assert_no_keys(
+        &replay,
+        &[
+            "capability",
+            "public_capability",
+            "spectator_capability",
+            "snapshot",
+            "bag",
+        ],
+    );
 }
 
 #[tokio::test]

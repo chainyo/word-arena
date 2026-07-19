@@ -21,6 +21,7 @@ import {
   type GameAuthority,
   type GameSession,
   PROJECTION_SCHEMA_VERSION,
+  REPLAY_SCHEMA_VERSION,
   WEBSOCKET_PROTOCOL,
 } from "../src/api/types"
 import {
@@ -103,6 +104,7 @@ describe("HTTP V1 decoding and drift", () => {
   test("shares exact schema, route, and WebSocket constants", () => {
     expect(API_SCHEMA_VERSION).toBe(contract.api_schema_version)
     expect(PROJECTION_SCHEMA_VERSION).toBe(contract.projection_schema_version)
+    expect(REPLAY_SCHEMA_VERSION).toBe(contract.replay_schema_version)
     expect(WEBSOCKET_PROTOCOL).toBe(contract.browser_websocket_protocol)
     expect(contract.view_fields).toEqual([
       "observed_at",
@@ -114,6 +116,9 @@ describe("HTTP V1 decoding and drift", () => {
         contract.projection_paths[authority].replace("{game_id}", "game-one")
       )
     }
+    expect(contract.spectator_replay_path).toBe(
+      "/api/v1/games/{game_id}/spectator/replay"
+    )
   })
 
   test("decodes each authority without widening its projection", () => {
@@ -121,6 +126,7 @@ describe("HTTP V1 decoding and drift", () => {
     expect(publicView.rack).toBeUndefined()
     expect(publicView.turnDeadline?.deadlineAt).toBe(61_234)
     expect(decodeGameView(envelope("seat"), "seat").rack?.[0]?.id).toBe(7)
+    expect(decodeGameView(envelope("seat"), "seat").racks).toBeUndefined()
     expect(
       decodeGameView(envelope("spectator"), "spectator").racks?.[1][0]?.id
     ).toBe(8)
@@ -136,6 +142,14 @@ describe("HTTP V1 decoding and drift", () => {
     }
     leaked.data.game.rack = []
     expect(() => decodeGameView(leaked, "public")).toThrow("forbidden rack")
+
+    const opponentLeak = envelope("seat") as {
+      data: { game: Record<string, unknown> }
+    }
+    opponentLeak.data.game.racks = [[], []]
+    expect(() => decodeGameView(opponentLeak, "seat")).toThrow(
+      "forbidden racks"
+    )
   })
 
   test("decodes stable errors and invalidations", () => {

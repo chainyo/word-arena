@@ -32,13 +32,14 @@ query as authorization input.
 {"language":"english","mode":"competitive","idempotency_key":"client-create-1"}
 ```
 
-The response contains `game_id`, the initial public projection, and one raw
-public-observer capability. That token is returned once. Competitive seats and
-operator capabilities are provisioned by trusted orchestration, not this
-endpoint. French uses `"french"`; German and Spanish remain unsupported until
-their offline rules/lexicons ship. `mode` is immutable and may be `competitive`
-(the default when omitted) or `practice`; only practice games may issue a
-rate-limited preview capability.
+The response contains `game_id`, the initial public projection, and one-time raw
+public-observer and human-spectator capabilities. This is the local operator
+bootstrap boundary used by the browser; neither token is stored by the server
+in raw form. Competitive seats and administrator capabilities are provisioned
+by trusted orchestration, not this endpoint. French uses `"french"`; German and
+Spanish remain unsupported until their offline rules/lexicons ship. `mode` is
+immutable and may be `competitive` (the default when omitted) or `practice`;
+only practice games may issue a rate-limited preview capability.
 
 ### Observe
 
@@ -52,6 +53,11 @@ rate-limited preview capability.
   `observe_administrator` and returns the authoritative checkpoint.
 - `GET /api/v1/games/{game_id}/rules` requires `observe_public` and returns the
   immutable ruleset with its exact lexicon identity.
+- `GET /api/v1/games/{game_id}/spectator/replay` requires
+  `observe_human_spectator`, returns HTTP 409 while active, and after completion
+  returns the immutable public/private event artifact, exact ruleset and
+  lexicon identities, RNG identity, and 256-bit seed reveal. It never returns a
+  capability, live snapshot, or future bag order.
 
 Each route maps one scope to one compile-time application credential. A token
 for another route returns the same generic unauthorized response.

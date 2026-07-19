@@ -1,11 +1,16 @@
 # Web application foundation
 
 The React application is a local game workspace, not a marketing site. `/`
-opens a board-first connection screen. An authenticated workspace uses one of:
+opens the local operator workspace for creating or opening a game. Its routes
+have explicit authority requirements:
 
 - `/games/{game_id}/public`
-- `/games/{game_id}/seat`
-- `/games/{game_id}/spectator`
+- `/games/{game_id}/player` (competitive seat; `/seat` remains compatible)
+- `/games/{game_id}/spectator` (trusted human spectator)
+- `/games/{game_id}/replay` (trusted human spectator, finished games only)
+- `/tournaments` (local operator lobby)
+- `/tournaments/{tournament_id}/standings` (public aggregates)
+- `/agents/{agent_id}` (public aggregates)
 
 The route selects a projection shape, never an authorization role. The Rust
 server derives authority exclusively from the supplied capability and rejects a
@@ -24,6 +29,10 @@ checking. Public decoders fail closed if rack/private/bag/seed/snapshot fields
 appear. Seat decoders reject opponent-rack, bag, seed, and administrator data.
 Spectator decoders accept both current racks but still reject the future bag,
 seed, and administrator snapshot.
+
+Local game creation returns public and human-spectator capabilities once. The
+operator workspace places each into its separate memory-vault slot and opens
+the spectator route; it never exposes or provisions a competitive seat token.
 
 ## Authoritative updates
 
@@ -62,13 +71,33 @@ subprotocols; the server authenticates the latter and selects only the safe
 `word-arena-v1` protocol in its response. Capabilities are never placed in the
 WebSocket URL.
 
+## Replay and aggregate views
+
+The replay route loads a persisted artifact only after game completion and only
+with a human-spectator capability. Controls rebuild board, score, rack counts,
+bag count, turn, and phase from recorded events without mutating the live game.
+The authorized view shows the seed reveal, RNG, exact ruleset digest, exact
+lexicon pack version/digest, and the count of private transitions.
+
+Public replay export is a separate typed projection. It includes the exact
+ruleset content, lexicon identity, public event stream, RNG identity, and
+post-game seed reveal needed for reproducibility, but omits private transitions,
+racks, capabilities, live snapshots, and transcripts. The share action copies
+only a public route and never a token. Event filters use bounded pagination; no
+virtualization is justified for one game's measured event volume.
+
+Tournament lobby, standings, and agent-detail routes have filters, pagination,
+and explicit empty states. They intentionally show no fabricated records until
+the authoritative tournament/statistics repositories in Phase 6 populate them.
+
 ## Contract verification
 
 [`contracts/web-api-v1.json`](../contracts/web-api-v1.json) pins the API schema,
-projection schema, paths, browser protocol, and invalidation fields. Rust tests
-compare it to the authoritative server constants, while Bun tests compare the
-typed client and exercise decoding, privacy, authentication, cache keys, and
-reconnect decisions.
+projection/replay schemas, paths, browser protocol, and invalidation fields.
+Rust tests compare it to the authoritative server constants, while Bun tests
+compare the typed client and exercise decoding, route authority, replay
+stepping, statistics formatting, export privacy, authentication, cache keys,
+and reconnect decisions.
 
 ```bash
 scripts/web/verify-contract.sh
