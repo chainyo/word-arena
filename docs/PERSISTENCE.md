@@ -75,6 +75,12 @@ each attempt. Injected-time renewal/completion rejects expired or stale owners;
 expired attempts become reclaimable exactly at expiry. Deduplication and
 idempotent completion are durable across process and database restart.
 
+Migration 10 adds scheduler limits, integer token buckets, tournament controls,
+execution reservations and normalized scopes, plus exactly-once terminal match
+results. Capacity acquisition and token consumption are one transaction.
+Recovery expires dead reservations from injected time; result, charge,
+telemetry, and rating identities commit together.
+
 Run them with:
 
 ```bash

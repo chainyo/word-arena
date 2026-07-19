@@ -11,6 +11,7 @@ mod error;
 mod job;
 mod operations;
 mod ports;
+mod scheduler;
 mod service;
 mod tournament;
 
@@ -52,6 +53,13 @@ pub use operations::{
 pub use ports::{
     ApplicationClock, BoxFuture, CapabilityRepository, GameIdSource, GameRepository,
     LexiconResolver, SeedSource, StoredGame,
+};
+pub use scheduler::{
+    ExecutionReservation, MAX_CONCURRENCY_LIMIT, MAX_RATE_CAPACITY, MAX_RESERVATION_MS, RatePolicy,
+    RecoverySnapshot, ReservationRequest, ReservationResult, SCHEDULER_SCHEMA_VERSION,
+    SchedulerError, SchedulerRepository, SchedulerRepositoryError, SchedulerScope, SchedulingLimit,
+    TerminalCommitResult, TerminalMatchResult, TokenBucketState, TournamentWorkerControl,
+    refill_bucket, token_retry_at,
 };
 pub use service::{ApplicationRuntime, ApplicationService, CapabilityAdapters};
 pub use tournament::{

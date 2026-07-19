@@ -1,0 +1,33 @@
+{
+  "kind": "word_arena_scheduler_controls_contract",
+  "schema_version": 1,
+  "scopes": ["global", "tournament", "harness", "provider"],
+  "control_states": ["running", "paused", "draining", "cancelled"],
+  "reservation_states": [
+    "active",
+    "cancel_requested",
+    "released",
+    "expired",
+    "completed"
+  ],
+  "clock": "injected_unix_milliseconds",
+  "token_bucket": "integer_tokens_with_persisted_fractional_remainder",
+  "reservation_identity": [
+    "job_id",
+    "tournament_id",
+    "match_id",
+    "run_id",
+    "harness_id",
+    "provider_id",
+    "immutable_inputs_sha256",
+    "owner"
+  ],
+  "terminal_idempotency": [
+    "match_id",
+    "immutable_inputs_sha256",
+    "result_sha256",
+    "charge_key",
+    "telemetry_key",
+    "rating_key"
+  ]
+}

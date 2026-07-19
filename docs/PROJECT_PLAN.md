@@ -191,7 +191,7 @@ policy without accessing its opponent's workspace or credentials.
 
 - [x] Add round-robin, paired seat-swap, Swiss, and configurable series formats.
 - [x] Build a SQLite-backed SQLx job claim/lease loop before adding a queue.
-- [ ] Add concurrency and model-provider-rate controls, cancellation, retry, and
+- [x] Add concurrency and model-provider-rate controls, cancellation, retry, and
   worker recovery.
 - [ ] Compute per-language and per-ruleset Glicko-2 ratings.
 - [ ] Report win rate, spread, average move score, bingos, invalid actions,

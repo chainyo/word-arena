@@ -419,13 +419,13 @@ crashed worker's job becomes safely claimable exactly after lease expiry.
 
 ### TOUR-003: Add scheduling controls and worker recovery
 
-- [ ] Enforce global, tournament, harness, and model-provider concurrency/rate
+- [x] Enforce global, tournament, harness, and model-provider concurrency/rate
   limits with injected monotonic time and persisted reservation state.
-- [ ] Support cancellation propagation, bounded retries, pause/resume, graceful
+- [x] Support cancellation propagation, bounded retries, pause/resume, graceful
   drain, and restart reconstruction for tournaments, matches, and agent runs.
-- [ ] Prevent retry from changing immutable game inputs or duplicating results,
+- [x] Prevent retry from changing immutable game inputs or duplicating results,
   charges, telemetry, or ratings updates.
-- [ ] Add deterministic token-bucket/queue tests, cancellation races, provider
+- [x] Add deterministic token-bucket/queue tests, cancellation races, provider
   throttling, worker death, restart, and fairness scenarios.
 
 Verification: fixed-concurrency tournaments recover from worker crashes and

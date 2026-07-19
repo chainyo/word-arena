@@ -130,6 +130,9 @@ Use Bun only for the frontend. Do not add npm, pnpm, or Yarn lockfiles.
 - Run background work through the durable `JobRepository` contract. Pass time
   explicitly, fence writes by attempt/generation/owner, and classify every
   handler result as success, retryable, permanent, or cancelled.
+- Acquire all scheduler scopes before launching match work. Treat persisted
+  reservations and token buckets as authoritative, propagate tournament
+  controls, and publish terminal result/downstream idempotency keys atomically.
 - Keep public and seat-private events distinguishable from their creation.
 - Never commit proprietary word lists. Every lexicon pack needs source,
   version, locale, license, normalization, and checksum metadata.

@@ -62,6 +62,9 @@ The repository foundation is in place:
 - A durable SQLite/SQLx priority job loop with atomic claims, fenced leases,
   exact crash recovery, idempotent outcomes, bounded retry, and cancellation
   ([job contract](docs/JOBS.md))
+- Persisted global/tournament/harness/provider scheduling controls with exact
+  token buckets, pause/drain/cancel recovery, immutable retries, and exactly-once
+  terminal publication ([scheduler contract](docs/SCHEDULER.md))
 - Transactional SQLx game storage with optimistic concurrency, ordered
   public/private events, authoritative snapshots, and restart-safe replay
 - Scoped opaque capabilities with OS entropy, versioned HMAC digests, expiry,

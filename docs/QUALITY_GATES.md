@@ -143,3 +143,15 @@ database restart:
 cargo test -p word-arena-application --all-features --test job
 cargo test -p word-arena-persistence --all-features --test jobs
 ```
+
+## Scheduler controls and recovery
+
+The scheduler suites validate deterministic integer token refill, four-scope
+capacity, provider throttling, simultaneous reservations, pause/resume/drain,
+cancellation races, worker death, restart reconstruction, immutable retry
+inputs, and exactly-once terminal/downstream identities:
+
+```bash
+cargo test -p word-arena-application --all-features --test scheduler
+cargo test -p word-arena-persistence --all-features --test scheduler
+```
