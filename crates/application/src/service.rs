@@ -608,9 +608,10 @@ impl ApplicationService {
         query: PublicGameQuery,
     ) -> Result<PublicGameView, ApplicationError> {
         ensure_game(credential.game_id(), &query.game_id)?;
-        let game = self.load_game(&query.game_id).await?;
+        let (game, turn_deadline) = self.load_game_with_deadline(&query.game_id).await?;
         Ok(PublicGameView {
             observed_at: self.clock.now(),
+            turn_deadline,
             game: game.public_projection(),
         })
     }
@@ -627,9 +628,10 @@ impl ApplicationService {
         query: SeatGameQuery,
     ) -> Result<SeatGameView, ApplicationError> {
         ensure_game(credential.game_id(), &query.game_id)?;
-        let game = self.load_game(&query.game_id).await?;
+        let (game, turn_deadline) = self.load_game_with_deadline(&query.game_id).await?;
         Ok(SeatGameView {
             observed_at: self.clock.now(),
+            turn_deadline,
             game: game.seat_projection(credential.seat()),
         })
     }
@@ -697,9 +699,10 @@ impl ApplicationService {
         query: HumanSpectatorGameQuery,
     ) -> Result<HumanSpectatorGameView, ApplicationError> {
         ensure_game(credential.game_id(), &query.game_id)?;
-        let game = self.load_game(&query.game_id).await?;
+        let (game, turn_deadline) = self.load_game_with_deadline(&query.game_id).await?;
         Ok(HumanSpectatorGameView {
             observed_at: self.clock.now(),
+            turn_deadline,
             game: game.human_spectator_projection(),
         })
     }
@@ -716,9 +719,10 @@ impl ApplicationService {
         query: AdministratorGameQuery,
     ) -> Result<AdministratorGameView, ApplicationError> {
         ensure_game(credential.game_id(), &query.game_id)?;
-        let game = self.load_game(&query.game_id).await?;
+        let (game, turn_deadline) = self.load_game_with_deadline(&query.game_id).await?;
         Ok(AdministratorGameView {
             observed_at: self.clock.now(),
+            turn_deadline,
             game: game.administrator_projection(),
         })
     }
@@ -878,8 +882,10 @@ impl ApplicationService {
         let attempted = game.apply_move(seat, expected_version, action);
         let (outcome, successor, invalid_attempt, replay) = match attempted {
             Ok(event) => {
+                let turn_deadline = self.next_deadline(&game, committed_at);
                 let result = PersistedActionResult {
                     committed_at,
+                    turn_deadline,
                     event,
                     game: game.seat_projection(seat),
                 };
@@ -889,7 +895,7 @@ impl ApplicationService {
                     created_at: record.created_at,
                     updated_at: committed_at,
                     snapshot: game.snapshot(),
-                    turn_deadline: self.next_deadline(&game, committed_at),
+                    turn_deadline,
                 };
                 (
                     ActionOutcome::Accepted(Box::new(result)),
@@ -1031,9 +1037,19 @@ impl ApplicationService {
     }
 
     async fn load_game(&self, game_id: &crate::GameId) -> Result<Game, ApplicationError> {
+        self.load_game_with_deadline(game_id)
+            .await
+            .map(|(game, _)| game)
+    }
+
+    async fn load_game_with_deadline(
+        &self,
+        game_id: &crate::GameId,
+    ) -> Result<(Game, Option<TurnDeadline>), ApplicationError> {
         let record = self.load_record(game_id).await?;
         validate_record(&record, game_id)?;
-        self.resume(&record)
+        let deadline = record.turn_deadline;
+        self.resume(&record).map(|game| (game, deadline))
     }
 
     fn consume_preview_allowance(
@@ -1162,6 +1178,7 @@ fn outcome_result(outcome: ActionOutcome) -> Result<GameActionResult, Applicatio
     match outcome {
         ActionOutcome::Accepted(result) => Ok(GameActionResult {
             committed_at: result.committed_at,
+            turn_deadline: result.turn_deadline,
             event: result.event,
             game: result.game,
         }),

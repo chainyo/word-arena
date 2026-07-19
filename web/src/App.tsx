@@ -15,6 +15,7 @@ import {
   type FormEvent,
   type ReactNode,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
@@ -28,17 +29,41 @@ import {
   useRouteError,
 } from "react-router-dom"
 
-import { DEFAULT_SERVER_ORIGIN, normalizeServerOrigin } from "@/api/client"
+import {
+  DEFAULT_SERVER_ORIGIN,
+  normalizeServerOrigin,
+  submitGameAction,
+} from "@/api/client"
 import { credentialVault } from "@/api/credentials"
-import { gameQueryKey, gameQueryOptions } from "@/api/query"
+import { gameQueryKey, gameQueryOptions, rulesQueryOptions } from "@/api/query"
 import type {
   ConnectionState,
+  Coordinate,
   GameAuthority,
+  GameMove,
   GameSession,
   GameView,
+  Ruleset,
 } from "@/api/types"
 import { connectInvalidationSocket } from "@/api/websocket"
+import { BlankAssignmentDialog } from "@/components/game/blank-assignment-dialog"
+import {
+  displayLetterValues,
+  displayPremiums,
+} from "@/components/game/display-rules"
 import { type BoardTile, GameBoard } from "@/components/game/game-board"
+import { GameClock } from "@/components/game/game-clock"
+import { GameControls } from "@/components/game/game-controls"
+import { GameRack, type RackTile } from "@/components/game/game-rack"
+import {
+  EMPTY_MOVE_DRAFT,
+  type MoveDraft,
+  physicalLetter,
+  removePlacement,
+  selectRackTile,
+  setDraftMode,
+  stageSelectedTile,
+} from "@/components/game/move-draft"
 import { MoveHistory, type MoveRecord } from "@/components/game/move-history"
 import { PlayerCard } from "@/components/game/player-card"
 import { useTheme } from "@/components/theme-provider"
@@ -349,6 +374,7 @@ function useLiveGame(session: GameSession, token: string) {
   const [connection, setConnection] = useState<ConnectionState>("connecting")
   const [view, setView] = useState<GameView>()
   const [error, setError] = useState<Error>()
+  const [rules, setRules] = useState<Ruleset>()
   const version = useRef(0)
 
   useEffect(() => {
@@ -371,6 +397,16 @@ function useLiveGame(session: GameSession, token: string) {
         return undefined
       }
     }
+    const loadRules = async () => {
+      try {
+        const next = await queryClient.fetchQuery(rulesQueryOptions(session))
+        if (!cancelled) setRules(next)
+      } catch {
+        // The immutable built-in display rules remain available if this
+        // capability was not issued the public-rules scope.
+      }
+    }
+    void loadRules()
     void load().then((initial) => {
       if (!initial || cancelled) return
       disconnect = connectInvalidationSocket({
@@ -392,7 +428,14 @@ function useLiveGame(session: GameSession, token: string) {
     }
   }, [session, token])
 
-  return { connection, error, view }
+  const acceptAuthoritativeView = (next: GameView) => {
+    version.current = next.public.state.version
+    setView(next)
+    setError(undefined)
+    queryClient.setQueryData(gameQueryKey(session), next)
+  }
+
+  return { acceptAuthoritativeView, connection, error, rules, view }
 }
 
 function LiveWorkspace({ session }: { session: GameSession }) {
@@ -410,7 +453,8 @@ function AuthenticatedWorkspace({
   session: GameSession
   token: string
 }) {
-  const { connection, error, view } = useLiveGame(session, token)
+  const { acceptAuthoritativeView, connection, error, rules, view } =
+    useLiveGame(session, token)
   if (error && !view) {
     return (
       <div className="min-h-svh bg-background">
@@ -429,7 +473,17 @@ function AuthenticatedWorkspace({
     )
   }
   if (!view) return <LoadingWorkspace gameId={session.gameId} />
-  return <GameWorkspace connection={connection} view={view} />
+  return (
+    <GameWorkspace
+      connection={connection}
+      key={`${view.public.state.game_id}-${view.public.state.version}`}
+      onAuthoritativeView={acceptAuthoritativeView}
+      rules={rules}
+      session={session}
+      token={token}
+      view={view}
+    />
+  )
 }
 
 function LoadingWorkspace({ gameId }: { gameId: string }) {
@@ -449,21 +503,100 @@ function LoadingWorkspace({ gameId }: { gameId: string }) {
 
 function GameWorkspace({
   connection,
+  onAuthoritativeView,
+  rules,
+  session,
+  token,
   view,
 }: {
   connection: ConnectionState
+  onAuthoritativeView: (view: GameView) => void
+  rules?: Ruleset
+  session: GameSession
+  token: string
   view: GameView
 }) {
   const state = view.public.state
+  const [draft, setDraft] = useState<MoveDraft>(EMPTY_MOVE_DRAFT)
+  const [pending, setPending] = useState(false)
+  const [actionError, setActionError] = useState<string>()
+  const [blankCoordinate, setBlankCoordinate] = useState<Coordinate>()
+  const values = useMemo(
+    () => displayLetterValues(state.ruleset_id, rules),
+    [rules, state.ruleset_id]
+  )
+  const premiums = useMemo(() => displayPremiums(rules), [rules])
+  const canAct =
+    view.authority === "seat" &&
+    view.seat === state.current_player &&
+    state.phase === "active"
+  const rack = view.rack ?? []
+  const rackTiles: RackTile[] = rack.map((tile) => ({
+    id: tile.id,
+    letter: physicalLetter(tile),
+    value: values.get(physicalLetter(tile)) ?? 0,
+  }))
+
   const tiles: Record<string, BoardTile> = {}
   state.board.forEach((tile, index) => {
     if (tile) {
       tiles[`${Math.floor(index / 15)}-${index % 15}`] = {
         letter: tile.letter,
+        value: tile.is_blank ? 0 : values.get(tile.letter),
       }
     }
   })
+  const stagedTiles: Record<string, BoardTile> = Object.fromEntries(
+    draft.placements.map((placement) => [
+      `${placement.coordinate.row}-${placement.coordinate.column}`,
+      {
+        letter: placement.tile.letter,
+        value: placement.tile.is_blank ? 0 : values.get(placement.tile.letter),
+        staged: true,
+      },
+    ])
+  )
   const moves = toMoveRecords(view)
+
+  const chooseSquare = (row: number, column: number) => {
+    const result = stageSelectedTile(draft, rack, { row, column })
+    if (result.needsBlank) {
+      setBlankCoordinate({ row, column })
+    } else {
+      setDraft(result.draft)
+    }
+  }
+
+  const assignBlank = (letter: string) => {
+    if (!blankCoordinate) return
+    const result = stageSelectedTile(draft, rack, blankCoordinate, letter)
+    setDraft(result.draft)
+    setBlankCoordinate(undefined)
+  }
+
+  const submitAction = async (action: GameMove) => {
+    setPending(true)
+    setActionError(undefined)
+    try {
+      const next = await submitGameAction(session, token, {
+        expected_version: state.version,
+        turn_number: state.version,
+        idempotency_key: `web-${crypto.randomUUID()}`,
+        action,
+      })
+      onAuthoritativeView(next)
+      setDraft(EMPTY_MOVE_DRAFT)
+    } catch (caught) {
+      setActionError(
+        caught instanceof Error
+          ? caught.message
+          : "The referee rejected the action"
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
   return (
     <div className="min-h-svh bg-background">
       <WorkspaceHeader
@@ -474,14 +607,24 @@ function GameWorkspace({
           <PlayerCard
             active={state.phase === "active" && state.current_player === "one"}
             agent="Seat one"
-            clock="--:--"
+            deadlineAt={
+              view.turnDeadline?.seat === "one"
+                ? view.turnDeadline.deadlineAt
+                : undefined
+            }
+            observedAt={view.observedAt}
             score={state.scores[0]}
             subtitle={`${state.rack_counts[0]} tiles`}
           />
           <PlayerCard
             active={state.phase === "active" && state.current_player === "two"}
             agent="Seat two"
-            clock="--:--"
+            deadlineAt={
+              view.turnDeadline?.seat === "two"
+                ? view.turnDeadline.deadlineAt
+                : undefined
+            }
+            observedAt={view.observedAt}
             score={state.scores[1]}
             subtitle={`${state.rack_counts[1]} tiles`}
           />
@@ -530,14 +673,86 @@ function GameWorkspace({
                   Server snapshots are the only authoritative state.
                 </CardDescription>
               </div>
-              <Badge variant={connection === "live" ? "secondary" : "outline"}>
-                {connection}
-              </Badge>
+              <div className="flex items-center gap-2 self-center">
+                <Badge
+                  variant={connection === "live" ? "secondary" : "outline"}
+                >
+                  {connection}
+                </Badge>
+                <GameClock
+                  active={state.phase === "active"}
+                  deadlineAt={view.turnDeadline?.deadlineAt}
+                  label={`Seat ${state.current_player}`}
+                  observedAt={view.observedAt}
+                />
+              </div>
             </CardHeader>
             <CardContent>
-              <GameBoard tiles={tiles} />
+              <GameBoard
+                disabled={!canAct || pending || draft.mode !== "place"}
+                onSquareSelect={canAct ? chooseSquare : undefined}
+                premiums={premiums}
+                stagedTiles={stagedTiles}
+                tiles={tiles}
+              />
             </CardContent>
           </Card>
+          {view.authority === "seat" ? (
+            <>
+              <GameRack
+                disabled={!canAct || pending}
+                exchangeIds={draft.exchangeIds}
+                label={`Seat ${view.seat} rack`}
+                mode={canAct ? draft.mode : "read_only"}
+                onPlacedTileSelect={(tileId) =>
+                  setDraft((current) => removePlacement(current, tileId))
+                }
+                onTileSelect={(tileId) =>
+                  setDraft((current) => selectRackTile(current, tileId))
+                }
+                placedIds={draft.placements.map(
+                  (placement) => placement.tile_id
+                )}
+                selectedTileId={draft.selectedTileId}
+                tiles={rackTiles}
+              />
+              {actionError ? (
+                <Alert className="mt-3" variant="destructive">
+                  <AlertCircle />
+                  <AlertTitle>Action not committed</AlertTitle>
+                  <AlertDescription>{actionError}</AlertDescription>
+                </Alert>
+              ) : null}
+              <GameControls
+                disabled={!canAct}
+                exchangeIds={draft.exchangeIds}
+                mode={draft.mode}
+                onAction={(action) => void submitAction(action)}
+                onClear={() => setDraft(EMPTY_MOVE_DRAFT)}
+                onModeChange={(mode) =>
+                  setDraft((current) => setDraftMode(current, mode))
+                }
+                pending={pending}
+                placementCount={draft.placements.length}
+                placements={draft.placements}
+              />
+            </>
+          ) : null}
+          {view.authority === "spectator" && view.racks ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {view.racks.map((spectatorRack, index) => (
+                <GameRack
+                  key={index === 0 ? "seat-one-rack" : "seat-two-rack"}
+                  label={index === 0 ? "Seat one rack" : "Seat two rack"}
+                  tiles={spectatorRack.map((tile) => ({
+                    id: tile.id,
+                    letter: physicalLetter(tile),
+                    value: values.get(physicalLetter(tile)) ?? 0,
+                  }))}
+                />
+              ))}
+            </div>
+          ) : null}
         </section>
         <aside className="min-w-0 lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1">
           <MoveHistory moves={moves} />
@@ -556,6 +771,13 @@ function GameWorkspace({
           </Card>
         </aside>
       </main>
+      <BlankAssignmentDialog
+        onAssign={assignBlank}
+        onOpenChange={(open) => {
+          if (!open) setBlankCoordinate(undefined)
+        }}
+        open={blankCoordinate !== undefined}
+      />
     </div>
   )
 }

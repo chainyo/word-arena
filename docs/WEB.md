@@ -33,6 +33,29 @@ invalidates the exact projection cache and causes a fresh REST request. Dropped
 connections retry with bounded backoff and reconnect using the last decoded
 snapshot version.
 
+## Player interaction boundary
+
+Private seat routes render the exact rack returned by the referee. Selecting a
+rack tile and board square creates a visually distinct local draft; it does not
+remove a rack tile, calculate a score, advance a turn, or predict a draw. Blank
+assignment accepts only the physical A–Z board alphabet. The pinned French
+normalizer still accepts accented dictionary spellings while the committed board
+remains accent-free.
+
+Play, exchange, pass, and resign controls require confirmation and submit the
+current authoritative version, turn number, and a fresh idempotency key. Pending
+controls lock until a response arrives. Only the returned seat projection may
+replace the board, rack, scores, deadline, and history; a rejection leaves the
+draft visible with the referee's safe error.
+
+The board uses semantic ordered-list coordinates rather than canvas. One square
+is in the tab order and arrow keys move focus across all 225 squares, so a rack
+tile can be selected and placed without a pointer. Premium labels, tile values,
+staged state, and current racks have explicit accessible names. English and
+French display values come from the immutable rules response with a checked-in
+V1 display fallback for spectator capabilities that do not include public-rules
+scope.
+
 Browsers cannot set the `Authorization` header on WebSocket handshakes. They
 therefore send `word-arena-v1` plus the opaque capability as requested
 subprotocols; the server authenticates the latter and selects only the safe

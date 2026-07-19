@@ -6,6 +6,7 @@ import {
   GameApiError,
   normalizeServerOrigin,
   snapshotPath,
+  submitGameAction,
 } from "../src/api/client"
 import { credentialVault } from "../src/api/credentials"
 import {
@@ -83,7 +84,19 @@ function envelope(authority: GameAuthority): unknown {
             ],
             private_events: [],
           }
-  return { schema_version: 1, data: { observed_at: 1234, game } }
+  return {
+    schema_version: 1,
+    data: {
+      observed_at: 1234,
+      turn_deadline: {
+        turn: 3,
+        seat: "one",
+        deadline_at: 61_234,
+        policy_version: 1,
+      },
+      game,
+    },
+  }
 }
 
 describe("HTTP V1 decoding and drift", () => {
@@ -91,6 +104,11 @@ describe("HTTP V1 decoding and drift", () => {
     expect(API_SCHEMA_VERSION).toBe(contract.api_schema_version)
     expect(PROJECTION_SCHEMA_VERSION).toBe(contract.projection_schema_version)
     expect(WEBSOCKET_PROTOCOL).toBe(contract.browser_websocket_protocol)
+    expect(contract.view_fields).toEqual([
+      "observed_at",
+      "turn_deadline",
+      "game",
+    ])
     for (const authority of ["public", "seat", "spectator"] as const) {
       expect(snapshotPath({ ...session, authority })).toBe(
         contract.projection_paths[authority].replace("{game_id}", "game-one")
@@ -99,7 +117,9 @@ describe("HTTP V1 decoding and drift", () => {
   })
 
   test("decodes each authority without widening its projection", () => {
-    expect(decodeGameView(envelope("public"), "public").rack).toBeUndefined()
+    const publicView = decodeGameView(envelope("public"), "public")
+    expect(publicView.rack).toBeUndefined()
+    expect(publicView.turnDeadline?.deadlineAt).toBe(61_234)
     expect(decodeGameView(envelope("seat"), "seat").rack?.[0]?.id).toBe(7)
     expect(
       decodeGameView(envelope("spectator"), "spectator").racks?.[1][0]?.id
@@ -175,6 +195,70 @@ describe("credentials, cache keys, and authentication", () => {
     expect(fetchGameView(session, "invalid")).rejects.toBeInstanceOf(
       GameApiError
     )
+  })
+
+  test("submits every seat action with version and retry identity", async () => {
+    const requests: Array<Record<string, unknown>> = []
+    globalThis.fetch = (async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)))
+      return new Response(
+        JSON.stringify({
+          schema_version: 1,
+          data: {
+            committed_at: 1235,
+            turn_deadline: {
+              turn: 4,
+              seat: "two",
+              deadline_at: 61_235,
+              policy_version: 1,
+            },
+            event: { sequence: 4, kind: { type: "passed" } },
+            game: {
+              schema_version: 1,
+              seat: "one",
+              public: publicProjection(),
+              rack: [],
+              private_events: [],
+            },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    }) as typeof fetch
+    const seatSession = { ...session, authority: "seat" as const }
+    const actions = [
+      {
+        type: "place" as const,
+        placements: [
+          {
+            tile_id: 1,
+            coordinate: { row: 7, column: 7 },
+            tile: { letter: "E", is_blank: false },
+          },
+        ],
+      },
+      { type: "exchange" as const, tile_ids: [1, 2] },
+      { type: "pass" as const },
+      { type: "resign" as const },
+    ]
+    for (const [index, action] of actions.entries()) {
+      const view = await submitGameAction(
+        seatSession,
+        "wa_cap_v1.seat.secret",
+        {
+          expected_version: 3,
+          turn_number: 3,
+          idempotency_key: `web-action-${index}`,
+          action,
+        }
+      )
+      expect(view.turnDeadline?.turn).toBe(4)
+    }
+    expect(requests.map((request) => request.action)).toEqual(actions)
+    expect(requests.every((request) => request.expected_version === 3)).toBe(
+      true
+    )
+    expect(requests.every((request) => request.turn_number === 3)).toBe(true)
   })
 })
 

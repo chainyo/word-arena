@@ -27,6 +27,8 @@ pub enum ActionRejection {
 #[serde(deny_unknown_fields)]
 pub struct PersistedActionResult {
     pub committed_at: UnixMillis,
+    #[serde(default)]
+    pub turn_deadline: Option<TurnDeadline>,
     pub event: GameEvent,
     pub game: SeatProjection,
 }

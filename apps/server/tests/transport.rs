@@ -71,6 +71,14 @@ fn web_api_contract_matches_authoritative_server_constants() {
     );
     assert_eq!(contract["events_path"], GAME_EVENTS_PATH);
     assert_eq!(
+        contract["view_fields"],
+        json!(["observed_at", "turn_deadline", "game"])
+    );
+    assert_eq!(
+        contract["turn_deadline_fields"],
+        json!(["turn", "seat", "deadline_at", "policy_version"])
+    );
+    assert_eq!(
         contract["invalidation_fields"],
         json!(["schema_version", "game_id", "version"])
     );
@@ -158,6 +166,9 @@ async fn create_public_observe_and_errors_use_strict_scoped_http() {
     assert_eq!(public.status(), StatusCode::OK);
     let public = response_json(public).await;
     assert_no_keys(&public, &["rack", "racks", "seed", "bag", "snapshot"]);
+    assert_eq!(public["data"]["turn_deadline"]["turn"], 0);
+    assert_eq!(public["data"]["turn_deadline"]["seat"], "one");
+    assert!(public["data"]["turn_deadline"]["deadline_at"].is_number());
 
     let escalated = app
         .clone()
@@ -320,6 +331,8 @@ async fn actions_derive_seat_from_auth_and_reject_privilege_escalation() {
     assert_eq!(accepted.status(), StatusCode::OK);
     let accepted = response_json(accepted).await;
     assert_eq!(accepted["data"]["game"]["public"]["state"]["version"], 1);
+    assert_eq!(accepted["data"]["turn_deadline"]["turn"], 1);
+    assert_eq!(accepted["data"]["turn_deadline"]["seat"], "two");
 
     let caller_selected_seat = app
         .oneshot(json_request(

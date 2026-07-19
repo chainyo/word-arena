@@ -1,5 +1,6 @@
-import { Bot, Clock3 } from "lucide-react"
+import { Bot } from "lucide-react"
 
+import { GameClock } from "@/components/game/game-clock"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -14,7 +15,8 @@ import { cn } from "@/lib/utils"
 type PlayerCardProps = {
   active?: boolean
   agent: string
-  clock: string
+  deadlineAt?: number
+  observedAt?: number
   score: number
   subtitle: string
 }
@@ -22,7 +24,8 @@ type PlayerCardProps = {
 export function PlayerCard({
   active = false,
   agent,
-  clock,
+  deadlineAt,
+  observedAt,
   score,
   subtitle,
 }: PlayerCardProps) {
@@ -57,10 +60,12 @@ export function PlayerCard({
         </CardAction>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Clock3 className="size-3.5" />
-          <span className="font-mono tabular-nums">{clock}</span>
-        </span>
+        <GameClock
+          active={active}
+          deadlineAt={deadlineAt}
+          label={agent}
+          observedAt={observedAt}
+        />
         {active ? (
           <Badge>Your turn</Badge>
         ) : (

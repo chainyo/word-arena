@@ -8,5 +8,7 @@
     "spectator": "/api/v1/games/{game_id}/spectator"
   },
   "events_path": "/api/v1/games/{game_id}/events",
+  "view_fields": ["observed_at", "turn_deadline", "game"],
+  "turn_deadline_fields": ["turn", "seat", "deadline_at", "policy_version"],
   "invalidation_fields": ["schema_version", "game_id", "version"]
 }

@@ -1,5 +1,10 @@
-import { decodeApiError, decodeGameView } from "@/api/decode"
-import type { GameSession, GameView } from "@/api/types"
+import { decodeApiError, decodeGameView, decodeRuleset } from "@/api/decode"
+import type {
+  GameActionRequest,
+  GameSession,
+  GameView,
+  Ruleset,
+} from "@/api/types"
 
 export const DEFAULT_SERVER_ORIGIN =
   import.meta.env.VITE_WORD_ARENA_SERVER ?? "http://127.0.0.1:3000"
@@ -56,4 +61,73 @@ export async function fetchGameView(
     )
   }
   return decodeGameView(body, session.authority)
+}
+
+async function responseBody(response: Response): Promise<unknown> {
+  const body: unknown = await response.json().catch(() => undefined)
+  if (!response.ok) {
+    const error = decodeApiError(body)
+    throw new GameApiError(
+      response.status,
+      error?.code ?? "unexpected_response",
+      error?.message ?? "The referee returned an unreadable error"
+    )
+  }
+  return body
+}
+
+export async function fetchRuleset(
+  session: GameSession,
+  token: string,
+  signal?: AbortSignal
+): Promise<Ruleset> {
+  const response = await fetch(
+    `${session.serverOrigin}/api/v1/games/${encodeURIComponent(session.gameId)}/rules`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal,
+    }
+  )
+  return decodeRuleset(await responseBody(response))
+}
+
+export async function submitGameAction(
+  session: GameSession,
+  token: string,
+  request: GameActionRequest,
+  signal?: AbortSignal
+): Promise<GameView> {
+  if (session.authority !== "seat") {
+    throw new GameApiError(403, "seat_required", "Only a private seat can act")
+  }
+  const response = await fetch(
+    `${session.serverOrigin}/api/v1/games/${encodeURIComponent(session.gameId)}/actions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+      signal,
+    }
+  )
+  const body = await responseBody(response)
+  const envelope = body as { schema_version?: unknown; data?: unknown }
+  const data = envelope.data as
+    | { committed_at?: unknown; game?: unknown; turn_deadline?: unknown }
+    | undefined
+  return decodeGameView(
+    {
+      schema_version: envelope.schema_version,
+      data: {
+        observed_at: data?.committed_at,
+        turn_deadline: data?.turn_deadline,
+        game: data?.game,
+      },
+    },
+    "seat"
+  )
 }

@@ -216,6 +216,8 @@ pub struct CreatedGame {
 pub struct PublicGameView {
     /// Injected observation time.
     pub observed_at: UnixMillis,
+    /// Persisted deadline for the current active turn, when any.
+    pub turn_deadline: Option<crate::TurnDeadline>,
     /// Public-only projection.
     pub game: PublicProjection,
 }
@@ -226,6 +228,8 @@ pub struct PublicGameView {
 pub struct SeatGameView {
     /// Injected observation time.
     pub observed_at: UnixMillis,
+    /// Persisted deadline for the current active turn, when any.
+    pub turn_deadline: Option<crate::TurnDeadline>,
     /// Projection bound to the authority's seat.
     pub game: SeatProjection,
 }
@@ -236,6 +240,8 @@ pub struct SeatGameView {
 pub struct HumanSpectatorGameView {
     /// Injected observation time.
     pub observed_at: UnixMillis,
+    /// Persisted deadline for the current active turn, when any.
+    pub turn_deadline: Option<crate::TurnDeadline>,
     /// Both-rack projection with no future bag.
     pub game: HumanSpectatorProjection,
 }
@@ -246,6 +252,8 @@ pub struct HumanSpectatorGameView {
 pub struct AdministratorGameView {
     /// Injected observation time.
     pub observed_at: UnixMillis,
+    /// Persisted deadline for the current active turn, when any.
+    pub turn_deadline: Option<crate::TurnDeadline>,
     /// Complete authoritative checkpoint.
     pub game: AdministratorProjection,
 }
@@ -256,6 +264,8 @@ pub struct AdministratorGameView {
 pub struct GameActionResult {
     /// Injected commit time.
     pub committed_at: UnixMillis,
+    /// Persisted deadline for the successor turn, when the game remains active.
+    pub turn_deadline: Option<crate::TurnDeadline>,
     /// Authoritative public event.
     pub event: GameEvent,
     /// Updated projection for the authenticated acting seat.

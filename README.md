@@ -55,11 +55,13 @@ The repository foundation is in place:
 - A typed, routed local game workspace with memory-only capabilities, strict
   public/seat/spectator decoders, query caching, and reconnecting WebSocket
   invalidations ([web foundation](docs/WEB.md))
+- Responsive semantic board, premium, tile, private/spectator rack, score,
+  authoritative clock, move-history, and confirmed player-action components
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, and builds
 - A phased [creation plan](docs/PROJECT_PLAN.md)
 
-Responsive game controls and spectator/replay views are planned next. The current
+Operator, spectator/replay, and statistics views are planned next. The current
 lexicon/gameplay boundary is
 documented in [`docs/LEXICON_GAMEPLAY.md`](docs/LEXICON_GAMEPLAY.md).
 The non-production baseline bot and whole-match verification boundary is

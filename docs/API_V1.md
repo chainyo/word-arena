@@ -56,6 +56,11 @@ rate-limited preview capability.
 Each route maps one scope to one compile-time application credential. A token
 for another route returns the same generic unauthorized response.
 
+Role-safe game views also include `observed_at` and the persisted
+`turn_deadline` (`turn`, `seat`, `deadline_at`, and policy version) while the
+game is active. The deadline is public timing metadata; the server remains the
+only authority that resolves expiry.
+
 ### Act
 
 `POST /api/v1/games/{game_id}/actions` requires `act`:
@@ -72,7 +77,8 @@ for another route returns the same generic unauthorized response.
 Other action shapes are the engine's tagged `place`, `exchange`, and `resign`
 variants. The server derives the acting seat from the authenticated capability.
 Unknown fields are rejected. Accepted actions return the public event plus the
-updated acting-seat projection and publish a public invalidation marker.
+updated acting-seat projection, the successor turn deadline, and a public
+invalidation marker.
 
 ## WebSocket invalidations
 

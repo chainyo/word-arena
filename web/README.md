@@ -32,6 +32,12 @@ TanStack Query caches decoded authoritative snapshots. WebSocket messages are
 public invalidation markers only; they trigger a fresh authority-specific REST
 snapshot instead of mutating game state locally. See [`docs/WEB.md`](../docs/WEB.md).
 
+Private seat workspaces support mouse, touch, and keyboard move drafting, blank
+assignment, confirmed play/exchange/pass/resign actions, authoritative turn
+clocks, and server error handling. Draft tiles are presentation state only;
+scores, draws, racks, history, and committed board tiles always come from the
+next decoded server response.
+
 ## Adding components
 
 Always add general-purpose UI through the current shadcn CLI:

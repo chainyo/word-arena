@@ -1,119 +1,44 @@
+import type { KeyboardEvent } from "react"
+
+import type { Premium } from "@/api/types"
 import { cn } from "@/lib/utils"
 
 const BOARD_SIZE = 15
-
-type Premium = "double-letter" | "double-word" | "triple-letter" | "triple-word"
 
 export type BoardTile = {
   letter: string
   value?: number
   recent?: boolean
+  staged?: boolean
 }
 
 type GameBoardProps = {
+  disabled?: boolean
+  onSquareSelect?: (row: number, column: number) => void
+  premiums?: Record<string, Premium>
+  stagedTiles?: Record<string, BoardTile>
   tiles: Record<string, BoardTile>
 }
 
-const premiumLabels: Record<Premium, string> = {
-  "double-letter": "DL",
-  "double-word": "DW",
-  "triple-letter": "TL",
-  "triple-word": "TW",
+const premiumLabels: Partial<Record<Premium, string>> = {
+  double_letter: "DL",
+  double_word: "DW",
+  triple_letter: "TL",
+  triple_word: "TW",
 }
 
-const premiumNames: Record<Premium, string> = {
-  "double-letter": "double letter",
-  "double-word": "double word",
-  "triple-letter": "triple letter",
-  "triple-word": "triple word",
+const premiumNames: Partial<Record<Premium, string>> = {
+  double_letter: "double letter",
+  double_word: "double word",
+  triple_letter: "triple letter",
+  triple_word: "triple word",
 }
 
-const premiumClasses: Record<Premium, string> = {
-  "double-letter": "bg-board-double-letter text-board-label",
-  "double-word": "bg-board-double-word text-board-label",
-  "triple-letter": "bg-board-triple-letter text-board-label",
-  "triple-word": "bg-board-triple-word text-board-label",
-}
-
-const premiumCoordinates: Record<Premium, Array<[number, number]>> = {
-  "triple-word": [
-    [0, 0],
-    [0, 7],
-    [0, 14],
-    [7, 0],
-    [7, 14],
-    [14, 0],
-    [14, 7],
-    [14, 14],
-  ],
-  "double-word": [
-    [1, 1],
-    [1, 13],
-    [2, 2],
-    [2, 12],
-    [3, 3],
-    [3, 11],
-    [4, 4],
-    [4, 10],
-    [7, 7],
-    [10, 4],
-    [10, 10],
-    [11, 3],
-    [11, 11],
-    [12, 2],
-    [12, 12],
-    [13, 1],
-    [13, 13],
-  ],
-  "triple-letter": [
-    [1, 5],
-    [1, 9],
-    [5, 1],
-    [5, 5],
-    [5, 9],
-    [5, 13],
-    [9, 1],
-    [9, 5],
-    [9, 9],
-    [9, 13],
-    [13, 5],
-    [13, 9],
-  ],
-  "double-letter": [
-    [0, 3],
-    [0, 11],
-    [2, 6],
-    [2, 8],
-    [3, 0],
-    [3, 7],
-    [3, 14],
-    [6, 2],
-    [6, 6],
-    [6, 8],
-    [6, 12],
-    [7, 3],
-    [7, 11],
-    [8, 2],
-    [8, 6],
-    [8, 8],
-    [8, 12],
-    [11, 0],
-    [11, 7],
-    [11, 14],
-    [12, 6],
-    [12, 8],
-    [14, 3],
-    [14, 11],
-  ],
-}
-
-const premiums = new Map<string, Premium>()
-for (const [premium, coordinates] of Object.entries(
-  premiumCoordinates
-) as Array<[Premium, Array<[number, number]>]>) {
-  for (const [row, column] of coordinates) {
-    premiums.set(`${row}-${column}`, premium)
-  }
+const premiumClasses: Partial<Record<Premium, string>> = {
+  double_letter: "bg-board-double-letter text-board-label",
+  double_word: "bg-board-double-word text-board-label",
+  triple_letter: "bg-board-triple-letter text-board-label",
+  triple_word: "bg-board-triple-word text-board-label",
 }
 
 const squares = Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, index) => ({
@@ -129,7 +54,80 @@ function squareName(row: number, column: number) {
   return `${String.fromCharCode(65 + column)}${row + 1}`
 }
 
-export function GameBoard({ tiles }: GameBoardProps) {
+export function boardFocusTarget(
+  row: number,
+  column: number,
+  key: string
+): { row: number; column: number } | undefined {
+  const offsets: Record<string, [number, number]> = {
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
+    ArrowUp: [-1, 0],
+  }
+  const offset = offsets[key]
+  if (!offset) return undefined
+  const target = { row: row + offset[0], column: column + offset[1] }
+  if (
+    target.row < 0 ||
+    target.row >= BOARD_SIZE ||
+    target.column < 0 ||
+    target.column >= BOARD_SIZE
+  ) {
+    return undefined
+  }
+  return target
+}
+
+function moveBoardFocus(event: KeyboardEvent<HTMLButtonElement>) {
+  const targetCoordinate = boardFocusTarget(
+    Number(event.currentTarget.dataset.row),
+    Number(event.currentTarget.dataset.column),
+    event.key
+  )
+  if (!targetCoordinate) return
+  event.preventDefault()
+  const board = event.currentTarget.closest("[data-game-board]")
+  const target = board?.querySelector<HTMLButtonElement>(
+    `[data-row="${targetCoordinate.row}"][data-column="${targetCoordinate.column}"]`
+  )
+  target?.focus()
+}
+
+function TileFace({ tile }: { tile: BoardTile }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "absolute inset-[7%] grid place-items-center rounded-[18%] bg-tile font-heading text-[clamp(0.55rem,1.4vw,1.05rem)] font-semibold text-tile-foreground shadow-[inset_0_-2px_0_var(--tile-edge),0_1px_2px_oklch(0_0_0/18%)]",
+        tile.recent && "ring-2 ring-primary ring-inset",
+        tile.staged && "opacity-80 ring-2 ring-primary ring-dashed ring-inset"
+      )}
+    >
+      {tile.letter}
+      {tile.value === undefined ? null : (
+        <span className="absolute right-[9%] bottom-[4%] text-[clamp(0.28rem,0.5vw,0.45rem)] leading-none font-medium">
+          {tile.value}
+        </span>
+      )}
+    </span>
+  )
+}
+
+export function GameBoard({
+  disabled = false,
+  onSquareSelect,
+  premiums = {},
+  stagedTiles = {},
+  tiles,
+}: GameBoardProps) {
+  const interactive = onSquareSelect !== undefined
+  const firstOpen = squares.find(
+    ({ column, row }) => !tiles[`${row}-${column}`]
+  )
+  const initialKey = tiles["7-7"]
+    ? `${firstOpen?.row}-${firstOpen?.column}`
+    : "7-7"
   return (
     <div className="mx-auto w-full max-w-[720px]">
       <div className="mb-1.5 grid grid-cols-[repeat(15,minmax(0,1fr))] px-1.5 text-center font-mono text-[9px] text-muted-foreground sm:text-[10px]">
@@ -139,29 +137,25 @@ export function GameBoard({ tiles }: GameBoardProps) {
       </div>
       <ol
         aria-label="15 by 15 word game board"
-        className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-px rounded-xl bg-board-line p-1.5 shadow-inner ring-1 ring-foreground/10"
+        className="grid touch-manipulation grid-cols-[repeat(15,minmax(0,1fr))] gap-px rounded-xl bg-board-line p-1.5 shadow-inner ring-1 ring-foreground/10"
+        data-game-board="true"
       >
         {squares.map(({ column, row }) => {
           const key = `${row}-${column}`
-          const premium = premiums.get(key)
+          const premium = premiums[key] ?? "normal"
           const tile = tiles[key]
+          const staged = stagedTiles[key]
+          const shownTile = tile ?? staged
           const name = squareName(row, column)
-          const description = tile
-            ? `${name}: ${tile.letter}${tile.value === undefined ? "" : `, ${tile.value} points`}${tile.recent ? ", part of the latest move" : ""}`
-            : premium
-              ? `${name}: ${premiumNames[premium]} score`
+          const premiumName = premiumNames[premium]
+          const description = shownTile
+            ? `${name}: ${shownTile.letter}${shownTile.value === undefined ? "" : `, ${shownTile.value} points`}${shownTile.recent ? ", part of the latest move" : ""}${shownTile.staged ? ", staged for this move" : ""}`
+            : premiumName
+              ? `${name}: ${premiumName} score`
               : `${name}: empty`
-
-          return (
-            <li
-              aria-label={description}
-              className={cn(
-                "relative aspect-square min-w-0 list-none overflow-hidden rounded-[3px] bg-board",
-                premium && premiumClasses[premium]
-              )}
-              key={key}
-            >
-              {premium && !tile ? (
+          const content = (
+            <>
+              {premium !== "normal" && !shownTile ? (
                 <span
                   aria-hidden="true"
                   className="absolute inset-0 grid place-items-center font-heading text-[clamp(0.3rem,0.65vw,0.55rem)] font-semibold tracking-tight"
@@ -169,27 +163,43 @@ export function GameBoard({ tiles }: GameBoardProps) {
                   {premiumLabels[premium]}
                 </span>
               ) : null}
-              {tile ? (
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute inset-[7%] grid place-items-center rounded-[18%] bg-tile font-heading text-[clamp(0.55rem,1.4vw,1.05rem)] font-semibold text-tile-foreground shadow-[inset_0_-2px_0_var(--tile-edge),0_1px_2px_oklch(0_0_0/18%)]",
-                    tile.recent && "ring-2 ring-primary ring-inset"
-                  )}
+              {shownTile ? <TileFace tile={shownTile} /> : null}
+            </>
+          )
+          return (
+            <li
+              className={cn(
+                "relative aspect-square min-w-0 list-none overflow-hidden rounded-[3px] bg-board",
+                premiumClasses[premium]
+              )}
+              key={key}
+            >
+              {interactive ? (
+                <button
+                  aria-disabled={disabled || tile !== undefined}
+                  aria-label={description}
+                  className="absolute inset-0 size-full rounded-[3px] outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed"
+                  data-column={column}
+                  data-row={row}
+                  onClick={() => {
+                    if (!disabled && !tile) onSquareSelect(row, column)
+                  }}
+                  onKeyDown={moveBoardFocus}
+                  tabIndex={key === initialKey ? 0 : -1}
+                  type="button"
                 >
-                  {tile.letter}
-                  {tile.value === undefined ? null : (
-                    <span className="absolute right-[9%] bottom-[4%] text-[clamp(0.28rem,0.5vw,0.45rem)] leading-none font-medium">
-                      {tile.value}
-                    </span>
-                  )}
+                  {content}
+                </button>
+              ) : (
+                <span aria-label={description} role="img">
+                  {content}
                 </span>
-              ) : null}
+              )}
             </li>
           )
         })}
       </ol>
-      <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-muted-foreground sm:text-xs">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground sm:text-xs">
         <span className="flex items-center gap-1.5">
           <span className="size-2 rounded-sm bg-board-double-letter" /> DL
         </span>

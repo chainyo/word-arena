@@ -10,6 +10,7 @@ import {
   PROJECTION_SCHEMA_VERSION,
   type PublicGameState,
   type PublicProjection,
+  type Ruleset,
   type Seat,
 } from "@/api/types"
 
@@ -73,9 +74,13 @@ function seat(value: unknown, label: string): Seat {
 
 function boardTile(value: unknown, label: string): BoardTile {
   const item = record(value, label)
+  const letter = string(item.letter, `${label}.letter`)
+  if (!/^[A-Z]$/.test(letter)) {
+    throw new DecodeError(`${label}.letter must be one physical A-Z letter`)
+  }
   return {
     tile_id: integer(item.tile_id, `${label}.tile_id`),
-    letter: string(item.letter, `${label}.letter`),
+    letter,
     is_blank:
       typeof item.is_blank === "boolean"
         ? item.is_blank
@@ -89,12 +94,94 @@ function physicalTile(value: unknown, label: string): PhysicalTile {
   const item = record(value, label)
   const face = record(item.face, `${label}.face`)
   const kind = literal(face.kind, ["blank", "letter"], `${label}.face.kind`)
+  const token =
+    kind === "letter" ? string(face.token, `${label}.face.token`) : undefined
+  if (token !== undefined && !/^[A-Z]$/.test(token)) {
+    throw new DecodeError(`${label}.face.token must be one physical A-Z letter`)
+  }
   return {
     id: integer(item.id, `${label}.id`),
-    face:
-      kind === "blank"
-        ? { kind }
-        : { kind, token: string(face.token, `${label}.face.token`) },
+    face: kind === "blank" ? { kind } : { kind, token: token as string },
+  }
+}
+
+function coordinate(value: unknown, label: string) {
+  const item = record(value, label)
+  return {
+    row: integer(item.row, `${label}.row`),
+    column: integer(item.column, `${label}.column`),
+  }
+}
+
+export function decodeRuleset(value: unknown): Ruleset {
+  const envelope = record(value, "rules envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const rules = record(envelope.data, "ruleset")
+  const game = record(rules.game, "ruleset.game")
+  const board = record(game.board, "ruleset.game.board")
+  const width = integer(board.width, "ruleset.game.board.width")
+  const height = integer(board.height, "ruleset.game.board.height")
+  const squares = array(board.squares, "ruleset.game.board.squares").map(
+    (value, index) => {
+      const square = record(value, `ruleset square ${index}`)
+      return {
+        coordinate: coordinate(
+          square.coordinate,
+          `ruleset square ${index}.coordinate`
+        ),
+        premium: literal(
+          square.premium,
+          [
+            "normal",
+            "double_letter",
+            "triple_letter",
+            "double_word",
+            "triple_word",
+          ],
+          `ruleset square ${index}.premium`
+        ),
+      }
+    }
+  )
+  if (width !== 15 || height !== 15 || squares.length !== 225) {
+    throw new DecodeError("ruleset board must be 15 by 15")
+  }
+  const tiles = array(game.tiles, "ruleset.game.tiles").map((value, index) => {
+    const definition = record(value, `tile definition ${index}`)
+    const decoded = physicalTile(
+      { id: index, face: definition.face },
+      `tile definition ${index}`
+    )
+    return {
+      face: decoded.face,
+      count: integer(definition.count, `tile definition ${index}.count`),
+      value: integer(definition.value, `tile definition ${index}.value`),
+    }
+  })
+  return {
+    schema_version: integer(rules.schema_version, "ruleset.schema_version"),
+    id: literal(rules.id, ["english-v1", "french-v1"], "ruleset.id"),
+    language: literal(
+      rules.language,
+      ["english", "french"],
+      "ruleset.language"
+    ),
+    game: {
+      board: { width, height, squares },
+      rack_capacity: integer(game.rack_capacity, "ruleset.game.rack_capacity"),
+      bingo_bonus: integer(game.bingo_bonus, "ruleset.game.bingo_bonus"),
+      exchange_minimum: integer(
+        game.exchange_minimum,
+        "ruleset.game.exchange_minimum"
+      ),
+      scoreless_turn_limit: integer(
+        game.scoreless_turn_limit,
+        "ruleset.game.scoreless_turn_limit"
+      ),
+      tiles,
+    },
   }
 }
 
@@ -196,16 +283,37 @@ export function decodeGameView(
   }
   const view = record(envelope.data, "game view")
   const observedAt = integer(view.observed_at, "game view.observed_at")
+  const deadline =
+    view.turn_deadline === null || view.turn_deadline === undefined
+      ? undefined
+      : record(view.turn_deadline, "game view.turn_deadline")
+  const turnDeadline = deadline
+    ? {
+        turn: integer(deadline.turn, "turn deadline.turn"),
+        seat: seat(deadline.seat, "turn deadline.seat"),
+        deadlineAt: integer(deadline.deadline_at, "turn deadline.deadline_at"),
+        policyVersion: integer(
+          deadline.policy_version,
+          "turn deadline.policy_version"
+        ),
+      }
+    : undefined
   const game = record(view.game, "game view.game")
 
   if (authority === "public") {
-    return { authority, observedAt, public: publicProjection(game) }
+    return {
+      authority,
+      observedAt,
+      public: publicProjection(game),
+      turnDeadline,
+    }
   }
 
   if (authority === "seat") {
     return {
       authority,
       observedAt,
+      turnDeadline,
       public: publicProjection(game.public),
       seat: seat(game.seat, "seat projection.seat"),
       rack: array(game.rack, "seat projection.rack").map((tile, index) =>
@@ -221,6 +329,7 @@ export function decodeGameView(
   return {
     authority,
     observedAt,
+    turnDeadline,
     public: publicProjection(game.public),
     racks: [
       array(racks[0], "spectator rack one").map((tile, index) =>

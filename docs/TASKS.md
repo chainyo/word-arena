@@ -232,13 +232,13 @@ the correct projection, and recovers from a dropped WebSocket connection.
 
 ### WEB-002: Build responsive game components
 
-- [ ] Build board, premium square, physical tile, rack, scores, clocks, and move
+- [x] Build board, premium square, physical tile, rack, scores, clocks, and move
   history using shadcn Base UI primitives, semantic HTML, and shared tokens.
-- [ ] Support mouse, touch, and keyboard tile placement with blank assignment,
+- [x] Support mouse, touch, and keyboard tile placement with blank assignment,
   exchange/pass/resign confirmation, pending state, and authoritative errors.
-- [ ] Preserve board coordinates, premium meaning, tile values, focus order,
+- [x] Preserve board coordinates, premium meaning, tile values, focus order,
   contrast, zoom/reflow, and screen-reader labels across desktop and mobile.
-- [ ] Add component and interaction tests for all actions and English/French
+- [x] Add component and interaction tests for all actions and English/French
   physical-letter behavior.
 
 Verification: a player can inspect and submit a full legal turn without a

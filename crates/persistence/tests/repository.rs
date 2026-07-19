@@ -245,6 +245,7 @@ async fn action_commit_is_atomic_idempotent_and_crash_safe() {
     let successor = record(&passed, &initial.game_id, UnixMillis(1_001));
     let outcome = ActionOutcome::Accepted(Box::new(PersistedActionResult {
         committed_at: UnixMillis(1_001),
+        turn_deadline: None,
         event,
         game: passed.seat_projection(Seat::One),
     }));
@@ -295,6 +296,7 @@ async fn action_commit_is_atomic_idempotent_and_crash_safe() {
         successor,
         ActionOutcome::Accepted(Box::new(PersistedActionResult {
             committed_at: UnixMillis(1_001),
+            turn_deadline: None,
             event,
             game: candidate.seat_projection(Seat::One),
         })),
@@ -335,6 +337,7 @@ async fn corrupt_finished_snapshot_recovers_from_private_replay_record() {
         successor,
         ActionOutcome::Accepted(Box::new(PersistedActionResult {
             committed_at: UnixMillis(1_001),
+            turn_deadline: None,
             event,
             game: finished.seat_projection(Seat::One),
         })),

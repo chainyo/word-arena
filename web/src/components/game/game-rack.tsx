@@ -1,75 +1,122 @@
 import { LockKeyhole } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 
-type RackTile = {
-  id: string
+export type RackTile = {
+  id: number
   letter: string
   value: number
 }
 
 type GameRackProps = {
+  disabled?: boolean
+  exchangeIds?: number[]
+  label: string
+  mode?: "place" | "exchange" | "read_only"
+  onPlacedTileSelect?: (tileId: number) => void
+  onTileSelect?: (tileId: number) => void
+  placedIds?: number[]
+  selectedTileId?: number
   tiles: RackTile[]
 }
 
-export function GameRack({ tiles }: GameRackProps) {
+export function GameRack({
+  disabled = false,
+  exchangeIds = [],
+  label,
+  mode = "read_only",
+  onPlacedTileSelect,
+  onTileSelect,
+  placedIds = [],
+  selectedTileId,
+  tiles,
+}: GameRackProps) {
+  const interactive = mode !== "read_only" && onTileSelect !== undefined
+  const rackDescription = tiles
+    .map((tile) => (tile.letter === "?" ? "blank" : tile.letter))
+    .join(", ")
   return (
     <Card className="mt-3" size="sm">
       <CardHeader className="border-b">
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>Codex rack</CardTitle>
+          <CardTitle>{label}</CardTitle>
           <Badge className="gap-1" variant="outline">
             <LockKeyhole className="size-3" /> Seat-private
           </Badge>
         </div>
         <CardDescription>
-          Hidden from the opponent and public spectators
+          {mode === "exchange"
+            ? "Choose one or more tiles to exchange"
+            : mode === "place"
+              ? "Choose a tile, then choose an open board square"
+              : "Current authoritative rack"}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <ol
-          aria-label="Codex rack: A, I, N, R, S, T, blank"
-          className="flex items-center justify-center gap-1.5 sm:gap-2"
+          aria-label={`${label}: ${rackDescription || "empty"}`}
+          className="flex min-h-12 flex-wrap items-center justify-center gap-1.5 sm:gap-2"
         >
-          {tiles.map((tile) => (
-            <li
-              aria-label={`${tile.letter === "?" ? "blank" : tile.letter}, ${tile.value} points`}
-              className="relative grid size-[clamp(2.25rem,10vw,3rem)] shrink-0 place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_oklch(0_0_0/18%)] sm:text-xl"
-              key={tile.id}
-            >
-              <span aria-hidden="true">{tile.letter}</span>
-              <span
-                aria-hidden="true"
-                className="absolute right-1 bottom-1 text-[8px] leading-none font-medium"
-              >
-                {tile.value}
-              </span>
-            </li>
-          ))}
+          {tiles.map((tile) => {
+            const selected =
+              selectedTileId === tile.id || exchangeIds.includes(tile.id)
+            const placed = placedIds.includes(tile.id)
+            const labelText = `${tile.letter === "?" ? "blank" : tile.letter}, ${tile.value} points${placed ? ", staged on board; activate to return to rack" : selected ? ", selected" : ""}`
+            return (
+              <li key={tile.id}>
+                {interactive ? (
+                  <button
+                    aria-label={labelText}
+                    aria-pressed={selected || placed}
+                    className={cn(
+                      "relative grid size-[clamp(2.5rem,11vw,3.25rem)] touch-manipulation place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_oklch(0_0_0/18%)] outline-none transition-transform focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-xl",
+                      selected && "-translate-y-1 ring-2 ring-primary",
+                      placed && "opacity-55 ring-2 ring-primary ring-dashed"
+                    )}
+                    disabled={disabled}
+                    onClick={() =>
+                      placed
+                        ? onPlacedTileSelect?.(tile.id)
+                        : onTileSelect(tile.id)
+                    }
+                    type="button"
+                  >
+                    <span aria-hidden="true">{tile.letter}</span>
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-1 bottom-1 text-[8px] leading-none font-medium"
+                    >
+                      {tile.value}
+                    </span>
+                  </button>
+                ) : (
+                  <span
+                    aria-label={labelText}
+                    className="relative grid size-[clamp(2.5rem,11vw,3.25rem)] place-items-center rounded-lg bg-tile font-heading text-lg font-semibold text-tile-foreground shadow-[inset_0_-3px_0_var(--tile-edge),0_2px_4px_oklch(0_0_0/18%)] sm:text-xl"
+                    role="img"
+                  >
+                    <span aria-hidden="true">{tile.letter}</span>
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-1 bottom-1 text-[8px] leading-none font-medium"
+                    >
+                      {tile.value}
+                    </span>
+                  </span>
+                )}
+              </li>
+            )
+          })}
         </ol>
       </CardContent>
-      <CardFooter className="flex-wrap justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          Actions unlock when the referee API is connected.
-        </p>
-        <div className="flex gap-2">
-          <Button disabled size="sm" variant="outline">
-            Exchange
-          </Button>
-          <Button disabled size="sm">
-            Play move
-          </Button>
-        </div>
-      </CardFooter>
     </Card>
   )
 }
