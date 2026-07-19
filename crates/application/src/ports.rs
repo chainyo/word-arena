@@ -1,7 +1,7 @@
 use std::{fmt::Debug, future::Future, pin::Pin, sync::Arc};
 
 use word_arena_engine::{GameSeed, GameSnapshot, WordValidator};
-use word_arena_lexicon::PackIdentity;
+use word_arena_lexicon::{PackIdentity, PackManifest};
 
 use crate::{
     ActionCommit, AuditRecord, CapabilityId, CapabilityRecord, CapabilityRepositoryError,
@@ -133,6 +133,15 @@ pub trait CapabilityRepository: Debug + Send + Sync {
 pub trait LexiconResolver: Debug + Send + Sync {
     /// Resolves only the complete requested pack identity.
     fn resolve(&self, identity: &PackIdentity) -> Option<Arc<dyn WordValidator>>;
+
+    /// Returns the verified immutable manifest for an exact installed pack.
+    ///
+    /// Adapters that provide only a test validator may leave metadata
+    /// unavailable; production resolvers should return the same manifest that
+    /// was verified before exposing the validator.
+    fn manifest(&self, _identity: &PackIdentity) -> Option<PackManifest> {
+        None
+    }
 }
 
 /// Collision-resistant application game ID source.

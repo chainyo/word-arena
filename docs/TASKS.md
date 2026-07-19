@@ -160,13 +160,13 @@ the competitive MCP tool surface, with no preview or opponent-private access.
 
 ### MCP-003: Expose authenticated MCP resources
 
-- [ ] Add stable URI templates for public game, private seat, event history,
+- [x] Add stable URI templates for public game, private seat, event history,
   ruleset, and active lexicon manifest resources.
-- [ ] Authorize each read from session authority and apply the same projection
+- [x] Authorize each read from session authority and apply the same projection
   types used by REST; never create MCP-specific game state.
-- [ ] Return versioned structured content, MIME types, subscriptions or change
+- [x] Return versioned structured content, MIME types, subscriptions or change
   notifications where supported, and actionable compatibility errors.
-- [ ] Test resource listing/reads, URI tampering, cross-game access,
+- [x] Test resource listing/reads, URI tampering, cross-game access,
   subscriptions, pack identity, and rack/privacy boundaries.
 
 Verification: MCP resources and tools report one authoritative version and

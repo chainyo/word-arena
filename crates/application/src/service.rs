@@ -3,6 +3,7 @@ use std::{fmt::Write as _, sync::Arc};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use word_arena_engine::{Game, GameError, GamePhase, Move, Ruleset, RulesetId, Seat, Turn};
+use word_arena_lexicon::{PackIdentity, PackManifest};
 
 use crate::capability::{actor, credential, validate_issue};
 use crate::{
@@ -422,6 +423,17 @@ impl ApplicationService {
         );
         self.policy = policy;
         self
+    }
+
+    /// Returns the verified immutable manifest for one exact active pack.
+    ///
+    /// This is transport-neutral release metadata; callers must first derive
+    /// the identity from an authorized game projection.
+    #[must_use]
+    pub fn lexicon_manifest(&self, identity: &PackIdentity) -> Option<PackManifest> {
+        self.lexicons.manifest(identity).filter(|manifest| {
+            manifest.validate_schema().is_ok() && manifest.identity() == *identity
+        })
     }
 
     /// Allocates a fully identified create command from the injected ID source.

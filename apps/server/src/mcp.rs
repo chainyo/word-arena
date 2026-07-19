@@ -24,6 +24,7 @@ use word_arena_application::{
 
 use crate::{
     API_SCHEMA_VERSION,
+    mcp_resources::McpResourceSubscriptions,
     mcp_tools::{McpRequestAuthority, WordArenaMcp},
 };
 
@@ -45,6 +46,7 @@ pub struct McpGateway {
     service: StreamableHttpService<WordArenaMcp, LocalSessionManager>,
     sessions: Arc<LocalSessionManager>,
     bindings: Arc<RwLock<HashMap<String, SessionBinding>>>,
+    subscriptions: McpResourceSubscriptions,
     cancellation: CancellationToken,
 }
 
@@ -64,12 +66,19 @@ impl McpGateway {
     pub fn new(runtime: &Arc<ApplicationRuntime>) -> Self {
         let cancellation = CancellationToken::new();
         let sessions = Arc::new(LocalSessionManager::default());
+        let subscriptions = McpResourceSubscriptions::default();
         let config = StreamableHttpServerConfig::default()
             .with_allowed_origins(["http://127.0.0.1:5173", "http://localhost:5173"])
             .with_cancellation_token(cancellation.child_token());
         let service_runtime = Arc::clone(runtime);
+        let service_subscriptions = subscriptions.clone();
         let service = StreamableHttpService::new(
-            move || Ok(WordArenaMcp::new(Arc::clone(&service_runtime))),
+            move || {
+                Ok(WordArenaMcp::new(
+                    Arc::clone(&service_runtime),
+                    service_subscriptions.clone(),
+                ))
+            },
             Arc::clone(&sessions),
             config,
         );
@@ -77,6 +86,7 @@ impl McpGateway {
             service,
             sessions,
             bindings: Arc::new(RwLock::new(HashMap::new())),
+            subscriptions,
             cancellation,
         }
     }
@@ -84,6 +94,11 @@ impl McpGateway {
     /// Cancels active MCP sessions during process shutdown.
     pub fn cancel(&self) {
         self.cancellation.cancel();
+    }
+
+    /// Notifies every subscribed MCP session bound to one changed game.
+    pub async fn notify_game_updated(&self, game_id: &GameId) {
+        self.subscriptions.notify_game_updated(game_id).await;
     }
 
     /// Authenticates and dispatches one game-scoped Streamable HTTP request.
@@ -144,6 +159,7 @@ impl McpGateway {
         if method == Method::DELETE {
             if let Some(session_id) = requested_session {
                 self.bindings.write().await.remove(&session_id);
+                self.subscriptions.remove_session(&session_id).await;
             }
         } else if response.status().is_success()
             && let Some(session_id) = response
@@ -172,6 +188,7 @@ impl McpGateway {
             .write()
             .await
             .retain(|session_id, _| live.contains(session_id));
+        self.subscriptions.retain_sessions(&live).await;
     }
 }
 

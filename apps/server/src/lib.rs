@@ -12,6 +12,7 @@ use word_arena_lexicon::{
 };
 
 mod mcp;
+mod mcp_resources;
 mod mcp_tools;
 mod runtime;
 mod transport;
@@ -96,6 +97,13 @@ impl LexiconResolver for RuntimeLexicons {
             }
         }
         None
+    }
+
+    fn manifest(&self, identity: &PackIdentity) -> Option<word_arena_lexicon::PackManifest> {
+        [&self.english, &self.french]
+            .into_iter()
+            .find(|lexicon| lexicon.identity() == identity)
+            .map(|lexicon| lexicon.manifest().clone())
     }
 }
 

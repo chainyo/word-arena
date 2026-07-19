@@ -8,9 +8,10 @@ use rmcp::{
         tool::{ToolCallContext, parse_json_object, schema_for_input},
     },
     model::{
-        CallToolRequestParams, CallToolResult, ContentBlock, Implementation, ListToolsResult,
-        PaginatedRequestParams, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
-        ToolAnnotations,
+        CallToolRequestParams, CallToolResult, ContentBlock, Implementation,
+        ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+        ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, ServerCapabilities,
+        ServerInfo, SubscribeRequestParams, Tool, ToolAnnotations, UnsubscribeRequestParams,
     },
     service::RequestContext,
 };
@@ -22,6 +23,11 @@ use word_arena_application::{
     GameActionCommand, GameActionResult, IdempotencyKey, SeatGameQuery, SeatGameView,
 };
 use word_arena_engine::{Coordinate, Move, Placement, Ruleset, RulesetId, Tile, TileId, Turn};
+
+use crate::mcp_resources::{
+    McpResourceSubscriptions, list_resource_templates, list_resources, read_resource, subscribe,
+    unsubscribe,
+};
 
 /// Stable schema shared by the first competitive MCP tool generation.
 pub(crate) const MCP_TOOL_SCHEMA_VERSION: u16 = 1;
@@ -36,11 +42,16 @@ impl McpRequestAuthority {
     pub(crate) const fn new(credential: CompetitiveSeatCredential) -> Self {
         Self { credential }
     }
+
+    pub(crate) const fn credential(&self) -> &CompetitiveSeatCredential {
+        &self.credential
+    }
 }
 
 #[derive(Clone)]
 pub(crate) struct WordArenaMcp {
     runtime: Arc<ApplicationRuntime>,
+    subscriptions: McpResourceSubscriptions,
     tool_router: ToolRouter<Self>,
 }
 
@@ -54,9 +65,13 @@ impl fmt::Debug for WordArenaMcp {
 }
 
 impl WordArenaMcp {
-    pub(crate) fn new(runtime: Arc<ApplicationRuntime>) -> Self {
+    pub(crate) fn new(
+        runtime: Arc<ApplicationRuntime>,
+        subscriptions: McpResourceSubscriptions,
+    ) -> Self {
         Self {
             runtime,
+            subscriptions,
             tool_router: Self::competitive_tool_router(),
         }
     }
@@ -287,6 +302,7 @@ impl WordArenaMcp {
         action: Move,
     ) -> Result<Json<ActionOutput>, String> {
         let credential = authority(parts)?;
+        let game_id = credential.game_id().clone();
         let idempotency_key = IdempotencyKey::new(input.idempotency_key).map_err(tool_error)?;
         let result = self
             .runtime
@@ -306,13 +322,20 @@ impl WordArenaMcp {
             )
             .await
             .map_err(tool_error)?;
+        self.subscriptions.notify_game_updated(&game_id).await;
         action_output(result)
     }
 }
 
 impl ServerHandler for WordArenaMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_resources()
+                .enable_resources_subscribe()
+                .enable_tools()
+                .build(),
+        )
             .with_protocol_version(ProtocolVersion::V_2025_11_25)
             .with_server_info(
                 Implementation::new("word-arena", env!("CARGO_PKG_VERSION"))
@@ -344,6 +367,46 @@ impl ServerHandler for WordArenaMcp {
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
         self.tool_router.get(name).cloned()
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, rmcp::ErrorData> {
+        list_resources(&context)
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, rmcp::ErrorData> {
+        list_resource_templates(&context)
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, rmcp::ErrorData> {
+        read_resource(&self.runtime, request, &context).await
+    }
+
+    async fn subscribe(
+        &self,
+        request: SubscribeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<(), rmcp::ErrorData> {
+        subscribe(&self.subscriptions, request, &context).await
+    }
+
+    async fn unsubscribe(
+        &self,
+        request: UnsubscribeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<(), rmcp::ErrorData> {
+        unsubscribe(&self.subscriptions, request, &context).await
     }
 }
 

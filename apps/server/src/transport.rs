@@ -265,6 +265,7 @@ pub async fn serve_application(
             {
                 Ok(commands) => {
                     for command in commands {
+                        worker_state.mcp.notify_game_updated(&command.game_id).await;
                         worker_state.notifications.publish(GameInvalidation {
                             schema_version: API_SCHEMA_VERSION,
                             game_id: command.game_id,
@@ -491,9 +492,10 @@ async fn game_action(
         .map_err(|error| map_application_error(&error))?;
     state.notifications.publish(GameInvalidation {
         schema_version: API_SCHEMA_VERSION,
-        game_id,
+        game_id: game_id.clone(),
         version: result.game.public.state.version,
     });
+    state.mcp.notify_game_updated(&game_id).await;
     Ok(envelope(result))
 }
 

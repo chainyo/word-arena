@@ -18,12 +18,15 @@ use word_arena_application::{
     CapabilityRepository, CapabilityRole, CapabilityScope, GameId, GameIdSource, GameRepository,
     IdempotencyKey, IssueCapabilityRequest, LexiconResolver, SeedSource, UnixMillis,
     test_support::{
-        InMemoryCapabilityRepository, InMemoryGameRepository, InMemoryLexiconResolver, ManualClock,
+        InMemoryCapabilityRepository, InMemoryGameRepository, ManualClock,
         SequenceCapabilityTokens, SequenceGameIds, SequenceSeeds,
     },
 };
 use word_arena_engine::{Language, Ruleset, Seat, WordValidator};
-use word_arena_lexicon::{NormalizedKey, PackIdentity};
+use word_arena_lexicon::{
+    BuilderDescriptor, FileDescriptor, NormalizedKey, PackIdentity, PackManifest, PolicyDescriptor,
+    REQUIRED_PAYLOAD_FILES, SourceDescriptor,
+};
 use word_arena_server::{GameInvalidation, MCP_PROTOCOL_VERSION, ServerState, api_app};
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
@@ -38,6 +41,28 @@ impl WordValidator for AcceptingLexicon {
 
     fn contains(&self, _key: &NormalizedKey) -> bool {
         true
+    }
+}
+
+#[derive(Debug)]
+struct FixtureLexicons([(Arc<AcceptingLexicon>, PackManifest); 2]);
+
+impl LexiconResolver for FixtureLexicons {
+    fn resolve(&self, identity: &PackIdentity) -> Option<Arc<dyn WordValidator>> {
+        self.0
+            .iter()
+            .find(|(validator, _)| validator.identity() == identity)
+            .map(|(validator, _)| {
+                let validator: Arc<AcceptingLexicon> = Arc::clone(validator);
+                validator as Arc<dyn WordValidator>
+            })
+    }
+
+    fn manifest(&self, identity: &PackIdentity) -> Option<PackManifest> {
+        self.0
+            .iter()
+            .find(|(_, manifest)| manifest.identity() == *identity)
+            .map(|(_, manifest)| manifest.clone())
     }
 }
 
@@ -353,7 +378,10 @@ async fn authenticated_mcp_handshake_exposes_competitive_tools() {
         MCP_PROTOCOL_VERSION
     );
     assert_eq!(initialized["result"]["serverInfo"]["name"], "word-arena");
-    assert_eq!(initialized["result"]["capabilities"], json!({"tools":{}}));
+    assert_eq!(
+        initialized["result"]["capabilities"],
+        json!({"resources":{"subscribe":true},"tools":{}})
+    );
 
     let tools = app
         .oneshot(mcp_request(
@@ -669,6 +697,296 @@ async fn competitive_mcp_tools_complete_english_and_french_games_with_retry_and_
 }
 
 #[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table-driven contract test compares every resource across both languages"
+)]
+async fn authenticated_mcp_resources_are_stable_and_private_in_both_languages() {
+    for language in [Language::English, Language::French] {
+        let fixture = fixture();
+        let game_id = create_game_language(&fixture, language.code(), language).await;
+        let token = issue(
+            &fixture,
+            &game_id,
+            CapabilityRole::Seat(Seat::One),
+            [CapabilityScope::Act],
+            Some(&format!("resources-{}", language.code())),
+        )
+        .await;
+        let app = api_app(Arc::clone(&fixture.state));
+        let (session_id, _) = mcp_initialize(app.clone(), &game_id, &token).await;
+        let prefix = format!("word-arena://games/{game_id}");
+
+        let listed = mcp_rpc(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            30,
+            "resources/list",
+            json!({}),
+        )
+        .await;
+        let uris = listed["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|resource| resource["uri"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            uris,
+            [
+                format!("{prefix}/public"),
+                format!("{prefix}/seat"),
+                format!("{prefix}/history"),
+                format!("{prefix}/ruleset"),
+                format!("{prefix}/lexicon-manifest"),
+            ]
+        );
+        assert!(
+            listed["result"]["resources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|resource| resource["mimeType"] == "application/json")
+        );
+
+        let templates = mcp_rpc(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            31,
+            "resources/templates/list",
+            json!({}),
+        )
+        .await;
+        let template_uris = templates["result"]["resourceTemplates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|resource| resource["uriTemplate"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            template_uris,
+            [
+                "word-arena://games/{game_id}/public",
+                "word-arena://games/{game_id}/seat",
+                "word-arena://games/{game_id}/history",
+                "word-arena://games/{game_id}/ruleset",
+                "word-arena://games/{game_id}/lexicon-manifest",
+            ]
+        );
+
+        let public = mcp_read_resource(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            32,
+            &format!("{prefix}/public"),
+        )
+        .await;
+        let seat = mcp_read_resource(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            33,
+            &format!("{prefix}/seat"),
+        )
+        .await;
+        let history = mcp_read_resource(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            34,
+            &format!("{prefix}/history"),
+        )
+        .await;
+        let ruleset = mcp_read_resource(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            35,
+            &format!("{prefix}/ruleset"),
+        )
+        .await;
+        let manifest = mcp_read_resource(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            36,
+            &format!("{prefix}/lexicon-manifest"),
+        )
+        .await;
+
+        for resource in [&public, &seat, &history, &ruleset, &manifest] {
+            assert_eq!(resource["schema_version"], 1);
+            assert_eq!(resource["game_id"], game_id.as_str());
+            assert_eq!(resource["version"], 0);
+            assert_no_keys(resource, &["racks", "bag", "seed", "snapshot"]);
+        }
+        assert!(public["data"].get("rack").is_none());
+        assert_eq!(seat["data"]["seat"], "one");
+        assert!(seat["data"]["rack"].is_array());
+        assert_eq!(
+            history["data"]["public_events"].as_array().unwrap().len(),
+            1
+        );
+        assert!(
+            history["data"]["private_events"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            ruleset["data"]["language"],
+            serde_json::to_value(language).unwrap()
+        );
+        assert_eq!(
+            manifest["data"]["pack_id"],
+            public["data"]["state"]["lexicon"]["pack_id"]
+        );
+        assert_eq!(
+            manifest["data"]["content_sha256"],
+            public["data"]["state"]["lexicon"]["content_sha256"]
+        );
+
+        let observed = mcp_call(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            37,
+            "observe_game",
+            json!({"schema_version":1}),
+        )
+        .await;
+        assert_eq!(
+            observed["structuredContent"]["game"]["public"]["state"]["version"],
+            public["version"]
+        );
+
+        let other_game =
+            create_game_language(&fixture, &format!("other-{}", language.code()), language).await;
+        let forbidden = mcp_rpc(
+            app.clone(),
+            &game_id,
+            &token,
+            &session_id,
+            38,
+            "resources/read",
+            json!({"uri":format!("word-arena://games/{other_game}/public")}),
+        )
+        .await;
+        assert_eq!(forbidden["error"]["code"], -32602);
+        assert!(
+            forbidden["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("forbidden")
+        );
+
+        let malformed = mcp_rpc(
+            app,
+            &game_id,
+            &token,
+            &session_id,
+            39,
+            "resources/read",
+            json!({"uri":format!("{prefix}/public/extra")}),
+        )
+        .await;
+        assert_eq!(malformed["error"]["code"], -32602);
+        assert!(
+            malformed["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("invalid_resource_uri")
+        );
+    }
+}
+
+#[tokio::test]
+async fn mcp_resource_subscription_receives_game_updates_and_unsubscribes() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "resource-subscribe").await;
+    let token = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Seat(Seat::One),
+        [CapabilityScope::Act],
+        Some("resource-subscriber"),
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let (session_id, _) = mcp_initialize(app.clone(), &game_id, &token).await;
+    let uri = format!("word-arena://games/{game_id}/public");
+
+    let subscribed = mcp_rpc(
+        app.clone(),
+        &game_id,
+        &token,
+        &session_id,
+        40,
+        "resources/subscribe",
+        json!({"uri":uri}),
+    )
+    .await;
+    assert!(subscribed.get("error").is_none());
+
+    let stream = app
+        .clone()
+        .oneshot(mcp_request(
+            Method::GET,
+            &game_id,
+            Some(&token),
+            Some(&session_id),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stream.status(), StatusCode::OK);
+    let mut stream = stream.into_body().into_data_stream();
+    let passed = mcp_call(
+        app.clone(),
+        &game_id,
+        &token,
+        &session_id,
+        41,
+        "pass_turn",
+        json!({
+            "schema_version":1,
+            "expected_version":0,
+            "turn_id":0,
+            "idempotency_key":"resource-subscription-pass"
+        }),
+    )
+    .await;
+    assert_eq!(passed["isError"], false);
+
+    let notification = receive_mcp_sse_notification(&mut stream).await;
+    assert_eq!(notification["method"], "notifications/resources/updated");
+    assert_eq!(notification["params"]["uri"], uri);
+
+    let unsubscribed = mcp_rpc(
+        app,
+        &game_id,
+        &token,
+        &session_id,
+        42,
+        "resources/unsubscribe",
+        json!({"uri":uri}),
+    )
+    .await;
+    assert!(unsubscribed.get("error").is_none());
+}
+
+#[tokio::test]
 async fn mcp_authentication_and_session_binding_reject_cross_capability_reuse() {
     let fixture = fixture();
     let game_id = create_game(&fixture, "mcp-isolation").await;
@@ -860,12 +1178,13 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let validators = [Language::English, Language::French].map(|language| {
+    let lexicons = [Language::English, Language::French].map(|language| {
         let ruleset = Ruleset::for_language(language).unwrap();
-        Arc::new(AcceptingLexicon(ruleset.lexicon)) as Arc<dyn WordValidator>
+        let manifest = fixture_manifest(&ruleset.lexicon);
+        (Arc::new(AcceptingLexicon(ruleset.lexicon)), manifest)
     });
     let game_repository: Arc<dyn GameRepository> = Arc::new(InMemoryGameRepository::default());
-    let resolver: Arc<dyn LexiconResolver> = Arc::new(InMemoryLexiconResolver::new(validators));
+    let resolver: Arc<dyn LexiconResolver> = Arc::new(FixtureLexicons(lexicons));
     let ids: Arc<dyn GameIdSource> = Arc::new(SequenceGameIds::new("http-game"));
     let seeds: Arc<dyn SeedSource> = Arc::new(SequenceSeeds::new(99));
     let clock: Arc<dyn ApplicationClock> = Arc::new(ManualClock::new(NOW));
@@ -885,6 +1204,42 @@ fn fixture() -> Fixture {
     ));
     let state = Arc::new(ServerState::new(Arc::clone(&runtime)));
     Fixture { runtime, state }
+}
+
+fn fixture_manifest(identity: &PackIdentity) -> PackManifest {
+    let manifest = PackManifest {
+        format_version: identity.format_version,
+        pack_id: identity.pack_id.clone(),
+        pack_version: identity.pack_version.clone(),
+        locale: identity.locale.clone(),
+        word_count: 1,
+        content_sha256: identity.content_sha256.clone(),
+        normalization: identity.normalization.clone(),
+        source: SourceDescriptor {
+            id: format!("fixture-{}", identity.locale),
+            revision: "1".to_owned(),
+            archive_sha256: "11".repeat(32),
+            license_id: "CC0-1.0".to_owned(),
+        },
+        policy: PolicyDescriptor {
+            id: "fixture-v1".to_owned(),
+            version: 1,
+        },
+        builder: BuilderDescriptor {
+            name: "fixture-builder".to_owned(),
+            version: "1.0.0".to_owned(),
+        },
+        files: REQUIRED_PAYLOAD_FILES
+            .map(|path| FileDescriptor {
+                path: path.to_owned(),
+                size_bytes: 0,
+                sha256: "22".repeat(32),
+            })
+            .into_iter()
+            .collect(),
+    };
+    manifest.validate_schema().unwrap();
+    manifest
 }
 
 async fn create_game(fixture: &Fixture, key: &str) -> GameId {
@@ -1018,6 +1373,32 @@ async fn mcp_call(
     name: &str,
     arguments: Value,
 ) -> Value {
+    let response = mcp_rpc(
+        app,
+        game_id,
+        token,
+        session_id,
+        id,
+        "tools/call",
+        json!({"name":name,"arguments":arguments}),
+    )
+    .await;
+    assert!(
+        response.get("error").is_none(),
+        "MCP protocol error: {response}"
+    );
+    response["result"].clone()
+}
+
+async fn mcp_rpc(
+    app: axum::Router,
+    game_id: &GameId,
+    token: &str,
+    session_id: &str,
+    id: u64,
+    method: &str,
+    params: Value,
+) -> Value {
     let response = app
         .oneshot(mcp_request(
             Method::POST,
@@ -1027,19 +1408,67 @@ async fn mcp_call(
             Some(&json!({
                 "jsonrpc":"2.0",
                 "id":id,
-                "method":"tools/call",
-                "params":{"name":name,"arguments":arguments}
+                "method":method,
+                "params":params
             })),
         ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let response = mcp_response_json(response).await;
+    mcp_response_json(response).await
+}
+
+async fn mcp_read_resource(
+    app: axum::Router,
+    game_id: &GameId,
+    token: &str,
+    session_id: &str,
+    id: u64,
+    uri: &str,
+) -> Value {
+    let response = mcp_rpc(
+        app,
+        game_id,
+        token,
+        session_id,
+        id,
+        "resources/read",
+        json!({"uri":uri}),
+    )
+    .await;
     assert!(
         response.get("error").is_none(),
-        "MCP protocol error: {response}"
+        "MCP resource error: {response}"
     );
-    response["result"].clone()
+    let content = &response["result"]["contents"][0];
+    assert_eq!(content["uri"], uri);
+    assert_eq!(content["mimeType"], "application/json");
+    serde_json::from_str(content["text"].as_str().unwrap()).unwrap()
+}
+
+async fn receive_mcp_sse_notification(stream: &mut axum::body::BodyDataStream) -> Value {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        let mut pending = String::new();
+        while let Some(chunk) = stream.next().await {
+            pending.push_str(std::str::from_utf8(&chunk.unwrap()).unwrap());
+            while let Some(end) = pending.find("\n\n") {
+                let frame = pending.drain(..end + 2).collect::<String>();
+                if let Some(data) = frame
+                    .lines()
+                    .find_map(|line| line.strip_prefix("data:").map(str::trim))
+                    .filter(|data| !data.is_empty())
+                {
+                    let message: Value = serde_json::from_str(data).unwrap();
+                    if message.get("method").is_some() {
+                        return message;
+                    }
+                }
+            }
+        }
+        panic!("MCP SSE stream closed before a notification arrived");
+    })
+    .await
+    .expect("MCP resource notification timed out")
 }
 
 async fn mcp_response_json(response: axum::response::Response) -> Value {
