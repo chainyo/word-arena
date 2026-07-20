@@ -7,6 +7,7 @@ import {
   Languages,
   Layers3,
   LoaderCircle,
+  Minus,
   Monitor,
   Moon,
   Plus,
@@ -128,6 +129,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  languageLabel,
+  rulesetLabel,
+  SEATS,
+  seatLabel,
+} from "@/lib/game-labels"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -314,7 +321,7 @@ function OperatorWorkspace() {
   const [mode, setMode] = useState<"competitive" | "practice">("competitive")
   const [catalog, setCatalog] = useState<AgentCatalogEntry[]>([])
   const [catalogPending, setCatalogPending] = useState(true)
-  const [seats, setSeats] = useState<[SeatDraft, SeatDraft]>([
+  const [seats, setSeats] = useState<SeatDraft[]>([
     { kind: "agent", harness: "codex", model: "" },
     { kind: "agent", harness: "codex", model: "" },
   ])
@@ -334,19 +341,18 @@ function OperatorWorkspace() {
           (entry) => entry.available && entry.compatible
         )
         if (first) {
-          setSeats(
-            (current) =>
-              current.map((seat) =>
-                seat.kind === "agent" &&
-                !entries.some(
-                  (entry) =>
-                    entry.id === seat.harness &&
-                    entry.available &&
-                    entry.compatible
-                )
-                  ? { ...seat, harness: first.id }
-                  : seat
-              ) as [SeatDraft, SeatDraft]
+          setSeats((current) =>
+            current.map((seat) =>
+              seat.kind === "agent" &&
+              !entries.some(
+                (entry) =>
+                  entry.id === seat.harness &&
+                  entry.available &&
+                  entry.compatible
+              )
+                ? { ...seat, harness: first.id }
+                : seat
+            )
           )
         }
       })
@@ -424,10 +430,7 @@ function OperatorWorkspace() {
     setPending(true)
     setError(undefined)
     try {
-      const selected = seats.map(toSeatSelection) as [
-        AgentSeatSelection,
-        AgentSeatSelection,
-      ]
+      const selected = seats.map(toSeatSelection)
       const created = await createAgentMatch(serverOrigin, {
         language,
         mode,
@@ -490,8 +493,8 @@ function OperatorWorkspace() {
                 Start a match
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pick the two seats. Humans are optional; agents play through
-                MCP.
+                Start with two players, or add up to four. Humans are optional;
+                agents play through MCP.
               </p>
             </div>
             <Button
@@ -504,24 +507,53 @@ function OperatorWorkspace() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {(["one", "two"] as const).map((seatKey, index) => (
+            {seats.map((seat, index) => (
               <AgentSeatPicker
                 catalog={catalog}
                 disabled={pending || catalogPending}
-                key={seatKey}
+                key={SEATS[index]}
                 label={`Seat ${index + 1}`}
                 onChange={(next) =>
                   setSeats((current) => {
-                    const updated = [...current] as [SeatDraft, SeatDraft]
+                    const updated = [...current]
                     updated[index] = next
                     return updated
                   })
                 }
-                seat={seats[index]}
-                humanAllowed={seats[index === 0 ? 1 : 0].kind === "agent"}
+                onRemove={
+                  seats.length > 2 && index >= 2
+                    ? () =>
+                        setSeats((current) =>
+                          current.filter(
+                            (_, currentIndex) => currentIndex !== index
+                          )
+                        )
+                    : undefined
+                }
+                seat={seat}
+                humanAllowed={seats.every(
+                  (other, otherIndex) =>
+                    otherIndex === index || other.kind === "agent"
+                )}
               />
             ))}
           </div>
+
+          {seats.length < 4 ? (
+            <Button
+              disabled={pending || catalogPending}
+              onClick={() =>
+                setSeats((current) => [
+                  ...current,
+                  { kind: "agent", harness: "codex", model: "" },
+                ])
+              }
+              type="button"
+              variant="outline"
+            >
+              <Plus /> Add player
+            </Button>
+          ) : null}
 
           <Card size="sm">
             <CardContent className="grid gap-4 pt-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
@@ -534,11 +566,11 @@ function OperatorWorkspace() {
                   value={language}
                 >
                   <SelectTrigger className="w-full" id="create-language">
-                    <SelectValue />
+                    <SelectValue>{languageLabel(language)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="english">English</SelectItem>
-                    <SelectItem value="french">French</SelectItem>
+                    <SelectItem value="english">🇬🇧 English</SelectItem>
+                    <SelectItem value="french">🇫🇷 Français</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -739,7 +771,8 @@ function MatchArchiveCard({
                       {match.orchestration}
                     </Badge>
                     <span className="text-muted-foreground capitalize">
-                      {match.language} · {match.mode} · turn {match.version}
+                      {languageLabel(match.language)} · {match.mode} · turn{" "}
+                      {match.version}
                     </span>
                   </div>
                   <div className="mt-1 max-w-72 truncate font-mono text-[11px] text-muted-foreground">
@@ -747,7 +780,7 @@ function MatchArchiveCard({
                   </div>
                 </TableCell>
                 <TableCell className="font-heading text-base font-semibold tabular-nums">
-                  {match.scores[0]}–{match.scores[1]}
+                  {match.scores.join("–")}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatMatchTime(match.updatedAtUnixMs)}
@@ -816,6 +849,7 @@ function AgentSeatPicker({
   humanAllowed,
   label,
   onChange,
+  onRemove,
   seat,
 }: {
   catalog: AgentCatalogEntry[]
@@ -823,6 +857,7 @@ function AgentSeatPicker({
   humanAllowed: boolean
   label: string
   onChange: (seat: SeatDraft) => void
+  onRemove?: () => void
   seat: SeatDraft
 }) {
   return (
@@ -837,22 +872,36 @@ function AgentSeatPicker({
                 : "Local human player"}
             </CardDescription>
           </div>
-          <Button
-            disabled={disabled || (!humanAllowed && seat.kind === "agent")}
-            onClick={() =>
-              onChange(
-                seat.kind === "agent"
-                  ? { kind: "human", name: "Human" }
-                  : { kind: "agent", harness: "codex", model: "" }
-              )
-            }
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {seat.kind === "agent" ? <UserRound /> : <Bot />}
-            {seat.kind === "agent" ? "Use human" : "Use agent"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {onRemove ? (
+              <Button
+                aria-label={`Remove ${label}`}
+                disabled={disabled}
+                onClick={onRemove}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Minus />
+              </Button>
+            ) : null}
+            <Button
+              disabled={disabled || (!humanAllowed && seat.kind === "agent")}
+              onClick={() =>
+                onChange(
+                  seat.kind === "agent"
+                    ? { kind: "human", name: "Human" }
+                    : { kind: "agent", harness: "codex", model: "" }
+                )
+              }
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {seat.kind === "agent" ? <UserRound /> : <Bot />}
+              {seat.kind === "agent" ? "Use human" : "Use agent"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
@@ -1058,8 +1107,8 @@ function DeferredDataRoute({ kind }: { kind: "agent" | "standings" }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All languages</SelectItem>
-                  <SelectItem value="english">English</SelectItem>
-                  <SelectItem value="french">French</SelectItem>
+                  <SelectItem value="english">🇬🇧 English</SelectItem>
+                  <SelectItem value="french">🇫🇷 Français</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1753,44 +1802,35 @@ function GameWorkspace({
           aria-label="Players and match configuration"
           className="grid gap-3 sm:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:grid-cols-1"
         >
-          <PlayerCard
-            active={state.phase === "active" && state.current_player === "one"}
-            agent={participantName(matchStatus?.seats[0], "Seat one")}
-            harness={participantHarness(matchStatus?.seats[0])}
-            human={matchStatus?.seats[0].participant.kind === "human"}
-            deadlineAt={
-              view.turnDeadline?.seat === "one"
-                ? view.turnDeadline.deadlineAt
-                : undefined
-            }
-            observedAt={view.observedAt}
-            score={state.scores[0]}
-            seat="one"
-            subtitle={participantSubtitle(
-              matchStatus?.seats[0],
-              state.rack_counts[0]
-            )}
-            status={matchStatus ? statusLabel(matchStatus.seats[0]) : undefined}
-          />
-          <PlayerCard
-            active={state.phase === "active" && state.current_player === "two"}
-            agent={participantName(matchStatus?.seats[1], "Seat two")}
-            harness={participantHarness(matchStatus?.seats[1])}
-            human={matchStatus?.seats[1].participant.kind === "human"}
-            deadlineAt={
-              view.turnDeadline?.seat === "two"
-                ? view.turnDeadline.deadlineAt
-                : undefined
-            }
-            observedAt={view.observedAt}
-            score={state.scores[1]}
-            seat="two"
-            subtitle={participantSubtitle(
-              matchStatus?.seats[1],
-              state.rack_counts[1]
-            )}
-            status={matchStatus ? statusLabel(matchStatus.seats[1]) : undefined}
-          />
+          {state.scores.map((score, index) => {
+            const seat = SEATS[index]
+            if (!seat) return null
+            const participant = matchStatus?.seats[index]
+            return (
+              <PlayerCard
+                active={
+                  state.phase === "active" && state.current_player === seat
+                }
+                agent={participantName(participant, seatLabel(seat))}
+                deadlineAt={
+                  view.turnDeadline?.seat === seat
+                    ? view.turnDeadline.deadlineAt
+                    : undefined
+                }
+                harness={participantHarness(participant)}
+                human={participant?.participant.kind === "human"}
+                key={seat}
+                observedAt={view.observedAt}
+                score={score}
+                seat={seat}
+                status={participant ? statusLabel(participant) : undefined}
+                subtitle={participantSubtitle(
+                  participant,
+                  state.rack_counts[index]
+                )}
+              />
+            )
+          })}
           <Card className="sm:col-span-2 xl:col-span-1" size="sm">
             <CardHeader className="border-b">
               <CardTitle>Match</CardTitle>
@@ -1801,7 +1841,9 @@ function GameWorkspace({
                 <span className="flex items-center gap-2 text-muted-foreground">
                   <Languages className="size-4" /> Rules
                 </span>
-                <span className="font-medium">{state.ruleset_id}</span>
+                <span className="font-medium">
+                  {rulesetLabel(state.ruleset_id)}
+                </span>
               </div>
               <div className="flex justify-between gap-3">
                 <span className="flex items-center gap-2 text-muted-foreground">
@@ -1871,7 +1913,7 @@ function GameWorkspace({
                 <div className="mb-1 flex items-center gap-2">
                   <Badge>
                     {state.phase === "active"
-                      ? `${state.current_player} to move`
+                      ? `${seatLabel(state.current_player)} to move`
                       : "Finished"}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
@@ -1896,7 +1938,7 @@ function GameWorkspace({
                 <GameClock
                   active={state.phase === "active"}
                   deadlineAt={view.turnDeadline?.deadlineAt}
-                  label={`Seat ${state.current_player}`}
+                  label={seatLabel(state.current_player)}
                   observedAt={view.observedAt}
                 />
               </div>
@@ -1917,7 +1959,7 @@ function GameWorkspace({
               <GameRack
                 disabled={!canAct || pending}
                 exchangeIds={draft.exchangeIds}
-                label={`Seat ${view.seat} rack`}
+                label={`${view.seat ? seatLabel(view.seat) : "Seat"} rack`}
                 mode={canAct ? draft.mode : "read_only"}
                 onPlacedTileSelect={(tileId) =>
                   setDraft((current) => removePlacement(current, tileId))
@@ -1957,8 +1999,8 @@ function GameWorkspace({
             <div className="grid gap-3 sm:grid-cols-2">
               {view.racks.map((spectatorRack, index) => (
                 <GameRack
-                  key={index === 0 ? "seat-one-rack" : "seat-two-rack"}
-                  label={index === 0 ? "Seat one rack" : "Seat two rack"}
+                  key={`${SEATS[index] ?? index}-rack`}
+                  label={`${SEATS[index] ? seatLabel(SEATS[index]) : `Seat ${index + 1}`} rack`}
                   tiles={spectatorRack.map((tile) => ({
                     id: tile.id,
                     letter: physicalLetter(tile),
@@ -1980,10 +2022,13 @@ function GameWorkspace({
               <AgentConsole
                 activeSeat={state.current_player}
                 activity={matchActivity}
-                seatNames={[
-                  participantName(matchStatus?.seats[0], "Seat one"),
-                  participantName(matchStatus?.seats[1], "Seat two"),
-                ]}
+                seatNames={state.scores.map((_, index) => {
+                  const seat = SEATS[index]
+                  return participantName(
+                    matchStatus?.seats[index],
+                    seat ? seatLabel(seat) : `Seat ${index + 1}`
+                  )
+                })}
               />
             </div>
           ) : null}
@@ -1996,7 +2041,7 @@ function GameWorkspace({
               {view.authority === "seat"
                 ? `Only seat ${view.seat}'s rack is available.`
                 : view.authority === "spectator"
-                  ? "Both current racks are available; the future bag and seed remain hidden."
+                  ? "All current racks are available; the future bag and seed remain hidden."
                   : "Only public board and history data are available."}
             </CardContent>
           </Card>
@@ -2030,7 +2075,8 @@ function toMoveRecords(view: GameView): MoveRecord[] {
     .slice(-12)
     .reverse()
     .map((event) => {
-      const player = event.kind.player === "two" ? "Seat two" : "Seat one"
+      const eventSeat = SEATS.find((seat) => seat === event.kind.player)
+      const player = eventSeat ? seatLabel(eventSeat) : "Unknown seat"
       const score = typeof event.kind.score === "number" ? event.kind.score : 0
       const words = Array.isArray(event.kind.words) ? event.kind.words : []
       const first = words[0]

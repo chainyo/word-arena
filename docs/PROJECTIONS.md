@@ -13,7 +13,7 @@ credential; it must never serialize an authoritative game directly.
   future bag order.
 - `SeatProjection` adds exactly one named seat's current rack and that seat's
   private transition events. It has no opponent-rack field.
-- `HumanSpectatorProjection` adds both current racks and past private events,
+- `HumanSpectatorProjection` adds all current racks and past private events,
   but still has no seed or future bag order. It is a separate concrete type,
   not a privileged variant of `SeatProjection`; application credentials for an
   agent seat must never be accepted by the human-spectator use case.

@@ -65,7 +65,8 @@ fn english_and_french_golden_matches_are_byte_deterministic() {
     for (ruleset, words, bots, seed, expected) in scenarios {
         let first = run_fixture_match(&ruleset, words, false, bots, seed, 128).unwrap();
         let second = run_fixture_match(&ruleset, words, false, bots, seed, 128).unwrap();
-        assert_eq!((first.turns, first.result.scores), expected);
+        assert_eq!(first.turns, expected.0);
+        assert_eq!(first.result.scores.as_slice(), expected.1.as_slice());
         assert_eq!(first.result.winner, Some(Seat::One));
         assert_eq!(first.result.reason, TerminalReason::ScorelessTurns);
         assert_eq!(outcome_bytes(&first), outcome_bytes(&second));

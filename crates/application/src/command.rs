@@ -122,6 +122,8 @@ pub struct CreateGameCommand {
     pub language: Language,
     /// Immutable competitive or practice behavior.
     pub mode: GameMode,
+    /// Number of active seats, from two through four.
+    pub player_count: u8,
     /// Retry identity reserved before creation.
     pub idempotency_key: IdempotencyKey,
 }

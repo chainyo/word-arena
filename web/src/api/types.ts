@@ -4,7 +4,7 @@ export const REPLAY_SCHEMA_VERSION = 3
 export const WEBSOCKET_PROTOCOL = "word-arena-v1"
 
 export type GameAuthority = "public" | "seat" | "spectator"
-export type Seat = "one" | "two"
+export type Seat = "one" | "two" | "three" | "four"
 export type GamePhase = "active" | "finished"
 
 export type BoardTile = {
@@ -28,11 +28,11 @@ export type PublicGameState = {
   ruleset_id: "english-v1" | "french-v1"
   mode: "competitive" | "practice"
   board: Array<BoardTile | null>
-  scores: [number, number]
+  scores: number[]
   current_player: Seat
   version: number
   scoreless_turns: number
-  rack_counts: [number, number]
+  rack_counts: number[]
   bag_count: number
   phase: GamePhase
 }
@@ -55,7 +55,7 @@ export type GameView = {
   }
   seat?: Seat
   rack?: PhysicalTile[]
-  racks?: [PhysicalTile[], PhysicalTile[]]
+  racks?: PhysicalTile[][]
 }
 
 export type GameInvalidation = {
@@ -131,6 +131,7 @@ export type ConnectionState = "connecting" | "live" | "reconnecting" | "offline"
 export type CreateGameRequest = {
   language: "english" | "french"
   mode: "competitive" | "practice"
+  player_count?: number
   idempotency_key: string
 }
 
@@ -182,10 +183,10 @@ export type AgentMatchStatus = {
   orchestration: "active" | "finished" | "interrupted"
   version: number
   currentSeat: Seat
-  scores: [number, number]
+  scores: number[]
   createdAtUnixMs: number
   updatedAtUnixMs: number
-  seats: [AgentSeatStatus, AgentSeatStatus]
+  seats: AgentSeatStatus[]
 }
 
 export type AgentMatchList = {
@@ -228,7 +229,7 @@ export type AgentMatchActivity = {
 export type CreateAgentMatchRequest = {
   language: "english" | "french"
   mode: "competitive" | "practice"
-  seats: [AgentSeatSelection, AgentSeatSelection]
+  seats: AgentSeatSelection[]
   idempotency_key: string
 }
 

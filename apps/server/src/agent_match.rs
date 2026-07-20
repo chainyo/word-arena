@@ -124,7 +124,7 @@ pub struct CreateAgentMatchRequest {
     pub language: Language,
     #[serde(default)]
     pub mode: GameMode,
-    pub seats: [AgentSeatSelection; 2],
+    pub seats: Vec<AgentSeatSelection>,
     pub idempotency_key: IdempotencyKey,
 }
 
@@ -162,10 +162,10 @@ pub struct AgentMatchStatus {
     pub orchestration: AgentMatchLifecycle,
     pub version: u64,
     pub current_seat: Seat,
-    pub scores: [i32; 2],
+    pub scores: Vec<i32>,
     pub created_at_unix_ms: i64,
     pub updated_at_unix_ms: i64,
-    pub seats: [AgentSeatStatus; 2],
+    pub seats: Vec<AgentSeatStatus>,
 }
 
 /// Whether the local runner is available for a persisted match.
@@ -582,13 +582,15 @@ impl AgentMatchManager {
             return;
         };
         let catalog = self.catalog().await;
-        let mut agents: [Option<RunningAgent>; 2] = std::array::from_fn(|_| None);
-        for index in 0..2 {
+        let mut agents: Vec<Option<RunningAgent>> = std::iter::repeat_with(|| None)
+            .take(initial.seats.len())
+            .collect();
+        for index in 0..initial.seats.len() {
             let selection = &initial.seats[index].participant;
             let AgentSeatSelection::Agent { harness, model } = selection else {
                 continue;
             };
-            let seat = if index == 0 { Seat::One } else { Seat::Two };
+            let seat = Seat::ALL[index];
             self.set_seat_status(&game_id, seat, AgentSeatStatusKind::Starting)
                 .await;
             self.record_activity(
@@ -976,7 +978,13 @@ impl AgentMatchManager {
             };
             record.version = public.state.version;
             record.current_seat = public.state.current_player;
-            record.scores = public.state.scores.map(word_arena_engine::Score::value);
+            record.scores = public
+                .state
+                .scores
+                .iter()
+                .copied()
+                .map(word_arena_engine::Score::value)
+                .collect();
             record.updated_at_unix_ms = unix_millis();
         }
         self.persist_status(game_id).await;
@@ -996,14 +1004,15 @@ impl AgentMatchManager {
         self.persist_status(game_id).await;
     }
 
-    async fn finish_agents(&self, game_id: &GameId, agents: &mut [Option<RunningAgent>; 2]) {
-        let outcomes = self.inner.matches.read().await.get(game_id).map_or(
-            [WorkspaceOutcome::Failed; 2],
+    async fn finish_agents(&self, game_id: &GameId, agents: &mut [Option<RunningAgent>]) {
+        let outcomes = self.inner.matches.read().await.get(game_id).map_or_else(
+            || vec![WorkspaceOutcome::Failed; agents.len()],
             |record| {
-                [
-                    workspace_outcome(Some(&record.seats[0].status)),
-                    workspace_outcome(Some(&record.seats[1].status)),
-                ]
+                record
+                    .seats
+                    .iter()
+                    .map(|seat| workspace_outcome(Some(&seat.status)))
+                    .collect()
             },
         );
         for agent in agents.iter_mut().filter_map(Option::take) {
@@ -1067,9 +1076,8 @@ impl AgentMatchManager {
         {
             return;
         }
-        let credential = match seat {
-            Seat::One => &access.seat_one,
-            Seat::Two => &access.seat_two,
+        let Some(credential) = access.seat(seat) else {
+            return;
         };
         let key = IdempotencyKey::new(format!(
             "agent-orchestrator-{reason}-{}",
@@ -1336,17 +1344,11 @@ fn bounded_activity_message(message: &str) -> String {
 }
 
 const fn seat_number(seat: Seat) -> u8 {
-    match seat {
-        Seat::One => 1,
-        Seat::Two => 2,
-    }
+    seat.number()
 }
 
 const fn seat_index(seat: Seat) -> usize {
-    match seat {
-        Seat::One => 0,
-        Seat::Two => 1,
-    }
+    seat.index()
 }
 
 fn probe_harness(harness: AgentHarnessId, executables: &HarnessExecutables) -> AgentCatalogEntry {
@@ -1423,7 +1425,7 @@ pub(crate) fn initial_status(
     game_id: GameId,
     language: Language,
     public: &PublicProjection,
-    seats: &[AgentSeatSelection; 2],
+    seats: &[AgentSeatSelection],
     created_at: UnixMillis,
 ) -> AgentMatchStatus {
     AgentMatchStatus {
@@ -1435,21 +1437,24 @@ pub(crate) fn initial_status(
         orchestration: AgentMatchLifecycle::Active,
         version: public.state.version,
         current_seat: public.state.current_player,
-        scores: public.state.scores.map(word_arena_engine::Score::value),
+        scores: public
+            .state
+            .scores
+            .iter()
+            .copied()
+            .map(word_arena_engine::Score::value)
+            .collect(),
         created_at_unix_ms: created_at.0,
         updated_at_unix_ms: created_at.0,
-        seats: [
-            AgentSeatStatus {
-                seat: Seat::One,
-                status: initial_seat_status(&seats[0]),
-                participant: seats[0].clone(),
-            },
-            AgentSeatStatus {
-                seat: Seat::Two,
-                status: initial_seat_status(&seats[1]),
-                participant: seats[1].clone(),
-            },
-        ],
+        seats: seats
+            .iter()
+            .enumerate()
+            .map(|(index, participant)| AgentSeatStatus {
+                seat: Seat::ALL[index],
+                status: initial_seat_status(participant),
+                participant: participant.clone(),
+            })
+            .collect(),
     }
 }
 

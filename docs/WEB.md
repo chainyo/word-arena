@@ -2,9 +2,9 @@
 
 The React application is a local game workspace, not a marketing site. `/`
 opens a focused agent-first match composer plus separate local **Live** and
-**History** match tables. Both seats default to installed,
-compatible agents; either seat may instead be a local human, but a match must
-contain at least one agent. The composer discovers local CLIs without invoking
+**History** match tables. Two seats default to installed, compatible agents;
+the operator can add seats three and four, and at most one seat may instead be
+a local human. The composer discovers local CLIs without invoking
 a model, supports a per-seat model override, and opens the spectator view as
 soon as the referee accepts the match. Its routes have explicit authority
 requirements:
@@ -36,7 +36,7 @@ snapshots.
 Each response passes a strict runtime decoder in addition to TypeScript static
 checking. Public decoders fail closed if rack/private/bag/seed/snapshot fields
 appear. Seat decoders reject opponent-rack, bag, seed, and administrator data.
-Spectator decoders accept both current racks but still reject the future bag,
+Spectator decoders accept all current racks but still reject the future bag,
 seed, and administrator snapshot.
 
 Agent-match creation returns public and human-spectator capabilities once, plus

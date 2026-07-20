@@ -69,6 +69,10 @@ const SEAT_CAPABILITY_LIFETIME_MS: i64 = 60 * 60 * 1_000;
 const DEADLINE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEADLINE_BATCH_SIZE: u32 = 64;
 
+const fn default_player_count() -> u8 {
+    2
+}
+
 /// Shared application transport state.
 #[derive(Debug)]
 pub struct ServerState {
@@ -182,6 +186,9 @@ pub struct CreateGameRequest {
     /// Immutable competitive or practice behavior; competitive by default.
     #[serde(default)]
     pub mode: GameMode,
+    /// Number of active seats; defaults to a two-player game.
+    #[serde(default = "default_player_count")]
+    pub player_count: u8,
     /// Mandatory retry identity for durable creation deduplication.
     pub idempotency_key: IdempotencyKey,
 }
@@ -379,26 +386,17 @@ async fn create_agent_match(
     let Json(request) = payload.map_err(|error| json_rejection(&error))?;
     validate_match_seats(&request.seats)?;
     let catalog = state.agents.catalog().await;
-    for selection in &request.seats {
-        if let AgentSeatSelection::Agent { harness, .. } = selection {
-            let runnable = catalog
-                .iter()
-                .any(|entry| entry.id == *harness && entry.available && entry.compatible);
-            if !runnable {
-                return Err(ApiError::new(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    "agent_unavailable",
-                    "a selected agent is unavailable or incompatible",
-                ));
-            }
-        }
-    }
+    validate_selected_agents(&request.seats, &catalog)?;
 
-    let command = state.runtime.service().prepare_create_game_with_mode(
-        request.language,
-        request.mode,
-        request.idempotency_key,
-    );
+    let command = state
+        .runtime
+        .service()
+        .prepare_create_game_with_mode_and_players(
+            request.language,
+            request.mode,
+            u8::try_from(request.seats.len()).map_err(|_| invalid_payload())?,
+            request.idempotency_key,
+        );
     let created = state
         .runtime
         .service()
@@ -410,7 +408,7 @@ async fn create_agent_match(
 
     let mut human_capability = None;
     for (index, selection) in request.seats.iter().enumerate() {
-        let seat = if index == 0 { Seat::One } else { Seat::Two };
+        let seat = Seat::ALL[index];
         let expires_at = created
             .created_at
             .0
@@ -486,6 +484,28 @@ fn match_archive_error(_: &'static str) -> ApiError {
         "match_archive",
         "the local match index could not be updated",
     )
+}
+
+fn validate_selected_agents(
+    seats: &[AgentSeatSelection],
+    catalog: &[crate::AgentCatalogEntry],
+) -> Result<(), ApiError> {
+    for selection in seats {
+        let AgentSeatSelection::Agent { harness, .. } = selection else {
+            continue;
+        };
+        let runnable = catalog
+            .iter()
+            .any(|entry| entry.id == *harness && entry.available && entry.compatible);
+        if !runnable {
+            return Err(ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "agent_unavailable",
+                "a selected agent is unavailable or incompatible",
+            ));
+        }
+    }
+    Ok(())
 }
 
 async fn agent_matches(
@@ -577,7 +597,14 @@ async fn agent_match_activity(
     Ok(envelope(activity))
 }
 
-fn validate_match_seats(seats: &[AgentSeatSelection; 2]) -> Result<(), ApiError> {
+fn validate_match_seats(seats: &[AgentSeatSelection]) -> Result<(), ApiError> {
+    if !(2..=4).contains(&seats.len()) {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "player_count",
+            "a match requires between two and four players",
+        ));
+    }
     let human_count = seats
         .iter()
         .filter(|seat| matches!(seat, AgentSeatSelection::Human { .. }))
@@ -673,11 +700,22 @@ async fn create_game(
     payload: Result<Json<CreateGameRequest>, JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CreateGameResponse>>, ApiError> {
     let Json(request) = payload.map_err(|error| json_rejection(&error))?;
-    let command = state.runtime.service().prepare_create_game_with_mode(
-        request.language,
-        request.mode,
-        request.idempotency_key,
-    );
+    if !(2..=4).contains(&request.player_count) {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "player_count",
+            "a game requires between two and four players",
+        ));
+    }
+    let command = state
+        .runtime
+        .service()
+        .prepare_create_game_with_mode_and_players(
+            request.language,
+            request.mode,
+            request.player_count,
+            request.idempotency_key,
+        );
     let created = state
         .runtime
         .service()

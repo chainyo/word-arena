@@ -124,6 +124,10 @@ function TileFace({ tile }: { tile: BoardTile }) {
           "bg-tile-seat-one ring-1 ring-seat-one/35 ring-inset",
         tile.owner === "two" &&
           "bg-tile-seat-two ring-1 ring-seat-two/35 ring-inset",
+        tile.owner === "three" &&
+          "bg-tile-seat-three ring-1 ring-seat-three/35 ring-inset",
+        tile.owner === "four" &&
+          "bg-tile-seat-four ring-1 ring-seat-four/35 ring-inset",
         tile.recent && "ring-2 ring-primary ring-inset",
         tile.staged && "opacity-80 ring-2 ring-primary ring-dashed ring-inset"
       )}

@@ -191,10 +191,65 @@ describe("HTTP V1 decoding and drift", () => {
     })
   })
 
+  test("decodes four-player public, spectator, and agent match state", () => {
+    const projection = publicProjection()
+    projection.state.scores = [1, 2, 3, 4]
+    projection.state.rack_counts = [7, 7, 6, 5]
+    projection.state.current_player = "three"
+    const view = decodeGameView(
+      {
+        schema_version: 1,
+        data: {
+          observed_at: 1234,
+          turn_deadline: null,
+          game: {
+            public: projection,
+            racks: [[], [], [], []],
+          },
+        },
+      },
+      "spectator"
+    )
+    expect(view.public.state.scores).toEqual([1, 2, 3, 4])
+    expect(view.public.state.current_player).toBe("three")
+    expect(view.racks).toHaveLength(4)
+
+    const participants = ["one", "two", "three", "four"].map((seat) => ({
+      seat,
+      participant: { kind: "agent", harness: "codex", model: null },
+      status: { state: "ready" },
+    }))
+    const status = decodeAgentMatchStatus({
+      schema_version: 1,
+      data: {
+        schema_version: 1,
+        game_id: "game-four",
+        language: "french",
+        mode: "competitive",
+        phase: "active",
+        orchestration: "active",
+        version: 2,
+        current_seat: "three",
+        scores: [1, 2, 3, 4],
+        created_at_unix_ms: 1_234,
+        updated_at_unix_ms: 2_345,
+        seats: participants,
+      },
+    })
+    expect(status.seats).toHaveLength(4)
+    expect(status.currentSeat).toBe("three")
+  })
+
   test("shares exact schema, route, and WebSocket constants", () => {
     expect(API_SCHEMA_VERSION).toBe(contract.api_schema_version)
     expect(PROJECTION_SCHEMA_VERSION).toBe(contract.projection_schema_version)
     expect(REPLAY_SCHEMA_VERSION).toBe(contract.replay_schema_version)
+    expect(contract.player_count).toEqual({
+      minimum: 2,
+      default: 2,
+      maximum: 4,
+    })
+    expect(contract.seat_values).toEqual(["one", "two", "three", "four"])
     expect(WEBSOCKET_PROTOCOL).toBe(contract.browser_websocket_protocol)
     expect(contract.view_fields).toEqual([
       "observed_at",

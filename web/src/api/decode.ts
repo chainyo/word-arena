@@ -80,16 +80,16 @@ function array(value: unknown, label: string): unknown[] {
   return value
 }
 
-function pair(value: unknown, label: string): [number, number] {
+function playerValues(value: unknown, label: string): number[] {
   const values = array(value, label)
-  if (values.length !== 2) {
-    throw new DecodeError(`${label} must contain two values`)
+  if (values.length < 2 || values.length > 4) {
+    throw new DecodeError(`${label} must contain between two and four values`)
   }
-  return [integer(values[0], `${label}[0]`), integer(values[1], `${label}[1]`)]
+  return values.map((item, index) => integer(item, `${label}[${index}]`))
 }
 
 function seat(value: unknown, label: string): Seat {
-  return literal(value, ["one", "two"], label)
+  return literal(value, ["one", "two", "three", "four"], label)
 }
 
 function boardTile(value: unknown, label: string): BoardTile {
@@ -253,14 +253,14 @@ function publicState(value: unknown): PublicGameState {
     board: board.map((tile, index) =>
       tile === null ? null : boardTile(tile, `public state.board[${index}]`)
     ),
-    scores: pair(state.scores, "public state.scores"),
+    scores: playerValues(state.scores, "public state.scores"),
     current_player: seat(state.current_player, "public state.current_player"),
     version: integer(state.version, "public state.version"),
     scoreless_turns: integer(
       state.scoreless_turns,
       "public state.scoreless_turns"
     ),
-    rack_counts: pair(state.rack_counts, "public state.rack_counts"),
+    rack_counts: playerValues(state.rack_counts, "public state.rack_counts"),
     bag_count: integer(state.bag_count, "public state.bag_count"),
     phase: literal(state.phase, ["active", "finished"], "public state.phase"),
   }
@@ -360,22 +360,21 @@ export function decodeGameView(
   }
 
   const racks = array(game.racks, "spectator projection.racks")
-  if (racks.length !== 2) {
-    throw new DecodeError("spectator projection must contain two racks")
+  if (racks.length < 2 || racks.length > 4) {
+    throw new DecodeError(
+      "spectator projection must contain between two and four racks"
+    )
   }
   return {
     authority,
     observedAt,
     turnDeadline,
     public: publicProjection(game.public),
-    racks: [
-      array(racks[0], "spectator rack one").map((tile, index) =>
-        physicalTile(tile, `spectator rack one[${index}]`)
-      ),
-      array(racks[1], "spectator rack two").map((tile, index) =>
-        physicalTile(tile, `spectator rack two[${index}]`)
-      ),
-    ],
+    racks: racks.map((rack, rackIndex) =>
+      array(rack, `spectator rack ${rackIndex + 1}`).map((tile, tileIndex) =>
+        physicalTile(tile, `spectator rack ${rackIndex + 1}[${tileIndex}]`)
+      )
+    ),
   }
 }
 
@@ -488,8 +487,8 @@ function agentMatchStatusData(value: unknown): AgentMatchStatus {
     throw new DecodeError("unsupported agent match schema")
   }
   const seats = array(item.seats, "agent match status.seats")
-  if (seats.length !== 2) {
-    throw new DecodeError("agent match must contain two seats")
+  if (seats.length < 2 || seats.length > 4) {
+    throw new DecodeError("agent match must contain between two and four seats")
   }
   return {
     gameId: string(item.game_id, "agent match status.game_id"),
@@ -515,7 +514,7 @@ function agentMatchStatusData(value: unknown): AgentMatchStatus {
     ),
     version: integer(item.version, "agent match status.version"),
     currentSeat: seat(item.current_seat, "agent match status.current_seat"),
-    scores: pair(item.scores, "agent match status.scores"),
+    scores: playerValues(item.scores, "agent match status.scores"),
     createdAtUnixMs: integer(
       item.created_at_unix_ms,
       "agent match status.created_at_unix_ms"
@@ -524,10 +523,9 @@ function agentMatchStatusData(value: unknown): AgentMatchStatus {
       item.updated_at_unix_ms,
       "agent match status.updated_at_unix_ms"
     ),
-    seats: [
-      agentSeatStatus(seats[0], "agent match status.seats[0]"),
-      agentSeatStatus(seats[1], "agent match status.seats[1]"),
-    ],
+    seats: seats.map((seat, index) =>
+      agentSeatStatus(seat, `agent match status.seats[${index}]`)
+    ),
   }
 }
 

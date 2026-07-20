@@ -113,13 +113,14 @@ fn fixture(source_id: &str, finished_at_ms: i64, winner: Option<Seat>) -> MatchS
     let scores = match winner {
         Some(Seat::One) => [Score::new(80), Score::new(40)],
         Some(Seat::Two) => [Score::new(40), Score::new(80)],
+        Some(Seat::Three | Seat::Four) => panic!("statistics fixture is pair-only"),
         None => [Score::new(60), Score::new(60)],
     };
     let result = GameResult {
         game_id: format!("{source_id}-game"),
         ruleset_id: ruleset.id,
         lexicon: ruleset.lexicon.clone(),
-        scores,
+        scores: scores.to_vec(),
         winner,
         final_version: 2,
         reason: TerminalReason::ScorelessTurns,
@@ -150,9 +151,9 @@ fn fixture(source_id: &str, finished_at_ms: i64, winner: Option<Seat>) -> MatchS
             bingo_bonus: 50,
             score: 80,
             draw_count: 1,
-            rack_counts_after: [7, 7],
+            rack_counts_after: vec![7, 7],
             bag_count_after: 85,
-            scores_after: [Score::new(80), Score::new(0)],
+            scores_after: vec![Score::new(80), Score::new(0)],
             scoreless_turns_after: 0,
             next_player: Seat::Two,
             result: None,

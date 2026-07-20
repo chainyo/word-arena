@@ -62,7 +62,32 @@ test("operator selects agents and starts directly into the spectator view", asyn
   await expect(
     page.getByText("Agent-managed match created", { exact: true })
   ).toBeVisible()
-  await expect(page.getByText("Both current racks are available")).toBeVisible()
+  await expect(page.getByText("All current racks are available")).toBeVisible()
+  await expectNoAxeViolations(page)
+})
+
+test("operator can expand a match from two to four players", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await expect(page.getByText("🇬🇧 English", { exact: true })).toBeVisible()
+  await expect(page.getByText("Seat 1", { exact: true })).toBeVisible()
+  await expect(page.getByText("Seat 2", { exact: true })).toBeVisible()
+
+  await page.getByRole("button", { name: "Add player" }).click()
+  await page.getByRole("button", { name: "Add player" }).click()
+  await expect(page.getByText("Seat 3", { exact: true })).toBeVisible()
+  await expect(page.getByText("Seat 4", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Add player" })).toHaveCount(0)
+
+  await page.getByRole("button", { name: "Start match" }).click()
+  await expect(page).toHaveURL(/\/games\/created-game\/spectator$/)
+  for (const seat of ["one", "two", "three", "four"]) {
+    await expect(
+      page.getByText(`Seat ${seat} rack`, { exact: true })
+    ).toBeVisible()
+  }
+  await expect(page.getByRole("tab", { name: /Seat 4 Codex/ })).toBeVisible()
   await expectNoAxeViolations(page)
 })
 
@@ -121,7 +146,9 @@ test("player stages and commits a move without exposing another rack or a token"
   await page.getByRole("button", { name: "Play move" }).click()
   await page.getByRole("button", { name: "Submit move" }).click()
   await expect(page.getByText("Version 4", { exact: true })).toBeVisible()
-  await expect(page.getByText("two to move", { exact: true })).toBeVisible()
+  await expect(
+    page.getByText("Seat two to move", { exact: true })
+  ).toBeVisible()
 
   expect(page.url()).not.toContain("seat-token")
   expect(
@@ -133,7 +160,7 @@ test("player stages and commits a move without exposing another rack or a token"
   await expectNoAxeViolations(page)
 })
 
-test("spectator sees both current racks but no secret game inputs", async ({
+test("spectator sees all current racks but no secret game inputs", async ({
   page,
 }) => {
   await page.goto("/games/spectator-live/spectator")

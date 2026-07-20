@@ -240,10 +240,7 @@ impl BotStrategy {
                 hash.update(seed);
                 hash.update(game.public_state().game_id.as_bytes());
                 hash.update(game.public_state().version.to_be_bytes());
-                hash.update([match player {
-                    Seat::One => 1,
-                    Seat::Two => 2,
-                }]);
+                hash.update([player.number()]);
                 let digest = hash.finalize();
                 let index = u64::from_be_bytes([
                     digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6],
@@ -344,10 +341,7 @@ pub fn run_match(spec: MatchSpec) -> Result<MatchOutcome, MatchError> {
             return Err(MatchError::TurnLimit { limit: max_turns });
         }
         let player = game.public_state().current_player;
-        let strategy = match player {
-            Seat::One => bots[0],
-            Seat::Two => bots[1],
-        };
+        let strategy = bots[player.index()];
         let choice = strategy
             .choose(&game, player, &generator)
             .ok_or(MatchError::NoAction {

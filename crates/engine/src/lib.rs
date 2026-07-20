@@ -35,7 +35,7 @@ pub use model::{
 };
 pub use random::{
     ConservationError, GameSeed, InitialDeal, RandomError, RngAlgorithm, SeedCommitment,
-    prepare_initial_deal, verify_tile_conservation,
+    prepare_initial_deal, prepare_initial_deal_for_players, verify_tile_conservation,
 };
 pub use ruleset::{
     GameRules, RULESET_SCHEMA_VERSION, Ruleset, RulesetDefinitionError, RulesetFixtureError,

@@ -511,9 +511,11 @@ leak another seat.
 ### ARENA-003: Build the focused agent-first match composer
 
 - [x] Replace the current operator dashboard with one compact match composer:
-  language, mode, two seats, optional model override, and start action.
-- [x] Default both seats to agents; allow either seat to become human without
-  presenting humans as the primary product path.
+  flagged language, mode, two default seats, up to two additional seats,
+  optional model override, and start action.
+- [x] Default two seats to agents; allow seats three and four to be added or
+  removed and at most one seat to become human without presenting humans as
+  the primary product path.
 - [x] Use locally rendered agent marks with accessible text and
   clear availability/compatibility states; do not depend on remote images.
 - [x] Open the live spectator view after creation and show agent names, models,

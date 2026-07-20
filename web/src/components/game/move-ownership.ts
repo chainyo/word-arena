@@ -1,7 +1,12 @@
 import type { GameEvent, Seat } from "@/api/types"
 
 function eventSeat(value: unknown): Seat | undefined {
-  return value === "one" || value === "two" ? value : undefined
+  return value === "one" ||
+    value === "two" ||
+    value === "three" ||
+    value === "four"
+    ? value
+    : undefined
 }
 
 /** Rebuilds committed tile ownership from the authoritative public event log. */

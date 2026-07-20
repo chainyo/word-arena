@@ -9,13 +9,28 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SEATS, seatLabel } from "@/lib/game-labels"
 import { cn } from "@/lib/utils"
 
 type AgentConsoleProps = {
   activity?: AgentMatchActivity
   activeSeat?: Seat
   now?: number
-  seatNames?: [string, string]
+  seatNames?: string[]
+}
+
+const activeTabClasses: Record<Seat, string> = {
+  one: "data-active:bg-seat-one/20",
+  two: "data-active:bg-seat-two/20",
+  three: "data-active:bg-seat-three/20",
+  four: "data-active:bg-seat-four/20",
+}
+
+const seatDotClasses: Record<Seat, string> = {
+  one: "bg-seat-one",
+  two: "bg-seat-two",
+  three: "bg-seat-three",
+  four: "bg-seat-four",
 }
 
 function elapsedLabel(milliseconds: number) {
@@ -80,7 +95,7 @@ export function AgentConsole({
         {recent.length === 0 ? (
           <li className="px-3 py-6 text-center font-sans text-muted-foreground">
             {seat
-              ? `Waiting for ${seatNames[seat === "one" ? 0 : 1]} activity.`
+              ? `Waiting for ${seatNames[SEATS.indexOf(seat)] ?? seatLabel(seat)} activity.`
               : "Waiting for match activity."}
           </li>
         ) : null}
@@ -118,14 +133,17 @@ export function AgentConsole({
       </CardHeader>
       <CardContent className="px-0 pt-0 font-mono text-xs">
         <Tabs defaultValue={activeSeat}>
-          <TabsList className="mx-3 mt-3 grid h-auto w-[calc(100%-1.5rem)] grid-cols-3">
-            {(["one", "two"] as const).map((seat, index) => (
+          <TabsList
+            className="mx-3 mt-3 grid h-auto w-[calc(100%-1.5rem)]"
+            style={{
+              gridTemplateColumns: `repeat(${seatNames.length + 1}, minmax(0, 1fr))`,
+            }}
+          >
+            {SEATS.slice(0, seatNames.length).map((seat, index) => (
               <TabsTrigger
                 className={cn(
                   "min-w-0 flex-col gap-0 py-1.5 leading-tight text-foreground/80 dark:text-foreground/80",
-                  seat === "one"
-                    ? "data-active:bg-seat-one/20"
-                    : "data-active:bg-seat-two/20"
+                  activeTabClasses[seat]
                 )}
                 key={seat}
                 value={seat}
@@ -135,7 +153,7 @@ export function AgentConsole({
                     aria-hidden="true"
                     className={cn(
                       "size-2 shrink-0 rounded-full",
-                      seat === "one" ? "bg-seat-one" : "bg-seat-two"
+                      seatDotClasses[seat]
                     )}
                   />
                   <span>Seat {index + 1}</span>
@@ -148,8 +166,11 @@ export function AgentConsole({
             <TabsTrigger value="match">Match</TabsTrigger>
           </TabsList>
           <div className="mt-3 max-h-96 overflow-y-auto border-t">
-            <TabsContent value="one">{log("one")}</TabsContent>
-            <TabsContent value="two">{log("two")}</TabsContent>
+            {SEATS.slice(0, seatNames.length).map((seat) => (
+              <TabsContent key={seat} value={seat}>
+                {log(seat)}
+              </TabsContent>
+            ))}
             <TabsContent value="match">{log()}</TabsContent>
           </div>
         </Tabs>

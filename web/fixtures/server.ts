@@ -55,12 +55,14 @@ function boardWithWord(finished: boolean) {
   return board
 }
 
-function events(finished: boolean) {
+function events(finished: boolean, playerCount = 2) {
+  const openingScores = [2, ...Array.from({ length: playerCount - 1 }, () => 0)]
+  const openingRacks = Array.from({ length: playerCount }, () => 7)
   const values: Array<Record<string, unknown>> = [
     {
       sequence: 0,
       visibility: { scope: "public" },
-      kind: { type: "created", rack_counts: [7, 7], bag_count: 86 },
+      kind: { type: "created", rack_counts: openingRacks, bag_count: 86 },
     },
     {
       sequence: 1,
@@ -78,8 +80,8 @@ function events(finished: boolean) {
         words: [{ text: "E" }],
         bingo_bonus: 0,
         score: 2,
-        scores_after: [2, 0],
-        rack_counts_after: [7, 7],
+        scores_after: openingScores,
+        rack_counts_after: openingRacks,
         bag_count_after: 85,
         next_player: "one",
         result: null,
@@ -132,6 +134,9 @@ function events(finished: boolean) {
 
 function publicProjection(scenario: Scenario) {
   const finished = scenario.phase === "finished"
+  const playerCount = matchSeats.get(scenario.gameId)?.length ?? 2
+  const activeScores = [2, ...Array.from({ length: playerCount - 1 }, () => 0)]
+  const activeRacks = Array.from({ length: playerCount }, () => 7)
   return {
     schema_version: 1,
     state: {
@@ -139,15 +144,15 @@ function publicProjection(scenario: Scenario) {
       ruleset_id: "english-v1",
       mode: "competitive",
       board: boardWithWord(finished),
-      scores: finished ? [10, 0] : [2, 0],
+      scores: finished ? [10, 0] : activeScores,
       current_player: finished ? "two" : "one",
       version: versions.get(scenario.gameId) ?? (finished ? 5 : 3),
       scoreless_turns: finished ? 1 : 0,
-      rack_counts: finished ? [5, 7] : [7, 7],
+      rack_counts: finished ? [5, 7] : activeRacks,
       bag_count: finished ? 83 : 85,
       phase: scenario.phase,
     },
-    events: events(finished),
+    events: events(finished, playerCount),
   }
 }
 
@@ -160,6 +165,7 @@ function rack(start: number, letters: string[]) {
 
 function gameView(scenario: Scenario, authority: Authority) {
   const publicGame = publicProjection(scenario)
+  const playerCount = publicGame.state.scores.length
   const game =
     authority === "public"
       ? publicGame
@@ -171,10 +177,14 @@ function gameView(scenario: Scenario, authority: Authority) {
           }
         : {
             public: publicGame,
-            racks: [
-              rack(100, ["E", "T", "A", "R", "I", "N", "?"]),
-              rack(200, ["S", "O", "L", "D", "U", "C", "H"]),
-            ],
+            racks: Array.from({ length: playerCount }, (_, index) =>
+              rack(
+                (index + 1) * 100,
+                index === 0
+                  ? ["E", "T", "A", "R", "I", "N", "?"]
+                  : ["S", "O", "L", "D", "U", "C", "H"]
+              )
+            ),
           }
   return {
     schema_version: 1,
@@ -319,14 +329,11 @@ type FixtureSeatSelection =
   | { kind: "agent"; harness: string; model?: string }
   | { kind: "human"; name: string }
 
-const defaultMatchSeats: [FixtureSeatSelection, FixtureSeatSelection] = [
+const defaultMatchSeats: FixtureSeatSelection[] = [
   { kind: "agent", harness: "codex" },
   { kind: "agent", harness: "claude_code" },
 ]
-const matchSeats = new Map<
-  string,
-  [FixtureSeatSelection, FixtureSeatSelection]
->()
+const matchSeats = new Map<string, FixtureSeatSelection[]>()
 const localMatchIds = new Set([
   "spectator-live",
   "replay-game",
@@ -347,11 +354,13 @@ function agentMatchStatus(gameId: string) {
     orchestration: finished ? "finished" : "active",
     version: versions.get(gameId) ?? (finished ? 5 : 3),
     current_seat: finished ? "two" : "one",
-    scores: finished ? [10, 0] : [2, 0],
+    scores: finished
+      ? [10, 0]
+      : [2, ...Array.from({ length: seats.length - 1 }, () => 0)],
     created_at_unix_ms: NOW - (finished ? 86_400_000 : 60_000),
     updated_at_unix_ms: NOW - (finished ? 82_800_000 : 5_000),
     seats: seats.map((participant, index) => ({
-      seat: index === 0 ? "one" : "two",
+      seat: ["one", "two", "three", "four"][index],
       participant,
       status: {
         state: finished
@@ -391,7 +400,7 @@ const server = Bun.serve<SocketData>({
     if (request.method === "POST" && url.pathname === "/api/v1/matches") {
       const scenario = scenarios.get("created-game") as Scenario
       const payload = (await request.json()) as {
-        seats: [FixtureSeatSelection, FixtureSeatSelection]
+        seats: FixtureSeatSelection[]
       }
       matchSeats.set(scenario.gameId, payload.seats)
       localMatchIds.add(scenario.gameId)

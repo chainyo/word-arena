@@ -312,6 +312,9 @@ impl MatchStatisticsInput {
         {
             return Err(StatisticsError::InvalidInput);
         }
+        if result.scores.len() != 2 {
+            return Err(StatisticsError::InvalidInput);
+        }
         let score_one = result.scores[0].value();
         let score_two = result.scores[1].value();
         let expected_winner = match &result.reason {
@@ -321,6 +324,7 @@ impl MatchStatisticsInput {
             TerminalReason::Resignation {
                 resigned: Seat::Two,
             } => Some(Seat::One),
+            TerminalReason::Resignation { .. } => return Err(StatisticsError::InvalidInput),
             TerminalReason::ScorelessTurns | TerminalReason::RackEmptied { .. } => {
                 match score_one.cmp(&score_two) {
                     std::cmp::Ordering::Greater => Some(Seat::One),
@@ -902,10 +906,7 @@ fn event_result_is_consistent(kind: &GameEventKind) -> bool {
 }
 
 const fn seat_index(seat: Seat) -> usize {
-    match seat {
-        Seat::One => 0,
-        Seat::Two => 1,
-    }
+    seat.index()
 }
 
 fn checked_add(left: u64, right: u64) -> Result<u64, StatisticsError> {

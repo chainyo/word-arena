@@ -10,7 +10,7 @@ use crate::random::return_tiles_to_bag;
 use crate::{
     Bag, Coordinate, GameError, GameSeed, PhysicalTile, Player, Premium, Rack, RngAlgorithm,
     Ruleset, RulesetId, RulesetIdentity, Score, Seat, SeedCommitment, TileFace, TileId, TileToken,
-    WordValidator, prepare_initial_deal, verify_tile_conservation,
+    WordValidator, prepare_initial_deal_for_players, verify_tile_conservation,
 };
 
 /// Width and height of the V1 board.
@@ -190,8 +190,8 @@ pub struct PublicGameState {
     pub seed_commitment: SeedCommitment,
     /// Row-major 15x15 public board.
     pub board: Vec<Option<BoardTile>>,
-    /// Scores for seats one and two.
-    pub scores: [Score; 2],
+    /// Scores in stable active-seat order.
+    pub scores: Vec<Score>,
     /// Seat allowed to play next.
     pub current_player: Player,
     /// Number of committed post-creation mutations.
@@ -199,7 +199,7 @@ pub struct PublicGameState {
     /// Consecutive zero-score turns.
     pub scoreless_turns: u8,
     /// Number of private tiles owned by each rack.
-    pub rack_counts: [u8; 2],
+    pub rack_counts: Vec<u8>,
     /// Public number of tiles remaining in the private bag.
     pub bag_count: u16,
     /// Active or finished lifecycle.
@@ -238,7 +238,7 @@ pub struct GameSnapshot {
     /// Exact private bag order.
     pub bag: Bag,
     /// Exact private racks in seat order.
-    pub racks: [Rack; 2],
+    pub racks: Vec<Rack>,
     /// Private seed retained for resume and post-game replay reveal.
     pub seed: [u8; 32],
     /// Complete public event history through this checkpoint.
@@ -275,7 +275,7 @@ pub struct GameResult {
     /// Exact lexicon used by every move.
     pub lexicon: PackIdentity,
     /// Final scores.
-    pub scores: [Score; 2],
+    pub scores: Vec<Score>,
     /// Winning seat, or `None` for a tie.
     pub winner: Option<Player>,
     /// Final state version.
@@ -302,7 +302,7 @@ pub enum GameEventKind {
         /// Proof binding the eventual seed reveal.
         seed_commitment: SeedCommitment,
         /// Private rack sizes after the opening deal.
-        rack_counts: [u8; 2],
+        rack_counts: Vec<u8>,
         /// Remaining private bag size after the opening deal.
         bag_count: u16,
     },
@@ -321,11 +321,11 @@ pub enum GameEventKind {
         /// Number of private replacement tiles drawn.
         draw_count: u8,
         /// Public ownership counts after commit.
-        rack_counts_after: [u8; 2],
+        rack_counts_after: Vec<u8>,
         /// Remaining bag count after commit.
         bag_count_after: u16,
         /// Scores after commit.
-        scores_after: [Score; 2],
+        scores_after: Vec<Score>,
         /// Scoreless counter after commit.
         scoreless_turns_after: u8,
         /// Next active seat.
@@ -351,7 +351,7 @@ pub enum GameEventKind {
         /// Canonically ordered returned physical IDs.
         tile_ids: Vec<TileId>,
         /// Public ownership counts after commit.
-        rack_counts_after: [u8; 2],
+        rack_counts_after: Vec<u8>,
         /// Bag count after commit.
         bag_count_after: u16,
         /// Scoreless counter after commit.
@@ -448,7 +448,7 @@ pub struct PublicReplayBundle {
     pub lexicon: PackIdentity,
     /// Versioned random contract.
     pub rng_algorithm: RngAlgorithm,
-    /// Post-game seed reveal used to reconstruct the bag and both racks.
+    /// Post-game seed reveal used to reconstruct the bag and active racks.
     pub seed_reveal: [u8; 32],
     /// Complete ordered public event stream only.
     pub events: Vec<GameEvent>,
@@ -504,9 +504,9 @@ pub struct HumanSpectatorProjection {
     pub schema_version: u32,
     /// Shared public state and history.
     pub public: PublicProjection,
-    /// Both current racks in stable seat order.
-    pub racks: [Rack; 2],
-    /// Past private transitions for both seats, never the future bag.
+    /// All current racks in stable seat order.
+    pub racks: Vec<Rack>,
+    /// Past private transitions for all seats, never the future bag.
     pub private_events: Vec<PrivateGameEvent>,
 }
 
@@ -526,7 +526,7 @@ pub struct Game {
     lexicon: Arc<dyn WordValidator>,
     seed: GameSeed,
     bag: Bag,
-    racks: [Rack; 2],
+    racks: Vec<Rack>,
     state: PublicGameState,
     events: Vec<GameEvent>,
     private_events: Vec<PrivateGameEvent>,
@@ -576,13 +576,31 @@ impl Game {
         seed: GameSeed,
         mode: GameMode,
     ) -> Result<Self, GameError> {
+        Self::create_with_mode_and_players(game_id, ruleset, lexicon, seed, mode, 2)
+    }
+
+    /// Creates, shuffles, and deals a game for two through four active seats.
+    ///
+    /// # Errors
+    ///
+    /// Returns before creating state when the player count, ruleset, exact
+    /// lexicon, seed setup, count conversion, or conservation contract fails.
+    pub fn create_with_mode_and_players(
+        game_id: impl Into<String>,
+        ruleset: Ruleset,
+        lexicon: Option<Arc<dyn WordValidator>>,
+        seed: GameSeed,
+        mode: GameMode,
+        player_count: usize,
+    ) -> Result<Self, GameError> {
         ruleset.validate()?;
         let lexicon = lexicon.ok_or_else(|| GameError::MissingLexicon {
             ruleset: ruleset.id,
             required: Box::new(ruleset.lexicon.clone()),
         })?;
         ruleset.ensure_lexicon(CompatibilityContext::Ruleset, lexicon.identity())?;
-        let deal = prepare_initial_deal(&ruleset, &seed).map_err(tile_state_error)?;
+        let deal = prepare_initial_deal_for_players(&ruleset, &seed, player_count)
+            .map_err(tile_state_error)?;
         let algorithm = deal.algorithm();
         let commitment = deal.commitment().clone();
         let (bag, racks) = deal.into_parts();
@@ -599,11 +617,11 @@ impl Game {
             rng_algorithm: algorithm,
             seed_commitment: commitment.clone(),
             board: vec![None; BOARD_SQUARES],
-            scores: [Score::ZERO, Score::ZERO],
+            scores: vec![Score::ZERO; player_count],
             current_player: Player::One,
             version: 0,
             scoreless_turns: 0,
-            rack_counts,
+            rack_counts: rack_counts.clone(),
             bag_count,
             phase: GamePhase::Active,
             result: None,
@@ -618,7 +636,7 @@ impl Game {
                 mode,
                 rng_algorithm: algorithm,
                 seed_commitment: commitment,
-                rack_counts,
+                rack_counts: rack_counts.clone(),
                 bag_count,
             },
         };
@@ -757,7 +775,9 @@ impl Game {
             });
         }
         next_state.scores[player.index()] = updated_score;
-        next_state.current_player = player.opponent();
+        next_state.current_player = player
+            .next(self.racks.len())
+            .ok_or_else(|| invalid_player_count(self.racks.len()))?;
         next_state.version = updated_version;
         next_state.scoreless_turns = scoreless_turns;
         next_state.rack_counts = rack_counts(&next_racks)?;
@@ -793,9 +813,9 @@ impl Game {
                 bingo_bonus: prepared.bingo_bonus,
                 score: prepared.score,
                 draw_count: count_u8(drawn.len())?,
-                rack_counts_after: next_state.rack_counts,
+                rack_counts_after: next_state.rack_counts.clone(),
                 bag_count_after: next_state.bag_count,
-                scores_after: next_state.scores,
+                scores_after: next_state.scores.clone(),
                 scoreless_turns_after: next_state.scoreless_turns,
                 next_player: next_state.current_player,
                 result,
@@ -853,7 +873,9 @@ impl Game {
             .ok_or(GameError::VersionOverflow)?;
         let mut next_state = self.state.clone();
         next_state.version = updated_version;
-        next_state.current_player = player.opponent();
+        next_state.current_player = player
+            .next(self.racks.len())
+            .ok_or_else(|| invalid_player_count(self.racks.len()))?;
         next_state.scoreless_turns = next_state
             .scoreless_turns
             .checked_add(1)
@@ -944,7 +966,9 @@ impl Game {
 
         let mut next_state = self.state.clone();
         next_state.version = updated_version;
-        next_state.current_player = player.opponent();
+        next_state.current_player = player
+            .next(self.racks.len())
+            .ok_or_else(|| invalid_player_count(self.racks.len()))?;
         next_state.scoreless_turns = next_state
             .scoreless_turns
             .checked_add(1)
@@ -970,7 +994,7 @@ impl Game {
             kind: GameEventKind::Exchanged {
                 player,
                 tile_ids,
-                rack_counts_after: next_state.rack_counts,
+                rack_counts_after: next_state.rack_counts.clone(),
                 bag_count_after: next_state.bag_count,
                 scoreless_turns_after: next_state.scoreless_turns,
                 next_player: next_state.current_player,
@@ -993,7 +1017,7 @@ impl Game {
         Ok(event)
     }
 
-    /// Ends the game immediately with the opposing seat as winner.
+    /// Ends the game immediately and resolves the remaining seats by score.
     ///
     /// # Errors
     ///
@@ -1077,6 +1101,7 @@ impl Game {
             mode,
             rng_algorithm,
             seed_commitment,
+            rack_counts,
             ..
         } = &created.kind
         else {
@@ -1099,12 +1124,13 @@ impl Game {
         if !seed_commitment.verify(&seed) {
             return Err(GameError::SeedCommitmentMismatch);
         }
-        let mut game = Self::create_with_mode(
+        let mut game = Self::create_with_mode_and_players(
             game_id.clone(),
             bundle.ruleset.clone(),
             Some(lexicon),
             seed,
             *mode,
+            rack_counts.len(),
         )?;
         if game.events[0] != *created {
             return Err(GameError::ReplayEventMismatch { sequence: 0 });
@@ -1192,6 +1218,7 @@ impl Game {
             mode,
             rng_algorithm,
             seed_commitment,
+            rack_counts,
             ..
         } = &created.kind
         else {
@@ -1214,12 +1241,13 @@ impl Game {
         if !seed_commitment.verify(&seed) {
             return Err(GameError::SeedCommitmentMismatch);
         }
-        let game = Self::create_with_mode(
+        let game = Self::create_with_mode_and_players(
             game_id.clone(),
             bundle.ruleset.clone(),
             Some(lexicon),
             seed,
             *mode,
+            rack_counts.len(),
         )?;
         if game.events[0] != *created {
             return Err(GameError::ReplayEventMismatch { sequence: 0 });
@@ -1476,13 +1504,14 @@ impl Game {
     fn complete_state(
         &self,
         state: &mut PublicGameState,
-        racks: &[Rack; 2],
+        racks: &[Rack],
         reason: TerminalReason,
     ) -> Result<GameResult, GameError> {
+        let active = Seat::active(racks.len()).ok_or_else(|| invalid_player_count(racks.len()))?;
         match reason {
             TerminalReason::Resignation { .. } => {}
             TerminalReason::ScorelessTurns => {
-                for seat in Seat::ALL {
+                for &seat in active {
                     let deduction = self.rack_value(&racks[seat.index()])?;
                     state.scores[seat.index()] = state.scores[seat.index()]
                         .checked_add(-deduction)
@@ -1490,32 +1519,38 @@ impl Game {
                 }
             }
             TerminalReason::RackEmptied { outgoing } => {
-                let opponent = outgoing.opponent();
-                let deduction = self.rack_value(&racks[opponent.index()])?;
-                state.scores[opponent.index()] = state.scores[opponent.index()]
-                    .checked_add(-deduction)
-                    .ok_or(GameError::ScoreOverflow)?;
+                let mut bonus = 0_i32;
+                for &seat in active.iter().filter(|&&seat| seat != outgoing) {
+                    let deduction = self.rack_value(&racks[seat.index()])?;
+                    state.scores[seat.index()] = state.scores[seat.index()]
+                        .checked_add(-deduction)
+                        .ok_or(GameError::ScoreOverflow)?;
+                    bonus = bonus
+                        .checked_add(deduction)
+                        .ok_or(GameError::ScoreOverflow)?;
+                }
                 state.scores[outgoing.index()] = state.scores[outgoing.index()]
-                    .checked_add(deduction)
+                    .checked_add(bonus)
                     .ok_or(GameError::ScoreOverflow)?;
             }
         }
         state.phase = GamePhase::Finished;
         let winner = match reason {
-            TerminalReason::Resignation { resigned } => Some(resigned.opponent()),
+            TerminalReason::Resignation { resigned } if active.len() == 2 => {
+                active.iter().copied().find(|&seat| seat != resigned)
+            }
+            TerminalReason::Resignation { resigned } => {
+                unique_winner(&state.scores, Some(resigned))
+            }
             TerminalReason::ScorelessTurns | TerminalReason::RackEmptied { .. } => {
-                match state.scores[0].cmp(&state.scores[1]) {
-                    std::cmp::Ordering::Greater => Some(Player::One),
-                    std::cmp::Ordering::Less => Some(Player::Two),
-                    std::cmp::Ordering::Equal => None,
-                }
+                unique_winner(&state.scores, None)
             }
         };
         let result = GameResult {
             game_id: self.state.game_id.clone(),
             ruleset_id: state.ruleset_id,
             lexicon: state.lexicon.clone(),
-            scores: state.scores,
+            scores: state.scores.clone(),
             winner,
             final_version: state.version,
             reason,
@@ -1969,8 +2004,38 @@ fn physical_board(
         .collect()
 }
 
-fn rack_counts(racks: &[Rack; 2]) -> Result<[u8; 2], GameError> {
-    Ok([count_u8(racks[0].len())?, count_u8(racks[1].len())?])
+fn rack_counts(racks: &[Rack]) -> Result<Vec<u8>, GameError> {
+    racks.iter().map(|rack| count_u8(rack.len())).collect()
+}
+
+fn invalid_player_count(player_count: usize) -> GameError {
+    GameError::InvalidTileState {
+        reason: format!("player count {player_count} must be between 2 and 4"),
+    }
+}
+
+fn unique_winner(scores: &[Score], excluded: Option<Seat>) -> Option<Seat> {
+    let mut best: Option<(Seat, Score)> = None;
+    let mut tied = false;
+    for (index, &score) in scores.iter().enumerate() {
+        let seat = Seat::ALL.get(index).copied()?;
+        if Some(seat) == excluded {
+            continue;
+        }
+        match best {
+            None => {
+                best = Some((seat, score));
+                tied = false;
+            }
+            Some((_, best_score)) if score > best_score => {
+                best = Some((seat, score));
+                tied = false;
+            }
+            Some((_, best_score)) if score == best_score => tied = true,
+            Some(_) => {}
+        }
+    }
+    (!tied).then_some(best?.0)
 }
 
 fn count_u8(count: usize) -> Result<u8, GameError> {
