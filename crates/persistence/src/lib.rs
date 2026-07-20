@@ -6,6 +6,7 @@
 mod agent_repository;
 mod capability_repository;
 mod job_repository;
+mod local_match_repository;
 mod migration;
 mod rating_repository;
 mod repository;
@@ -19,6 +20,9 @@ pub use agent_repository::{
 };
 pub use capability_repository::SqliteCapabilityRepository;
 pub use job_repository::SqliteJobRepository;
+pub use local_match_repository::{
+    LocalMatchRepositoryError, SqliteLocalMatchRepository, StoredLocalAgentMatch,
+};
 pub use migration::{MIGRATOR, MigrationError, connect_and_migrate, migrate};
 pub use rating_repository::SqliteRatingRepository;
 pub use repository::SqliteGameRepository;

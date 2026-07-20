@@ -516,9 +516,13 @@ leak another seat.
   presenting humans as the primary product path.
 - [x] Use locally rendered agent marks with accessible text and
   clear availability/compatibility states; do not depend on remote images.
-- [ ] Open the live spectator view after creation and show agent names, models,
-  run state, current turn, failure/cancel controls, and human join action only
-  when a human seat was selected.
+- [x] Open the live spectator view after creation and show agent names, models,
+  run state, current turn, and privacy-safe activity.
+- [x] Persist local agent-match status snapshots with SQLx, list live and ended
+  matches separately on `/`, and recover spectator access after navigation or
+  refresh by issuing a new short-lived capability from the local operator API.
+- [ ] Add explicit failure/cancel controls and a human join action only when a
+  human seat was selected.
 
 Verification: desktop/mobile keyboard and screen-reader flows can select agents,
 start a match, understand failures, and watch progress without dashboard noise.

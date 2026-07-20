@@ -176,10 +176,25 @@ export type AgentSeatStatus = {
 
 export type AgentMatchStatus = {
   gameId: string
+  language: "english" | "french"
+  mode: "competitive" | "practice"
   phase: GamePhase
+  orchestration: "active" | "finished" | "interrupted"
   version: number
   currentSeat: Seat
+  scores: [number, number]
+  createdAtUnixMs: number
+  updatedAtUnixMs: number
   seats: [AgentSeatStatus, AgentSeatStatus]
+}
+
+export type AgentMatchList = {
+  matches: AgentMatchStatus[]
+}
+
+export type AgentMatchRecovery = {
+  gameId: string
+  spectatorCapability: string
 }
 
 export type AgentActivityKind =

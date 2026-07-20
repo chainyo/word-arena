@@ -1,7 +1,8 @@
 # Web application foundation
 
 The React application is a local game workspace, not a marketing site. `/`
-opens a focused agent-first match composer. Both seats default to installed,
+opens a focused agent-first match composer plus separate local **Live** and
+**History** match tables. Both seats default to installed,
 compatible agents; either seat may instead be a local human, but a match must
 contain at least one agent. The composer discovers local CLIs without invoking
 a model, supports a per-seat model override, and opens the spectator view as
@@ -24,9 +25,13 @@ token issued for another role or game.
 
 Opaque capabilities live only in the JavaScript process-memory vault. They are
 not written to the route, URL query, `localStorage`, `sessionStorage`, IndexedDB,
-service workers, or TanStack Query keys. A reload or tab close deliberately
-clears them. Query keys contain only the server origin, game ID, and projection
-kind, and cached values are already decoded role-appropriate snapshots.
+service workers, or TanStack Query keys. A reload or tab close clears them.
+For a game in the server's local agent-match index, the spectator and replay
+routes recover by requesting a fresh short-lived human-spectator capability
+from the trusted local operator endpoint. Manually opened external games still
+require their capability again. Query keys contain only the server origin, game
+ID, and projection kind, and cached values are already decoded role-appropriate
+snapshots.
 
 Each response passes a strict runtime decoder in addition to TypeScript static
 checking. Public decoders fail closed if rack/private/bag/seed/snapshot fields
@@ -39,6 +44,11 @@ one browser seat capability only when the operator explicitly selected a human.
 The operator workspace places each into its separate memory-vault slot. Agent
 seat capabilities go directly from the trusted server orchestrator into that
 seat's isolated process and are never returned to the browser.
+
+The local match list contains only versioned public orchestration metadata:
+game ID, language, mode, phase, scores, timestamps, seat identities, and safe
+runner state. It is persisted with SQLx in SQLite. It never contains a raw
+capability, rack, bag order, seed, prompt, or transcript.
 
 ## Authoritative updates
 

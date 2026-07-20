@@ -128,9 +128,15 @@ describe("HTTP V1 decoding and drift", () => {
       data: {
         schema_version: 1,
         game_id: "game-one",
+        language: "english",
+        mode: "practice",
         phase: "active",
+        orchestration: "active",
         version: 3,
         current_seat: "one",
+        scores: [12, 8],
+        created_at_unix_ms: 1_234,
+        updated_at_unix_ms: 2_345,
         seats: [
           {
             seat: "one",
@@ -144,6 +150,12 @@ describe("HTTP V1 decoding and drift", () => {
           },
         ],
       },
+    })
+    expect(status).toMatchObject({
+      language: "english",
+      mode: "practice",
+      orchestration: "active",
+      scores: [12, 8],
     })
     expect(status.seats[0].state).toBe("thinking")
     expect(status.seats[1].participant).toEqual({ kind: "human", name: "Ada" })

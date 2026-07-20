@@ -103,6 +103,8 @@ Implemented foundations include:
 - A human-spectator-only live agent activity console with bounded lifecycle,
   timing, tool-name, visible-output, diagnostic, and failure events; backend
   terminals receive matching structured tracing without prompts or credentials
+- A restart-aware SQLite local match index with separate live/history tables
+  and refresh-safe spectator/replay reopening via newly issued capabilities
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, builds, axe, and
   desktop/mobile browser flows

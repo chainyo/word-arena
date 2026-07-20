@@ -14,7 +14,8 @@
     "catalog": "/api/v1/agents",
     "matches": "/api/v1/matches",
     "status": "/api/v1/matches/{game_id}",
-    "activity": "/api/v1/matches/{game_id}/activity"
+    "activity": "/api/v1/matches/{game_id}/activity",
+    "spectator_recovery": "/api/v1/matches/{game_id}/spectator"
   },
   "view_fields": ["observed_at", "turn_deadline", "game"],
   "turn_deadline_fields": ["turn", "seat", "deadline_at", "policy_version"],

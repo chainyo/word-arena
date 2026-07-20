@@ -14,7 +14,8 @@ use word_arena_application::{
 use word_arena_engine::GameSeed;
 use word_arena_lexicon::WordArenaPaths;
 use word_arena_persistence::{
-    MigrationError, SqliteCapabilityRepository, SqliteGameRepository, connect_and_migrate,
+    MigrationError, SqliteCapabilityRepository, SqliteGameRepository, SqliteLocalMatchRepository,
+    connect_and_migrate,
 };
 
 use crate::{AgentMatchManager, AgentMatchManagerConfig, RuntimeLexicons, ServerState};
@@ -32,6 +33,9 @@ pub enum ProductionRuntimeError {
     /// `SQLite` connection or migration failed.
     #[error(transparent)]
     Migration(#[from] MigrationError),
+    /// Persisted local match index could not be restored safely.
+    #[error("local match index initialization failed: {0}")]
+    MatchIndex(&'static str),
 }
 
 /// Builds the persistent local application runtime from validated lexicons.
@@ -55,7 +59,7 @@ pub async fn build_production_state(
     )?);
     let game_repository: Arc<dyn GameRepository> =
         Arc::new(SqliteGameRepository::new(pool.clone()));
-    let capability_repository = Arc::new(SqliteCapabilityRepository::new(pool));
+    let capability_repository = Arc::new(SqliteCapabilityRepository::new(pool.clone()));
     let lexicon_resolver: Arc<dyn LexiconResolver> = lexicons;
     let runtime = Arc::new(ApplicationRuntime::new(
         game_repository,
@@ -69,11 +73,15 @@ pub async fn build_production_state(
             digest_key,
         ),
     ));
-    let agents = AgentMatchManager::new(agent_manager_config(paths));
+    let agents = AgentMatchManager::new(agent_manager_config(paths, pool));
+    agents
+        .restore()
+        .await
+        .map_err(ProductionRuntimeError::MatchIndex)?;
     Ok(Arc::new(ServerState::with_agent_manager(runtime, agents)))
 }
 
-fn agent_manager_config(paths: &WordArenaPaths) -> AgentMatchManagerConfig {
+fn agent_manager_config(paths: &WordArenaPaths, pool: sqlx::SqlitePool) -> AgentMatchManagerConfig {
     let executables = HarnessExecutables {
         codex: std::env::var("WORD_ARENA_CODEX_BIN").unwrap_or_else(|_| "codex".to_owned()),
         claude_code: std::env::var("WORD_ARENA_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_owned()),
@@ -94,6 +102,7 @@ fn agent_manager_config(paths: &WordArenaPaths) -> AgentMatchManagerConfig {
         mcp_origin: std::env::var("WORD_ARENA_AGENT_SERVER_ORIGIN")
             .unwrap_or_else(|_| "http://127.0.0.1:3000".to_owned()),
         codex_auth_file,
+        match_repository: Some(SqliteLocalMatchRepository::new(pool)),
     }
 }
 

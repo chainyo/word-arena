@@ -17,7 +17,10 @@ bun run --cwd web dev
 Open `http://127.0.0.1:5173`, choose an available CLI for each seat, optionally
 replace one seat with a human, and select **Start match**. Agent-versus-agent
 opens the trusted human spectator view. Agent-versus-human opens the private
-player view for the selected human seat.
+player view for the selected human seat. The same page lists current matches in
+**Live** and finished or interrupted matches in **History**. Selecting a row
+opens its spectator board or immutable replay, so a browser refresh does not
+lose a locally orchestrated match.
 
 The catalog calls each configured executable with `--version`. It does not send
 a prompt, invoke a model, validate provider quota, or expose any authentication
@@ -57,6 +60,15 @@ session. They never receive the opponent rack, spectator capability,
 administrator snapshot, future bag order, provider credentials belonging to
 another seat, or browser-held capabilities. The human spectator may see both
 current racks but not future bag order.
+
+The server stores only a versioned, privacy-safe match status snapshot in the
+same local SQLite database as the authoritative game. `GET /api/v1/matches`
+returns those snapshots without authentication material, racks, bag order, or
+seed. `POST /api/v1/matches/{game_id}/spectator` is a trusted local-operator
+action that issues a fresh, short-lived human-spectator capability when a listed
+match is reopened. Raw capabilities are never written to the match index. If
+the server stops during a live agent match, startup preserves the entry as
+`interrupted`; it does not pretend that the abandoned agent process is live.
 
 ## Current milestone boundary
 

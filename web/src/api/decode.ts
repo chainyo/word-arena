@@ -2,6 +2,8 @@ import {
   type AgentCatalogEntry,
   type AgentHarnessId,
   type AgentMatchActivity,
+  type AgentMatchList,
+  type AgentMatchRecovery,
   type AgentMatchStatus,
   type AgentSeatSelection,
   type AgentSeatStatus,
@@ -491,17 +493,69 @@ function agentMatchStatusData(value: unknown): AgentMatchStatus {
   }
   return {
     gameId: string(item.game_id, "agent match status.game_id"),
+    language: literal(
+      item.language,
+      ["english", "french"],
+      "agent match status.language"
+    ),
+    mode: literal(
+      item.mode,
+      ["competitive", "practice"],
+      "agent match status.mode"
+    ),
     phase: literal(
       item.phase,
       ["active", "finished"],
       "agent match status.phase"
     ),
+    orchestration: literal(
+      item.orchestration,
+      ["active", "finished", "interrupted"],
+      "agent match status.orchestration"
+    ),
     version: integer(item.version, "agent match status.version"),
     currentSeat: seat(item.current_seat, "agent match status.current_seat"),
+    scores: pair(item.scores, "agent match status.scores"),
+    createdAtUnixMs: integer(
+      item.created_at_unix_ms,
+      "agent match status.created_at_unix_ms"
+    ),
+    updatedAtUnixMs: integer(
+      item.updated_at_unix_ms,
+      "agent match status.updated_at_unix_ms"
+    ),
     seats: [
       agentSeatStatus(seats[0], "agent match status.seats[0]"),
       agentSeatStatus(seats[1], "agent match status.seats[1]"),
     ],
+  }
+}
+
+export function decodeAgentMatchList(value: unknown): AgentMatchList {
+  const envelope = record(value, "agent match list envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const data = record(envelope.data, "agent match list")
+  return {
+    matches: array(data.matches, "agent match list.matches").map(
+      agentMatchStatusData
+    ),
+  }
+}
+
+export function decodeAgentMatchRecovery(value: unknown): AgentMatchRecovery {
+  const envelope = record(value, "agent match recovery envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const data = record(envelope.data, "agent match recovery")
+  return {
+    gameId: string(data.game_id, "agent match recovery.game_id"),
+    spectatorCapability: string(
+      data.spectator_capability,
+      "agent match recovery.spectator_capability"
+    ),
   }
 }
 
