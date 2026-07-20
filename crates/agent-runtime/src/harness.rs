@@ -526,6 +526,7 @@ impl NativeHarnessDriver {
             .await?;
         let mut stdout = Vec::new();
         let mut stderr_bytes = 0_u64;
+        let mut stderr_classification = NativeStderrClassification::default();
         loop {
             let event = {
                 let process = self
@@ -551,12 +552,14 @@ impl NativeHarnessDriver {
                 }
                 ProcessEvent::Stderr(bytes) => {
                     stderr_bytes = stderr_bytes.saturating_add(bytes.len() as u64);
+                    stderr_classification.observe(&bytes);
                 }
                 ProcessEvent::Exited(exit) => {
                     self.process = None;
                     return Ok(CapturedProcess {
                         stdout,
                         stderr_bytes,
+                        stderr_classification,
                         exit,
                     });
                 }
@@ -589,6 +592,7 @@ impl NativeHarnessDriver {
             }
         };
         if !captured.exit.success {
+            self.failed_process_diagnostic(&captured);
             self.mark_crashed(captured.exit.clone());
             return Err(DriverError::HarnessExit {
                 harness: self.kind.name(),
@@ -746,6 +750,7 @@ impl NativeHarnessDriver {
             }
         };
         if !captured.exit.success {
+            self.failed_process_diagnostic(&captured);
             self.mark_crashed(captured.exit.clone());
             return Err(DriverError::HarnessExit {
                 harness: self.kind.name(),
@@ -791,6 +796,42 @@ impl NativeHarnessDriver {
         });
         self.transition(DriverLifecycleState::Ready);
         Ok(output)
+    }
+
+    fn failed_process_diagnostic(&mut self, captured: &CapturedProcess) {
+        if captured.stderr_bytes == 0 {
+            return;
+        }
+        let (code, summary) = match captured.stderr_classification {
+            NativeStderrClassification::SandboxDenied => (
+                "harness_sandbox_denied",
+                "was blocked by the local process sandbox",
+            ),
+            NativeStderrClassification::TlsTrustFailed => (
+                "harness_tls_trust_failed",
+                "could not establish provider TLS trust inside the local sandbox",
+            ),
+            NativeStderrClassification::AuthenticationFailed => (
+                "harness_authentication_failed",
+                "could not authenticate the provider or required MCP session",
+            ),
+            NativeStderrClassification::McpInitializationFailed => (
+                "harness_mcp_initialization_failed",
+                "could not initialize the required Word Arena MCP session",
+            ),
+            NativeStderrClassification::Unclassified => (
+                "harness_stderr_redacted",
+                "exited after emitting private diagnostics",
+            ),
+        };
+        self.diagnostic(
+            code,
+            format!(
+                "{} {summary}; {} stderr bytes were redacted",
+                self.kind.name(),
+                captured.stderr_bytes
+            ),
+        );
     }
 }
 
@@ -885,7 +926,42 @@ impl AgentDriver for NativeHarnessDriver {
 struct CapturedProcess {
     stdout: Vec<u8>,
     stderr_bytes: u64,
+    stderr_classification: NativeStderrClassification,
     exit: ExitStatus,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+enum NativeStderrClassification {
+    #[default]
+    Unclassified,
+    McpInitializationFailed,
+    AuthenticationFailed,
+    TlsTrustFailed,
+    SandboxDenied,
+}
+
+impl NativeStderrClassification {
+    fn observe(&mut self, bytes: &[u8]) {
+        let observed = if contains_bytes(bytes, b"Operation not permitted") {
+            Self::SandboxDenied
+        } else if contains_bytes(bytes, b"UnknownIssuer") {
+            Self::TlsTrustFailed
+        } else if contains_bytes(bytes, b"HTTP 401")
+            || contains_bytes(bytes, b"AuthorizationRequired")
+            || contains_bytes(bytes, b"authentication failed")
+        {
+            Self::AuthenticationFailed
+        } else if contains_bytes(bytes, b"required MCP servers failed to initialize") {
+            Self::McpInitializationFailed
+        } else {
+            Self::Unclassified
+        };
+        *self = (*self).max(observed);
+    }
+}
+
+fn contains_bytes(value: &[u8], needle: &[u8]) -> bool {
+    value.windows(needle.len()).any(|window| window == needle)
 }
 
 #[derive(Debug)]
@@ -1221,4 +1297,31 @@ fn finish_normalization(
         visible_output: visible_output.unwrap_or_default(),
         tool_calls,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NativeStderrClassification;
+
+    #[test]
+    fn classifies_private_native_failures_without_retaining_their_text() {
+        let mut classification = NativeStderrClassification::default();
+        classification.observe(b"required MCP servers failed to initialize");
+        assert_eq!(
+            classification,
+            NativeStderrClassification::McpInitializationFailed
+        );
+
+        classification.observe(b"required MCP server returned HTTP 401");
+        assert_eq!(
+            classification,
+            NativeStderrClassification::AuthenticationFailed
+        );
+
+        classification.observe(b"invalid peer certificate: UnknownIssuer");
+        assert_eq!(classification, NativeStderrClassification::TlsTrustFailed);
+
+        classification.observe(b"Error: Operation not permitted (os error 1)");
+        assert_eq!(classification, NativeStderrClassification::SandboxDenied);
+    }
 }

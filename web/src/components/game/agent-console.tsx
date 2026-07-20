@@ -68,7 +68,6 @@ export function AgentConsole({
         seat ? event.seat === seat : event.seat === undefined
       )
       .slice(-24)
-      .reverse()
 
     return (
       <ol

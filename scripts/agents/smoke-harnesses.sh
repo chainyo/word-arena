@@ -37,7 +37,7 @@ fi
 prompt='Reply with exactly WORD_ARENA_READY. Do not read, write, or execute anything.'
 case "$harness" in
   codex)
-    "${WORD_ARENA_CODEX_BIN:-codex}" exec --ephemeral --sandbox read-only --ask-for-approval never "$prompt"
+    "${WORD_ARENA_CODEX_BIN:-codex}" --ask-for-approval never exec --ephemeral --sandbox read-only "$prompt"
     ;;
   claude_code)
     "${WORD_ARENA_CLAUDE_BIN:-claude}" --print --permission-mode plan "$prompt"
