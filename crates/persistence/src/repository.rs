@@ -92,7 +92,7 @@ impl SqliteGameRepository {
         if inserted.rows_affected() != 1 {
             return Err(RepositoryError::Unavailable);
         }
-        for seat in [1_i64, 2] {
+        for seat in 1..=i64::try_from(state.scores.len()).map_err(|_| RepositoryError::Corrupt)? {
             sqlx::query(
                 "INSERT INTO seats (
                     game_id, seat_number, participant_kind, created_at_ms
@@ -719,14 +719,13 @@ async fn load_deadline(
         .bind(i64::try_from(version).map_err(|_| RepositoryError::Corrupt)?)
         .fetch_optional(pool).await.map_err(map_read)?;
     row.map(|row| {
-        let seat = match row
+        let seat_number = row
             .try_get::<i64, _>("seat_number")
-            .map_err(|_| RepositoryError::Corrupt)?
-        {
-            1 => Seat::One,
-            2 => Seat::Two,
-            _ => return Err(RepositoryError::Corrupt),
-        };
+            .map_err(|_| RepositoryError::Corrupt)?;
+        let seat = u8::try_from(seat_number)
+            .ok()
+            .and_then(Seat::from_number)
+            .ok_or(RepositoryError::Corrupt)?;
         Ok(TurnDeadline {
             turn: version,
             seat,
@@ -920,10 +919,7 @@ const fn phase_name(phase: GamePhase) -> &'static str {
 }
 
 const fn seat_number(seat: word_arena_engine::Seat) -> i64 {
-    match seat {
-        word_arena_engine::Seat::One => 1,
-        word_arena_engine::Seat::Two => 2,
-    }
+    seat.number() as i64
 }
 
 fn nonnegative_u64(value: i64) -> Result<u64, RepositoryError> {

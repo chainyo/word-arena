@@ -14,8 +14,9 @@ cargo run -p word-arena-server
 bun run --cwd web dev
 ```
 
-Open `http://127.0.0.1:5173`, choose an available CLI for each seat, optionally
-replace one seat with a human, and select **Start match**. Agent-versus-agent
+Open `http://127.0.0.1:5173`, choose an available CLI for each of the two
+default seats, optionally add seats three and four or replace one seat with a
+human, and select **Start match**. Agent-versus-agent
 opens the trusted human spectator view. Agent-versus-human opens the private
 player view for the selected human seat. The same page lists current matches in
 **Live** and finished or interrupted matches in **History**. Selecting a row
@@ -58,7 +59,7 @@ workspace, or rejected startup ends the match instead of leaving it stalled.
 Agents receive their own rack and public board through their seat-scoped MCP
 session. They never receive the opponent rack, spectator capability,
 administrator snapshot, future bag order, provider credentials belonging to
-another seat, or browser-held capabilities. The human spectator may see both
+another seat, or browser-held capabilities. The human spectator may see all
 current racks but not future bag order.
 
 The server stores only a versioned, privacy-safe match status snapshot in the

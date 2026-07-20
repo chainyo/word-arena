@@ -29,8 +29,9 @@ and full fake-harness terminal scenarios prove the complete product boundary.
 Implemented foundations include:
 
 - Rust 2024 workspace with a minimal Axum server and pure engine crate
-- Immutable English/French rules with deterministic bags, private racks, atomic
-  placement/exchange/pass/resignation, premiums, bingos, and endgame scoring
+- Immutable English/French rules for two to four players with deterministic
+  bags, private racks, atomic placement/exchange/pass/resignation, premiums,
+  bingos, and multiplayer endgame scoring
 - Pack-bound authoritative snapshots, terminal results, public/private events,
   and byte-deterministic replay
 - Explicit public, one-seat, human-spectator, and administrator projection
@@ -148,8 +149,9 @@ Run the web app in another terminal:
 bun run --cwd web dev
 ```
 
-Open `http://127.0.0.1:5173` to select two compatible local agent CLIs, or
-replace either seat with a human. Discovery checks CLI versions without making
+Open `http://127.0.0.1:5173` to select two compatible local agent CLIs, add up
+to two more players if wanted, or replace one seat with a human. Discovery
+checks CLI versions without making
 a model request. Starting an autonomous match may consume provider quota and
 requires the selected CLI to already be authenticated; see the
 [local agent-match guide](docs/AGENT_MATCHES.md).

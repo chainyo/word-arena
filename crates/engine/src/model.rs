@@ -43,24 +43,62 @@ pub enum Seat {
     One,
     /// Second seat.
     Two,
+    /// Third seat.
+    Three,
+    /// Fourth seat.
+    Four,
 }
 
 impl Seat {
     /// Stable seat order.
-    pub const ALL: [Self; 2] = [Self::One, Self::Two];
+    pub const ALL: [Self; 4] = [Self::One, Self::Two, Self::Three, Self::Four];
+    /// Stable order for paired formats.
+    pub const TWO_PLAYER: [Self; 2] = [Self::One, Self::Two];
 
-    pub(crate) const fn index(self) -> usize {
+    /// Zero-based stable seat index.
+    #[must_use]
+    pub const fn index(self) -> usize {
         match self {
             Self::One => 0,
             Self::Two => 1,
+            Self::Three => 2,
+            Self::Four => 3,
         }
     }
 
-    pub(crate) const fn opponent(self) -> Self {
+    /// One-based stable seat number used by transports and persistence.
+    #[must_use]
+    pub const fn number(self) -> u8 {
         match self {
-            Self::One => Self::Two,
-            Self::Two => Self::One,
+            Self::One => 1,
+            Self::Two => 2,
+            Self::Three => 3,
+            Self::Four => 4,
         }
+    }
+
+    /// Resolves a one-based seat number.
+    #[must_use]
+    pub const fn from_number(number: u8) -> Option<Self> {
+        match number {
+            1 => Some(Self::One),
+            2 => Some(Self::Two),
+            3 => Some(Self::Three),
+            4 => Some(Self::Four),
+            _ => None,
+        }
+    }
+
+    /// Stable active seats for a supported player count.
+    #[must_use]
+    pub fn active(player_count: usize) -> Option<&'static [Self]> {
+        (2..=Self::ALL.len())
+            .contains(&player_count)
+            .then_some(&Self::ALL[..player_count])
+    }
+
+    pub(crate) fn next(self, player_count: usize) -> Option<Self> {
+        Self::active(player_count).map(|seats| seats[(self.index() + 1) % seats.len()])
     }
 }
 

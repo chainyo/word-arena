@@ -65,6 +65,14 @@ fn web_api_contract_matches_authoritative_server_constants() {
     );
     assert_eq!(contract["replay_schema_version"], REPLAY_SCHEMA_VERSION);
     assert_eq!(
+        contract["player_count"],
+        json!({"minimum":2,"default":2,"maximum":4})
+    );
+    assert_eq!(
+        contract["seat_values"],
+        json!(["one", "two", "three", "four"])
+    );
+    assert_eq!(
         contract["browser_websocket_protocol"],
         BROWSER_WEBSOCKET_PROTOCOL
     );
@@ -164,7 +172,9 @@ async fn agent_catalog_and_match_creation_fail_closed() {
                 "language":"english",
                 "seats":[
                     {"kind":"agent","harness":"codex"},
-                    {"kind":"human","name":"Human"}
+                    {"kind":"human","name":"Human"},
+                    {"kind":"agent","harness":"claude_code"},
+                    {"kind":"agent","harness":"cline"}
                 ],
                 "idempotency_key":"unavailable-agent"
             }),
@@ -224,7 +234,9 @@ async fn local_match_list_and_spectator_recovery_are_refresh_safe() {
                 "mode":"practice",
                 "seats":[
                     {"kind":"agent","harness":"codex"},
-                    {"kind":"human","name":"Human"}
+                    {"kind":"human","name":"Human"},
+                    {"kind":"agent","harness":"claude_code"},
+                    {"kind":"agent","harness":"cline"}
                 ],
                 "idempotency_key":"refresh-safe"
             }),
@@ -234,6 +246,17 @@ async fn local_match_list_and_spectator_recovery_are_refresh_safe() {
     assert_eq!(created.status(), StatusCode::OK);
     let created = response_json(created).await;
     let game_id = created["data"]["game_id"].as_str().unwrap();
+    assert_eq!(
+        created["data"]["public"]["state"]["scores"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert_eq!(
+        created["data"]["status"]["seats"].as_array().unwrap().len(),
+        4
+    );
 
     let listed = app
         .clone()
@@ -267,6 +290,13 @@ async fn local_match_list_and_spectator_recovery_are_refresh_safe() {
         .await
         .unwrap();
     assert_eq!(reopened.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(reopened).await["data"]["seats"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
 }
 
 #[tokio::test]

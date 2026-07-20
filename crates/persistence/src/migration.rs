@@ -101,6 +101,13 @@ pub static MIGRATOR: LazyLock<Migrator> = LazyLock::new(|| {
             include_str!("../migrations/0013_local_agent_matches.sql").into_sql_str(),
             false,
         ),
+        Migration::new(
+            14,
+            "four player seats".into(),
+            MigrationType::Simple,
+            include_str!("../migrations/0014_four_player_seats.sql").into_sql_str(),
+            true,
+        ),
     ])
 });
 
@@ -186,14 +193,14 @@ mod tests {
         .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+        assert_eq!(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
         let schema_version = sqlx::query_scalar::<_, String>(
             "SELECT value FROM schema_metadata WHERE key = 'application_schema_version'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(schema_version, "13");
+        assert_eq!(schema_version, "14");
 
         let tables = sqlx::query_scalar::<_, String>(
             "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
@@ -271,7 +278,7 @@ mod tests {
             sqlx::query(
                 "INSERT INTO seats (
                 game_id, seat_number, participant_kind, created_at_ms
-             ) VALUES ('game', 3, 'unassigned', 1)",
+             ) VALUES ('game', 5, 'unassigned', 1)",
             )
             .execute(&pool)
             .await

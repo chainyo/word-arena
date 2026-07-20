@@ -9,9 +9,9 @@ import type {
 export type ReplayFrame = {
   sequence: number
   board: Array<BoardTile | null>
-  scores: [number, number]
+  scores: number[]
   currentPlayer: Seat
-  rackCounts: [number, number]
+  rackCounts: number[]
   bagCount: number
   phase: "active" | "finished"
   event?: GameEvent
@@ -33,16 +33,22 @@ function object(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
-function numberPair(value: unknown): [number, number] | undefined {
+function playerNumbers(value: unknown): number[] | undefined {
   return Array.isArray(value) &&
-    value.length === 2 &&
+    value.length >= 2 &&
+    value.length <= 4 &&
     value.every((item) => typeof item === "number")
-    ? [value[0] as number, value[1] as number]
+    ? (value as number[])
     : undefined
 }
 
 function seat(value: unknown): Seat | undefined {
-  return value === "one" || value === "two" ? value : undefined
+  return value === "one" ||
+    value === "two" ||
+    value === "three" ||
+    value === "four"
+    ? value
+    : undefined
 }
 
 function integer(value: unknown): number | undefined {
@@ -68,7 +74,7 @@ export function replayFrame(
     if (event.sequence > throughSequence) break
     const kind = event.kind
     if (kind.type === "created") {
-      frame.rackCounts = numberPair(kind.rack_counts) ?? frame.rackCounts
+      frame.rackCounts = playerNumbers(kind.rack_counts) ?? frame.rackCounts
       frame.bagCount = integer(kind.bag_count) ?? frame.bagCount
     } else if (kind.type === "move_played") {
       const placements = Array.isArray(kind.placements) ? kind.placements : []
@@ -97,8 +103,9 @@ export function replayFrame(
           }
         }
       }
-      frame.scores = numberPair(kind.scores_after) ?? frame.scores
-      frame.rackCounts = numberPair(kind.rack_counts_after) ?? frame.rackCounts
+      frame.scores = playerNumbers(kind.scores_after) ?? frame.scores
+      frame.rackCounts =
+        playerNumbers(kind.rack_counts_after) ?? frame.rackCounts
       frame.bagCount = integer(kind.bag_count_after) ?? frame.bagCount
       frame.currentPlayer = seat(kind.next_player) ?? frame.currentPlayer
       if (kind.result !== null && kind.result !== undefined) {
@@ -110,7 +117,8 @@ export function replayFrame(
         frame.phase = "finished"
       }
     } else if (kind.type === "exchanged") {
-      frame.rackCounts = numberPair(kind.rack_counts_after) ?? frame.rackCounts
+      frame.rackCounts =
+        playerNumbers(kind.rack_counts_after) ?? frame.rackCounts
       frame.bagCount = integer(kind.bag_count_after) ?? frame.bagCount
       frame.currentPlayer = seat(kind.next_player) ?? frame.currentPlayer
       if (kind.result !== null && kind.result !== undefined) {
@@ -118,7 +126,7 @@ export function replayFrame(
       }
     } else if (kind.type === "resigned") {
       const result = object(kind.result)
-      frame.scores = numberPair(result?.scores) ?? frame.scores
+      frame.scores = playerNumbers(result?.scores) ?? frame.scores
       frame.phase = "finished"
     }
     frame.sequence = event.sequence

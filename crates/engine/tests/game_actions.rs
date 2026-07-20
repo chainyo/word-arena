@@ -1,8 +1,8 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use word_arena_engine::{
-    Coordinate, Game, GameError, GameEventKind, GamePhase, GameSeed, Move, PhysicalTile, Placement,
-    Rack, Ruleset, Score, Seat, TerminalReason, Tile, TileFace, TileId, WordValidator,
+    Coordinate, Game, GameError, GameEventKind, GameMode, GamePhase, GameSeed, Move, PhysicalTile,
+    Placement, Rack, Ruleset, Score, Seat, TerminalReason, Tile, TileFace, TileId, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 
@@ -11,6 +11,38 @@ struct FixtureLexicon {
     identity: PackIdentity,
     words: BTreeSet<String>,
     accept_all: bool,
+}
+
+#[test]
+fn four_player_turns_rotate_and_replay_with_four_private_racks() {
+    let ruleset = Ruleset::english_v1();
+    let lexicon = validator(&ruleset, &[]);
+    let mut game = Game::create_with_mode_and_players(
+        "four-players",
+        ruleset,
+        Some(Arc::clone(&lexicon)),
+        numbered_seed(404),
+        GameMode::Competitive,
+        4,
+    )
+    .unwrap();
+
+    assert_eq!(game.public_state().scores, vec![Score::ZERO; 4]);
+    assert_eq!(game.public_state().rack_counts, vec![7; 4]);
+    assert_eq!(game.human_spectator_projection().racks.len(), 4);
+
+    for (version, seat) in Seat::ALL.into_iter().enumerate() {
+        game.apply_move(seat, version as u64, Move::Pass).unwrap();
+    }
+
+    assert_eq!(game.public_state().current_player, Seat::One);
+    assert_eq!(game.public_state().version, 4);
+    game.apply_move(Seat::One, 4, Move::Pass).unwrap();
+    game.apply_move(Seat::Two, 5, Move::Pass).unwrap();
+    let bundle = game.replay_bundle().unwrap();
+    let replayed = Game::replay(&bundle, Some(lexicon)).unwrap();
+    assert_eq!(replayed.public_state(), game.public_state());
+    assert_eq!(replayed.human_spectator_projection().racks.len(), 4);
 }
 
 impl WordValidator for FixtureLexicon {
@@ -34,7 +66,7 @@ fn passes_finish_at_the_scoreless_limit_and_replay_exactly() {
         numbered_seed(7),
     )
     .unwrap();
-    let opening_scores = game.public_state().scores;
+    let opening_scores = game.public_state().scores.clone();
     for version in 0..6 {
         let seat = if version % 2 == 0 {
             Seat::One
@@ -197,7 +229,7 @@ fn resignation_is_explicit_immutable_and_rejects_every_later_action() {
         numbered_seed(164),
     )
     .unwrap();
-    let scores_before = game.public_state().scores;
+    let scores_before = game.public_state().scores.clone();
     let event = game.apply_move(Seat::One, 0, Move::Resign).unwrap();
     let GameEventKind::Resigned { result, .. } = event.kind else {
         panic!("expected resignation event");
@@ -304,13 +336,13 @@ fn natural_bag_exhaustion_awards_opponent_deductions_and_replays() {
     )
     .unwrap();
     let rows = [7, 8, 9, 10, 11, 12, 13, 14, 6, 5, 4, 3, 2, 1];
-    let mut before_final = [Score::ZERO, Score::ZERO];
+    let mut before_final = vec![Score::ZERO, Score::ZERO];
     let mut remaining_value = 0;
     let mut final_move_score = 0;
     for (index, row) in rows.into_iter().enumerate() {
         let player = game.public_state().current_player;
         if index == 13 {
-            before_final = game.public_state().scores;
+            before_final = game.public_state().scores.clone();
             remaining_value = rack_value(&ruleset, game.rack(Seat::One));
         }
         let placements = game
@@ -437,7 +469,7 @@ fn seed_with_equal_rack_values_and_blank(ruleset: &Ruleset) -> GameSeed {
             seed.clone(),
         )
         .unwrap();
-        let has_blank = Seat::ALL.iter().any(|seat| {
+        let has_blank = Seat::TWO_PLAYER.iter().any(|seat| {
             game.rack(*seat)
                 .tiles()
                 .iter()
@@ -478,7 +510,7 @@ fn assert_terminal_replay(game: &Game, lexicon: Arc<dyn WordValidator>) {
     let replayed = Game::replay(&decoded, Some(lexicon)).unwrap();
     assert_eq!(replayed.public_state(), game.public_state());
     assert_eq!(replayed.events(), game.events());
-    for seat in Seat::ALL {
+    for seat in Seat::TWO_PLAYER {
         assert_eq!(
             replayed.private_events(seat).collect::<Vec<_>>(),
             game.private_events(seat).collect::<Vec<_>>()

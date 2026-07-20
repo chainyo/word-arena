@@ -511,10 +511,23 @@ impl ApplicationService {
         mode: GameMode,
         idempotency_key: IdempotencyKey,
     ) -> CreateGameCommand {
+        self.prepare_create_game_with_mode_and_players(language, mode, 2, idempotency_key)
+    }
+
+    /// Allocates a command with an explicit mode and active player count.
+    #[must_use]
+    pub fn prepare_create_game_with_mode_and_players(
+        &self,
+        language: word_arena_engine::Language,
+        mode: GameMode,
+        player_count: u8,
+        idempotency_key: IdempotencyKey,
+    ) -> CreateGameCommand {
         CreateGameCommand {
             game_id: self.ids.next_game_id(),
             language,
             mode,
+            player_count,
             idempotency_key,
         }
     }
@@ -533,6 +546,7 @@ impl ApplicationService {
         let payload_sha256 = payload_sha256(&CreatePayload {
             language: command.language,
             mode: command.mode,
+            player_count: command.player_count,
         })?;
         match self
             .repository
@@ -554,12 +568,13 @@ impl ApplicationService {
             }
         })?;
         let created_at = self.clock.now();
-        let game = Game::create_with_mode(
+        let game = Game::create_with_mode_and_players(
             command.game_id.as_str(),
             ruleset,
             Some(lexicon),
             self.seeds.next_seed(),
             command.mode,
+            usize::from(command.player_count),
         )?;
         let record = StoredGame {
             game_id: command.game_id.clone(),
@@ -1172,6 +1187,7 @@ struct ActionPayload<'a> {
 struct CreatePayload {
     language: word_arena_engine::Language,
     mode: GameMode,
+    player_count: u8,
 }
 
 #[derive(Serialize)]
@@ -1218,8 +1234,9 @@ fn outcome_result(outcome: ActionOutcome) -> Result<GameActionResult, Applicatio
 }
 
 fn created_game(result: PersistedCreateResult) -> CreatedGame {
+    let player_count = result.public.state.scores.len();
     CreatedGame {
-        access: CreatedGameAccess::new(&result.game_id),
+        access: CreatedGameAccess::new(&result.game_id, player_count),
         game_id: result.game_id,
         created_at: result.created_at,
         public: result.public,

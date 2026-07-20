@@ -74,7 +74,7 @@ impl CompetitiveSeatCredential {
 impl private::Sealed for CompetitiveSeatCredential {}
 impl Authorizes<SeatGameQuery> for CompetitiveSeatCredential {}
 
-/// Human-operator spectator credential with access to both current racks.
+/// Human-operator spectator credential with access to all current racks.
 ///
 /// Only [`crate::ApplicationRuntime`] can issue this type. Agent integrations
 /// receive [`CompetitiveGameCredentials`], which cannot represent it.
@@ -143,18 +143,26 @@ pub struct CompetitiveGameCredentials {
 pub struct CreatedGameAccess {
     /// Public observer binding.
     pub public: PublicViewerCredential,
-    /// Seat-one binding.
+    /// Backward-compatible private binding for the first seat.
     pub seat_one: CompetitiveSeatCredential,
-    /// Seat-two binding.
+    /// Backward-compatible private binding for the second seat.
     pub seat_two: CompetitiveSeatCredential,
+    /// Private seat bindings in stable active-seat order.
+    pub seats: Vec<CompetitiveSeatCredential>,
 }
 
 impl CreatedGameAccess {
-    pub(crate) fn new(game_id: &GameId) -> Self {
+    pub(crate) fn new(game_id: &GameId, player_count: usize) -> Self {
+        let seats = Seat::active(player_count)
+            .unwrap_or(&Seat::TWO_PLAYER)
+            .iter()
+            .map(|&seat| CompetitiveSeatCredential::new(game_id, seat))
+            .collect::<Vec<_>>();
         Self {
             public: PublicViewerCredential::new(game_id),
-            seat_one: CompetitiveSeatCredential::new(game_id, Seat::One),
-            seat_two: CompetitiveSeatCredential::new(game_id, Seat::Two),
+            seat_one: seats[0].clone(),
+            seat_two: seats[1].clone(),
+            seats,
         }
     }
 
@@ -163,10 +171,13 @@ impl CreatedGameAccess {
     pub fn competitive(&self, seat: Seat) -> CompetitiveGameCredentials {
         CompetitiveGameCredentials {
             public: self.public.clone(),
-            seat: match seat {
-                Seat::One => self.seat_one.clone(),
-                Seat::Two => self.seat_two.clone(),
-            },
+            seat: self.seats[seat.index()].clone(),
         }
+    }
+
+    /// Returns one active private-seat credential.
+    #[must_use]
+    pub fn seat(&self, seat: Seat) -> Option<&CompetitiveSeatCredential> {
+        self.seats.get(seat.index())
     }
 }

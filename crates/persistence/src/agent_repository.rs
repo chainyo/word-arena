@@ -546,11 +546,12 @@ impl SqliteAgentAttributionRepository {
         .map_err(map_storage)?;
         rows.into_iter()
             .map(|row| {
-                let seat = match row.try_get::<i64, _>("seat_number") {
-                    Ok(1) => Seat::One,
-                    Ok(2) => Seat::Two,
-                    _ => return Err(AgentAttributionError::Corrupt),
-                };
+                let seat = row
+                    .try_get::<i64, _>("seat_number")
+                    .ok()
+                    .and_then(|number| u8::try_from(number).ok())
+                    .and_then(Seat::from_number)
+                    .ok_or(AgentAttributionError::Corrupt)?;
                 let manifest_sha256: String = row
                     .try_get("manifest_sha256")
                     .map_err(|_| AgentAttributionError::Corrupt)?;
@@ -677,10 +678,7 @@ fn validate_text(value: &str) -> Result<(), AgentAttributionError> {
 }
 
 const fn seat_number(seat: Seat) -> i64 {
-    match seat {
-        Seat::One => 1,
-        Seat::Two => 2,
-    }
+    seat.number() as i64
 }
 
 fn map_insert(error: sqlx::Error) -> AgentAttributionError {

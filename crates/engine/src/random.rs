@@ -85,7 +85,7 @@ pub struct InitialDeal {
     algorithm: RngAlgorithm,
     commitment: SeedCommitment,
     bag: Bag,
-    racks: [Rack; 2],
+    racks: Vec<Rack>,
 }
 
 impl fmt::Debug for InitialDeal {
@@ -135,7 +135,7 @@ impl InitialDeal {
         verify_tile_conservation(ruleset, &self.bag, &self.racks, &[])
     }
 
-    pub(crate) fn into_parts(self) -> (Bag, [Rack; 2]) {
+    pub(crate) fn into_parts(self) -> (Bag, Vec<Rack>) {
         (self.bag, self.racks)
     }
 }
@@ -153,15 +153,30 @@ pub fn prepare_initial_deal(
     ruleset: &Ruleset,
     seed: &GameSeed,
 ) -> Result<InitialDeal, RandomError> {
+    prepare_initial_deal_for_players(ruleset, seed, 2)
+}
+
+/// Creates a stable deterministic opening deal for two through four seats.
+///
+/// # Errors
+///
+/// Returns [`RandomError`] when the player count or ruleset is invalid, or the
+/// physical distribution cannot be represented by stable V1 tile IDs.
+pub fn prepare_initial_deal_for_players(
+    ruleset: &Ruleset,
+    seed: &GameSeed,
+    player_count: usize,
+) -> Result<InitialDeal, RandomError> {
     ruleset
         .validate()
         .map_err(|error| RandomError::Ruleset(error.to_string()))?;
+    let seats = Seat::active(player_count).ok_or(RandomError::PlayerCount { player_count })?;
     let algorithm = RngAlgorithm::Xoshiro256StarStarV1;
     let mut tiles = build_tiles(ruleset)?;
     DeterministicRng::new(seed).shuffle(&mut tiles);
     let mut bag = Bag::new(tiles);
-    let mut racks = [Rack::default(), Rack::default()];
-    for seat in Seat::ALL {
+    let mut racks = vec![Rack::default(); player_count];
+    for &seat in seats {
         racks[seat.index()].extend(bag.draw_up_to(usize::from(ruleset.game.rack_capacity)));
     }
     let deal = InitialDeal {
@@ -195,7 +210,7 @@ pub(crate) fn return_tiles_to_bag(
 pub fn verify_tile_conservation(
     ruleset: &Ruleset,
     bag: &Bag,
-    racks: &[Rack; 2],
+    racks: &[Rack],
     board: &[PhysicalTile],
 ) -> Result<(), ConservationError> {
     let expected_total =
@@ -249,6 +264,9 @@ pub fn verify_tile_conservation(
 /// Deterministic setup failure.
 #[derive(Debug, Error)]
 pub enum RandomError {
+    /// Only the supported competitive seat range may be dealt.
+    #[error("player count {player_count} must be between 2 and 4")]
+    PlayerCount { player_count: usize },
     /// Selected immutable ruleset failed validation.
     #[error("cannot prepare deterministic bag from ruleset: {0}")]
     Ruleset(String),
@@ -539,11 +557,11 @@ mod tests {
             seed_commitment: GameSeed::from_bytes([0; 32])
                 .commitment(RngAlgorithm::Xoshiro256StarStarV1),
             board: vec![None; 225],
-            scores: [Score::ZERO, Score::ZERO],
+            scores: vec![Score::ZERO, Score::ZERO],
             current_player: Seat::One,
             version: 0,
             scoreless_turns: 0,
-            rack_counts: [7, 7],
+            rack_counts: vec![7, 7],
             bag_count: 86,
             phase: GamePhase::Active,
             result: None,

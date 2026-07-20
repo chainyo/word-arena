@@ -473,10 +473,7 @@ impl GameRepository for InMemoryGameRepository {
 }
 
 const fn test_seat_number(seat: word_arena_engine::Seat) -> u8 {
-    match seat {
-        word_arena_engine::Seat::One => 1,
-        word_arena_engine::Seat::Two => 2,
-    }
+    seat.number()
 }
 
 /// Exact-identity fixture lexicon resolver.

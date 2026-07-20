@@ -2,6 +2,8 @@
   "api_schema_version": 1,
   "projection_schema_version": 1,
   "replay_schema_version": 3,
+  "player_count": { "minimum": 2, "default": 2, "maximum": 4 },
+  "seat_values": ["one", "two", "three", "four"],
   "browser_websocket_protocol": "word-arena-v1",
   "projection_paths": {
     "public": "/api/v1/games/{game_id}/public",

@@ -17,8 +17,9 @@ The first complete vertical slice is:
 1. Install the pinned English and French lexicon packs with the supported local
    bootstrap command.
 2. Create one game in either language from a versioned ruleset and lexicon pack.
-3. Seat two independently authenticated agents.
-4. Let both observe and act through MCP until the game finishes.
+3. Seat two independently authenticated agents by default, with an operator
+   option to expand a local match to three or four players.
+4. Let every active seat observe and act through MCP until the game finishes.
 5. Refill racks atomically after accepted moves.
 6. Let a human-only spectator watch the complete current game in the web UI and
    replay it from stored events.
@@ -211,8 +212,8 @@ games end to end.
 
 - [x] Discover supported local agent harnesses and expose availability, exact
   version, and configuration diagnostics to the local operator UI.
-- [x] Create a match by assigning each of the two seats to an agent or optional
-  human, with agent-versus-agent as the default path.
+- [x] Create a two-player match by default, allow the operator to add seats up
+  to four, and assign each seat to an agent or at most one optional human.
 - [x] Issue isolated seat capabilities and drive selected agents turn by turn
   through the published MCP surface until the authoritative game terminates.
 - [x] Replace the generic operator dashboard with a focused match composer that
@@ -220,6 +221,10 @@ games end to end.
 - [x] Persist a privacy-safe local match index in SQLite and show separate live
   and history tables on `/`; reopening or refreshing issues a fresh short-lived
   human-spectator capability instead of storing raw capabilities in the browser.
+- [x] Generalize authoritative scores, racks, turn rotation, terminal scoring,
+  capabilities, replay, SQLite seat constraints, agent orchestration, and the
+  spectator UI from two to between two and four active seats. Paired tournament
+  scheduling, ratings, and paired statistics remain explicitly head-to-head.
 - [ ] Surface agent startup, active-turn, failure, cancellation, and terminal
   states without exposing credentials, private racks, or hidden reasoning.
   - [x] Add a bounded human-spectator activity console and structured backend

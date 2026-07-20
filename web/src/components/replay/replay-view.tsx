@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { SEATS, seatLabel } from "@/lib/game-labels"
 import {
   filterReplayEvents,
   formatStatistic,
@@ -336,18 +337,17 @@ export function ReplayView({
             <CardDescription>{frame.phase} recorded state</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 text-center">
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">Seat one</p>
-              <p className="font-heading text-2xl font-semibold">
-                {frame.scores[0]}
-              </p>
-            </div>
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">Seat two</p>
-              <p className="font-heading text-2xl font-semibold">
-                {frame.scores[1]}
-              </p>
-            </div>
+            {frame.scores.map((score, index) => (
+              <div
+                className="rounded-lg border p-3"
+                key={SEATS[index] ?? index}
+              >
+                <p className="text-xs text-muted-foreground">
+                  {SEATS[index] ? seatLabel(SEATS[index]) : `Seat ${index + 1}`}
+                </p>
+                <p className="font-heading text-2xl font-semibold">{score}</p>
+              </div>
+            ))}
           </CardContent>
         </Card>
         <Card size="sm">

@@ -12,6 +12,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  activeSeatColorClasses,
+  seatBorderClasses,
+  seatColorClasses,
+  seatRingClasses,
+} from "@/lib/game-labels"
 import { cn } from "@/lib/utils"
 
 type PlayerCardProps = {
@@ -44,8 +50,8 @@ export function PlayerCard({
       aria-current={active ? "true" : undefined}
       className={cn(
         "border-l-4",
-        seat === "one" ? "border-l-seat-one/65" : "border-l-seat-two/65",
-        active && (seat === "one" ? "ring-seat-one/45" : "ring-seat-two/45")
+        seatBorderClasses[seat],
+        active && seatRingClasses[seat]
       )}
       size="sm"
     >
@@ -56,18 +62,16 @@ export function PlayerCard({
               agent={harness}
               className={cn(
                 "shrink-0",
-                seat === "one"
-                  ? "border-seat-one/35 bg-seat-one/15"
-                  : "border-seat-two/35 bg-seat-two/15",
-                active && (seat === "one" ? "bg-seat-one/30" : "bg-seat-two/30")
+                seatColorClasses[seat],
+                active && activeSeatColorClasses[seat]
               )}
             />
           ) : (
             <span
               className={cn(
                 "grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground",
-                seat === "one" ? "bg-seat-one/15" : "bg-seat-two/15",
-                active && (seat === "one" ? "bg-seat-one/30" : "bg-seat-two/30")
+                seatColorClasses[seat],
+                active && activeSeatColorClasses[seat]
               )}
             >
               {human ? (

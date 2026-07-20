@@ -7,8 +7,8 @@ use word_arena_application::{
     PersistedCreateResult, RepositoryError, StoredGame, TurnDeadline, UnixMillis,
 };
 use word_arena_engine::{
-    Coordinate, Game, GamePhase, GameSeed, Move, PhysicalTile, Placement, Ruleset, Seat, Tile,
-    TileFace, WordValidator,
+    Coordinate, Game, GameMode, GamePhase, GameSeed, Move, PhysicalTile, Placement, Ruleset, Seat,
+    Tile, TileFace, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
 use word_arena_persistence::{
@@ -136,6 +136,35 @@ async fn insert_load_and_metadata_are_exact() {
     assert_eq!(
         serde_json::from_slice::<PackIdentity>(&identity_bytes).unwrap(),
         game.public_state().lexicon
+    );
+}
+
+#[tokio::test]
+async fn four_player_snapshot_and_private_seats_round_trip() {
+    let database = Database::open("four-player-round-trip").await;
+    let ruleset = Ruleset::english_v1();
+    let lexicon: Arc<dyn WordValidator> = Arc::new(AcceptingLexicon(ruleset.lexicon.clone()));
+    let game_id = GameId::new("four-player").unwrap();
+    let game = Game::create_with_mode_and_players(
+        game_id.as_str(),
+        ruleset,
+        Some(lexicon),
+        numbered_seed(44),
+        GameMode::Practice,
+        4,
+    )
+    .unwrap();
+    let stored = record(&game, &game_id, UnixMillis(1_000));
+
+    database.repository.insert(stored.clone()).await.unwrap();
+    assert_eq!(database.repository.load(&game_id).await.unwrap(), stored);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM seats WHERE game_id = ?")
+            .bind(game_id.as_str())
+            .fetch_one(database.repository.pool())
+            .await
+            .unwrap(),
+        4
     );
 }
 

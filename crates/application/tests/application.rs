@@ -98,6 +98,40 @@ fn credential_query_authorization_matrix_is_exact_at_compile_time() {
 }
 
 #[tokio::test]
+async fn four_player_creation_issues_four_isolated_seat_credentials() {
+    let runtime = setup_runtime(&[Language::English]);
+    let service = runtime.service();
+    let command = service.prepare_create_game_with_mode_and_players(
+        Language::English,
+        GameMode::Practice,
+        4,
+        key("create-four"),
+    );
+    let created = service.create_game(command).await.unwrap();
+
+    assert_eq!(created.public.state.scores.len(), 4);
+    assert_eq!(created.public.state.rack_counts, vec![7; 4]);
+    assert_eq!(created.access.seats.len(), 4);
+    assert_eq!(
+        created.access.seat(Seat::Three).unwrap().seat(),
+        Seat::Three
+    );
+    assert_eq!(created.access.seat(Seat::Four).unwrap().seat(), Seat::Four);
+
+    let spectator_credential = human_spectator_credential(&runtime, &created.game_id).await;
+    let spectator = service
+        .human_spectator_game(
+            &spectator_credential,
+            HumanSpectatorGameQuery {
+                game_id: created.game_id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(spectator.game.racks.len(), 4);
+}
+
+#[tokio::test]
 async fn english_and_french_finish_through_typed_application_apis() {
     let runtime = setup_runtime(&[Language::English, Language::French]);
     let service = runtime.service();

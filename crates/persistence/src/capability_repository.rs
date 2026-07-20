@@ -285,8 +285,7 @@ async fn classify_missing_or_conflict(
 const fn encode_role(role: CapabilityRole) -> (&'static str, Option<i64>) {
     match role {
         CapabilityRole::Public => ("public", None),
-        CapabilityRole::Seat(Seat::One) => ("seat", Some(1)),
-        CapabilityRole::Seat(Seat::Two) => ("seat", Some(2)),
+        CapabilityRole::Seat(seat) => ("seat", Some(seat.number() as i64)),
         CapabilityRole::HumanSpectator => ("human_spectator", None),
         CapabilityRole::Administrator => ("administrator", None),
     }
@@ -298,8 +297,11 @@ fn decode_role(
 ) -> Result<CapabilityRole, CapabilityRepositoryError> {
     match (authority_kind, seat_number) {
         ("public", None) => Ok(CapabilityRole::Public),
-        ("seat", Some(1)) => Ok(CapabilityRole::Seat(Seat::One)),
-        ("seat", Some(2)) => Ok(CapabilityRole::Seat(Seat::Two)),
+        ("seat", Some(number)) => u8::try_from(number)
+            .ok()
+            .and_then(Seat::from_number)
+            .map(CapabilityRole::Seat)
+            .ok_or(CapabilityRepositoryError::Corrupt),
         ("human_spectator", None) => Ok(CapabilityRole::HumanSpectator),
         ("administrator", None) => Ok(CapabilityRole::Administrator),
         _ => Err(CapabilityRepositoryError::Corrupt),
@@ -331,8 +333,7 @@ const fn encode_actor(actor: AuditActor) -> (&'static str, Option<i64>) {
     match actor {
         AuditActor::System => ("system", None),
         AuditActor::Public => ("public", None),
-        AuditActor::Seat(Seat::One) => ("seat", Some(1)),
-        AuditActor::Seat(Seat::Two) => ("seat", Some(2)),
+        AuditActor::Seat(seat) => ("seat", Some(seat.number() as i64)),
         AuditActor::HumanSpectator => ("human_spectator", None),
         AuditActor::Administrator => ("administrator", None),
     }

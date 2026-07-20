@@ -47,7 +47,7 @@ only practice games may issue a rate-limited preview capability.
 - `GET /api/v1/games/{game_id}/seat` requires `observe_seat` and returns only
   the capability's fixed seat.
 - `GET /api/v1/games/{game_id}/spectator` requires
-  `observe_human_spectator` and returns both current racks but no future bag or
+  `observe_human_spectator` and returns all current racks but no future bag or
   seed.
 - `GET /api/v1/games/{game_id}/administrator` requires
   `observe_administrator` and returns the authoritative checkpoint.
