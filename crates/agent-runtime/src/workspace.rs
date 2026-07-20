@@ -1255,13 +1255,16 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), WorkspaceError> {
 }
 
 fn write_harness_configs(root: &Path, mcp_url: &str) -> Result<(), WorkspaceError> {
-    for (relative, bytes) in harness_config_payloads(mcp_url)? {
+    for (relative, bytes) in harness_config_payloads(root, mcp_url)? {
         write_private_file(&root.join(relative), &bytes)?;
     }
     Ok(())
 }
 
-fn harness_config_payloads(mcp_url: &str) -> Result<Vec<(PathBuf, Vec<u8>)>, WorkspaceError> {
+fn harness_config_payloads(
+    root: &Path,
+    mcp_url: &str,
+) -> Result<Vec<(PathBuf, Vec<u8>)>, WorkspaceError> {
     let common = json!({
         "schema_version": 1,
         "mcpServers": {
@@ -1277,8 +1280,10 @@ fn harness_config_payloads(mcp_url: &str) -> Result<Vec<(PathBuf, Vec<u8>)>, Wor
     let mut common_bytes =
         serde_json::to_vec_pretty(&common).map_err(|_| WorkspaceError::Corrupt)?;
     common_bytes.push(b'\n');
+    let workspace = serde_json::to_string(&root.join("workspace").to_string_lossy())
+        .map_err(|_| WorkspaceError::Corrupt)?;
     let codex = format!(
-        "[mcp_servers.word_arena]\nurl = \"{mcp_url}\"\nbearer_token_env_var = \"{SEAT_CAPABILITY_ENV}\"\nrequired = true\n"
+        "[mcp_servers.word_arena]\nurl = \"{mcp_url}\"\nbearer_token_env_var = \"{SEAT_CAPABILITY_ENV}\"\nrequired = true\n\n[projects.{workspace}]\ntrust_level = \"trusted\"\n"
     );
     let cli = json!({
         "schema_version": 1,
@@ -1314,7 +1319,7 @@ fn managed_config_paths(root: &Path) -> Vec<PathBuf> {
 }
 
 fn verify_harness_configs(root: &Path, mcp_url: &str, owner: u32) -> Result<(), WorkspaceError> {
-    for (relative, expected) in harness_config_payloads(mcp_url)? {
+    for (relative, expected) in harness_config_payloads(root, mcp_url)? {
         let path = root.join(relative);
         validate_private_file(&path, owner)?;
         let actual = fs::read(path).map_err(|_| WorkspaceError::Filesystem)?;

@@ -87,7 +87,10 @@ Before every process spawn, the adapter canonicalizes the working directory
 inside its seat and verifies hashes for every managed configuration file.
 The dedicated `config` directory is read-only in the process sandbox. A harness
 may write its own `state` directory, so any change to the managed Codex config
-there prevents the next process from starting.
+there prevents the next process from starting. Word Arena predeclares the exact
+isolated seat workspace as trusted in both Codex config copies during
+allocation. This keeps Codex from rewriting its managed config after the first
+turn while preserving the integrity check for later spawns.
 
 ## Verification
 
