@@ -1,6 +1,6 @@
 import { Bot, UserRound } from "lucide-react"
 
-import type { AgentHarnessId } from "@/api/types"
+import type { AgentHarnessId, Seat } from "@/api/types"
 import { AgentLogo } from "@/components/agent/agent-logo"
 import { GameClock } from "@/components/game/game-clock"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,7 @@ type PlayerCardProps = {
   deadlineAt?: number
   observedAt?: number
   score: number
+  seat: Seat
   subtitle: string
   status?: string
 }
@@ -34,13 +35,18 @@ export function PlayerCard({
   deadlineAt,
   observedAt,
   score,
+  seat,
   subtitle,
   status,
 }: PlayerCardProps) {
   return (
     <Card
       aria-current={active ? "true" : undefined}
-      className={cn(active && "ring-primary/45")}
+      className={cn(
+        "border-l-4",
+        seat === "one" ? "border-l-seat-one/65" : "border-l-seat-two/65",
+        active && (seat === "one" ? "ring-seat-one/45" : "ring-seat-two/45")
+      )}
       size="sm"
     >
       <CardHeader>
@@ -50,14 +56,18 @@ export function PlayerCard({
               agent={harness}
               className={cn(
                 "shrink-0",
-                active && "border-primary bg-primary text-primary-foreground"
+                seat === "one"
+                  ? "border-seat-one/35 bg-seat-one/15"
+                  : "border-seat-two/35 bg-seat-two/15",
+                active && (seat === "one" ? "bg-seat-one/30" : "bg-seat-two/30")
               )}
             />
           ) : (
             <span
               className={cn(
                 "grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground",
-                active && "bg-primary text-primary-foreground"
+                seat === "one" ? "bg-seat-one/15" : "bg-seat-two/15",
+                active && (seat === "one" ? "bg-seat-one/30" : "bg-seat-two/30")
               )}
             >
               {human ? (

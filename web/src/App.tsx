@@ -91,6 +91,7 @@ import {
   type MoveRecord,
   moveSummary,
 } from "@/components/game/move-history"
+import { tileOwnersFromEvents } from "@/components/game/move-ownership"
 import { PlayerCard } from "@/components/game/player-card"
 import { ReplayView } from "@/components/replay/replay-view"
 import { type Theme, useTheme } from "@/components/theme-provider"
@@ -1329,12 +1330,17 @@ function GameWorkspace({
     letter: physicalLetter(tile),
     value: values.get(physicalLetter(tile)) ?? 0,
   }))
+  const tileOwners = useMemo(
+    () => tileOwnersFromEvents(view.public.events),
+    [view.public.events]
+  )
 
   const tiles: Record<string, BoardTile> = {}
   state.board.forEach((tile, index) => {
     if (tile) {
       tiles[`${Math.floor(index / 15)}-${index % 15}`] = {
         letter: tile.letter,
+        owner: tileOwners.get(tile.tile_id),
         value: tile.is_blank ? 0 : values.get(tile.letter),
       }
     }
@@ -1437,6 +1443,7 @@ function GameWorkspace({
             }
             observedAt={view.observedAt}
             score={state.scores[0]}
+            seat="one"
             subtitle={participantSubtitle(
               matchStatus?.seats[0],
               state.rack_counts[0]
@@ -1455,6 +1462,7 @@ function GameWorkspace({
             }
             observedAt={view.observedAt}
             score={state.scores[1]}
+            seat="two"
             subtitle={participantSubtitle(
               matchStatus?.seats[1],
               state.rack_counts[1]
@@ -1647,7 +1655,14 @@ function GameWorkspace({
           {view.authority === "spectator" &&
           (matchStatus !== undefined || matchActivity !== undefined) ? (
             <div className="mt-3">
-              <AgentConsole activity={matchActivity} />
+              <AgentConsole
+                activeSeat={state.current_player}
+                activity={matchActivity}
+                seatNames={[
+                  participantName(matchStatus?.seats[0], "Seat one"),
+                  participantName(matchStatus?.seats[1], "Seat two"),
+                ]}
+              />
             </div>
           ) : null}
           <Card className="mt-3" size="sm">

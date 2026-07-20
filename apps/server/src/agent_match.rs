@@ -881,9 +881,18 @@ impl AgentMatchManager {
     }
 
     async fn finish_agents(&self, game_id: &GameId, agents: &mut [Option<RunningAgent>; 2]) {
+        let outcomes = self.inner.matches.read().await.get(game_id).map_or(
+            [WorkspaceOutcome::Failed; 2],
+            |record| {
+                [
+                    workspace_outcome(Some(&record.seats[0].status)),
+                    workspace_outcome(Some(&record.seats[1].status)),
+                ]
+            },
+        );
         for agent in agents.iter_mut().filter_map(Option::take) {
             let seat = agent.seat;
-            agent.finish().await;
+            agent.finish(outcomes[seat_index(seat)]).await;
             self.record_activity(
                 game_id,
                 Some(seat),
@@ -1007,10 +1016,25 @@ impl RunningAgent {
         new
     }
 
-    async fn finish(mut self) {
+    async fn finish(mut self, outcome: WorkspaceOutcome) {
         self.cancellation.cancel();
-        let _ = self.driver.terminate(TerminationReason::Completed).await;
-        let _ = self.lease.finish(WorkspaceOutcome::Completed);
+        let reason = if outcome == WorkspaceOutcome::Failed {
+            TerminationReason::GameEnded
+        } else {
+            TerminationReason::Completed
+        };
+        let _ = self.driver.terminate(reason).await;
+        let _ = self.lease.finish(outcome);
+    }
+}
+
+fn workspace_outcome(status: Option<&AgentSeatStatusKind>) -> WorkspaceOutcome {
+    if matches!(status, Some(AgentSeatStatusKind::Failed { .. })) {
+        WorkspaceOutcome::Failed
+    } else if status.is_some() {
+        WorkspaceOutcome::Completed
+    } else {
+        WorkspaceOutcome::Failed
     }
 }
 
@@ -1300,12 +1324,28 @@ fn initial_seat_status(selection: &AgentSeatSelection) -> AgentSeatStatusKind {
 
 #[cfg(test)]
 mod tests {
+    use word_arena_agent_runtime::WorkspaceOutcome;
     use word_arena_application::GameId;
 
     use super::{
-        AgentActivityKind, AgentMatchManager, AgentMatchManagerConfig, MAX_ACTIVITY_EVENTS,
-        parse_version,
+        AgentActivityKind, AgentMatchManager, AgentMatchManagerConfig, AgentSeatStatusKind,
+        MAX_ACTIVITY_EVENTS, parse_version, workspace_outcome,
     };
+
+    #[test]
+    fn retains_failed_agent_workspaces_for_postmortem() {
+        assert_eq!(
+            workspace_outcome(Some(&AgentSeatStatusKind::Failed {
+                code: "agent_turn_failed".to_owned(),
+            })),
+            WorkspaceOutcome::Failed
+        );
+        assert_eq!(
+            workspace_outcome(Some(&AgentSeatStatusKind::Finished)),
+            WorkspaceOutcome::Completed
+        );
+        assert_eq!(workspace_outcome(None), WorkspaceOutcome::Failed);
+    }
 
     #[test]
     fn parses_supported_cli_version_shapes() {
