@@ -18,6 +18,7 @@ import {
   setDraftMode,
   stageSelectedTile,
 } from "../src/components/game/move-draft"
+import { tileOwnersFromEvents } from "../src/components/game/move-ownership"
 
 const rack: PhysicalTile[] = [
   { id: 1, face: { kind: "letter", token: "E" } },
@@ -144,6 +145,42 @@ describe("semantic game components", () => {
     expect(html).toContain('data-column="7"')
     expect(html).toContain('tabindex="0"')
     expect(html).toContain("triple word score")
+  })
+
+  test("reconstructs and narrates committed tile ownership", () => {
+    const owners = tileOwnersFromEvents([
+      {
+        sequence: 1,
+        kind: {
+          type: "move_played",
+          player: "one",
+          placements: [{ tile_id: 101 }],
+        },
+      },
+      {
+        sequence: 2,
+        kind: {
+          type: "move_played",
+          player: "two",
+          placements: [{ tile_id: 202 }],
+        },
+      },
+    ])
+    const html = renderToStaticMarkup(
+      <GameBoard
+        tiles={{
+          "7-7": { letter: "E", owner: owners.get(101), value: 1 },
+          "7-8": { letter: "T", owner: owners.get(202), value: 1 },
+        }}
+      />
+    )
+
+    expect(owners.get(101)).toBe("one")
+    expect(owners.get(202)).toBe("two")
+    expect(html).toContain('data-seat-owner="one"')
+    expect(html).toContain('data-seat-owner="two"')
+    expect(html).toContain("H8: E, 1 points, played by seat one")
+    expect(html).toContain("I8: T, 1 points, played by seat two")
   })
 
   test("renders rack selection and clock states accessibly", () => {

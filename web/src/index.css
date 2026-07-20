@@ -47,8 +47,12 @@
   --color-board-triple-letter: var(--board-triple-letter);
   --color-board-triple-word: var(--board-triple-word);
   --color-tile: var(--tile);
+  --color-tile-seat-one: var(--tile-seat-one);
+  --color-tile-seat-two: var(--tile-seat-two);
   --color-tile-foreground: var(--tile-foreground);
   --color-tile-shadow: var(--tile-shadow);
+  --color-seat-one: var(--seat-one);
+  --color-seat-two: var(--seat-two);
   --color-overlay: var(--overlay);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -100,6 +104,10 @@
   --board-triple-letter: oklch(0.69 0.12 238);
   --board-triple-word: oklch(0.68 0.15 27);
   --tile: oklch(0.88 0.09 83);
+  --seat-one: oklch(0.67 0.12 235);
+  --seat-two: oklch(0.7 0.13 28);
+  --tile-seat-one: color-mix(in oklab, var(--seat-one) 30%, var(--tile));
+  --tile-seat-two: color-mix(in oklab, var(--seat-two) 30%, var(--tile));
   --tile-foreground: oklch(0.25 0.035 70);
   --tile-edge: oklch(0.69 0.075 75);
   --tile-shadow: oklch(0 0 0 / 18%);
@@ -146,6 +154,10 @@
   --board-triple-letter: oklch(0.55 0.11 238);
   --board-triple-word: oklch(0.57 0.14 27);
   --tile: oklch(0.77 0.09 83);
+  --seat-one: oklch(0.72 0.12 235);
+  --seat-two: oklch(0.74 0.13 28);
+  --tile-seat-one: color-mix(in oklab, var(--seat-one) 28%, var(--tile));
+  --tile-seat-two: color-mix(in oklab, var(--seat-two) 28%, var(--tile));
   --tile-foreground: oklch(0.2 0.035 70);
   --tile-edge: oklch(0.58 0.07 75);
   --tile-shadow: oklch(0 0 0 / 35%);

@@ -16,6 +16,7 @@ import {
   displayPremiums,
 } from "@/components/game/display-rules"
 import { type BoardTile, GameBoard } from "@/components/game/game-board"
+import { tileOwnersFromEvents } from "@/components/game/move-ownership"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -78,6 +79,10 @@ export function ReplayView({
   const [kind, setKind] = useState("all")
   const [page, setPage] = useState(0)
   const frame = useMemo(() => replayFrame(replay, sequence), [replay, sequence])
+  const tileOwners = useMemo(
+    () => tileOwnersFromEvents(replay.events, sequence),
+    [replay.events, sequence]
+  )
   const statistics = useMemo(() => replayStatistics(replay), [replay])
   const filtered = useMemo(
     () => filterReplayEvents(replay.events, query, kind),
@@ -116,6 +121,7 @@ export function ReplayView({
     if (!tile) return
     tiles[`${Math.floor(index / 15)}-${index % 15}`] = {
       letter: tile.letter,
+      owner: tileOwners.get(tile.tile_id),
       value: tile.is_blank ? 0 : values.get(tile.letter),
       recent:
         frame.event?.kind.type === "move_played" &&

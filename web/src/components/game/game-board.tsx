@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useId } from "react"
 
-import type { Premium } from "@/api/types"
+import type { Premium, Seat } from "@/api/types"
 import { cn } from "@/lib/utils"
 
 const BOARD_SIZE = 15
@@ -10,6 +10,7 @@ export type BoardTile = {
   value?: number
   recent?: boolean
   staged?: boolean
+  owner?: Seat
 }
 
 type GameBoardProps = {
@@ -119,9 +120,14 @@ function TileFace({ tile }: { tile: BoardTile }) {
       aria-hidden="true"
       className={cn(
         "absolute inset-[7%] grid place-items-center rounded-[18%] bg-tile font-heading text-[clamp(0.55rem,1.4vw,1.05rem)] font-semibold text-tile-foreground shadow-[inset_0_-2px_0_var(--tile-edge),0_1px_2px_var(--tile-shadow)]",
+        tile.owner === "one" &&
+          "bg-tile-seat-one ring-1 ring-seat-one/35 ring-inset",
+        tile.owner === "two" &&
+          "bg-tile-seat-two ring-1 ring-seat-two/35 ring-inset",
         tile.recent && "ring-2 ring-primary ring-inset",
         tile.staged && "opacity-80 ring-2 ring-primary ring-dashed ring-inset"
       )}
+      data-seat-owner={tile.owner}
     >
       {tile.letter}
       {tile.value === undefined ? null : (
@@ -181,7 +187,7 @@ export function GameBoard({
             const name = squareName(row, column)
             const premiumName = premiumNames[premium]
             const description = shownTile
-              ? `${name}: ${shownTile.letter}${shownTile.value === undefined ? "" : `, ${shownTile.value} points`}${shownTile.recent ? ", part of the latest move" : ""}${shownTile.staged ? ", staged for this move" : ""}`
+              ? `${name}: ${shownTile.letter}${shownTile.value === undefined ? "" : `, ${shownTile.value} points`}${shownTile.owner ? `, played by seat ${shownTile.owner}` : ""}${shownTile.recent ? ", part of the latest move" : ""}${shownTile.staged ? ", staged for this move" : ""}`
               : premiumName
                 ? `${name}: ${premiumName} score`
                 : `${name}: empty`
