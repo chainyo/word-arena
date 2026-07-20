@@ -54,6 +54,15 @@ use word_arena_server::{
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
 
+fn four_player_agent_seats() -> Value {
+    json!([
+        {"kind":"agent","harness":"codex"},
+        {"kind":"human","name":"Human"},
+        {"kind":"agent","harness":"claude_code"},
+        {"kind":"agent","harness":"cline"}
+    ])
+}
+
 #[test]
 fn web_api_contract_matches_authoritative_server_constants() {
     let contract: Value =
@@ -170,12 +179,7 @@ async fn agent_catalog_and_match_creation_fail_closed() {
             None,
             &json!({
                 "language":"english",
-                "seats":[
-                    {"kind":"agent","harness":"codex"},
-                    {"kind":"human","name":"Human"},
-                    {"kind":"agent","harness":"claude_code"},
-                    {"kind":"agent","harness":"cline"}
-                ],
+                "seats":four_player_agent_seats(),
                 "idempotency_key":"unavailable-agent"
             }),
         ))
@@ -232,12 +236,7 @@ async fn local_match_list_and_spectator_recovery_are_refresh_safe() {
             &json!({
                 "language":"english",
                 "mode":"practice",
-                "seats":[
-                    {"kind":"agent","harness":"codex"},
-                    {"kind":"human","name":"Human"},
-                    {"kind":"agent","harness":"claude_code"},
-                    {"kind":"agent","harness":"cline"}
-                ],
+                "seats":four_player_agent_seats(),
                 "idempotency_key":"refresh-safe"
             }),
         ))
