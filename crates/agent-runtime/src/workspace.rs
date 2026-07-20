@@ -1091,6 +1091,10 @@ impl ProcessInstance for RedactingProcess {
         self.inner.write(bytes)
     }
 
+    fn close_input(&mut self) -> DriverFuture<'_, Result<(), ProcessError>> {
+        self.inner.close_input()
+    }
+
     fn next_event(&mut self) -> DriverFuture<'_, Result<ProcessEvent, ProcessError>> {
         Box::pin(async move {
             loop {

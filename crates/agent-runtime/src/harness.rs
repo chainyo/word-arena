@@ -519,6 +519,11 @@ impl NativeHarnessDriver {
             result = self.adapter.spawn(spec) => result,
         }?;
         self.process = Some(spawned);
+        self.process
+            .as_mut()
+            .ok_or(DriverError::InvalidCheckpoint)?
+            .close_input()
+            .await?;
         let mut stdout = Vec::new();
         let mut stderr_bytes = 0_u64;
         loop {

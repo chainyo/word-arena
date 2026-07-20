@@ -179,6 +179,10 @@ impl ProcessInstance for FakeProcess {
         Box::pin(async { Ok(()) })
     }
 
+    fn close_input(&mut self) -> DriverFuture<'_, Result<(), ProcessError>> {
+        Box::pin(async { Ok(()) })
+    }
+
     fn next_event(&mut self) -> DriverFuture<'_, Result<ProcessEvent, ProcessError>> {
         Box::pin(async move {
             if self.pending {
