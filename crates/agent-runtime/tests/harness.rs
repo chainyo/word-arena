@@ -5,6 +5,7 @@ use std::{
     os::unix::fs::symlink,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use serde_json::{Value, json};
@@ -109,7 +110,13 @@ async fn every_native_fake_binary_completes_the_common_lifecycle_offline() {
         let cancel = CancellationToken::new();
 
         driver.start(&cancel).await.unwrap();
-        let output = driver.request_turn(request(), &cancel).await.unwrap();
+        let output = tokio::time::timeout(
+            Duration::from_secs(2),
+            driver.request_turn(request(), &cancel),
+        )
+        .await
+        .expect("native harness must not wait for stdin")
+        .unwrap();
         assert_eq!(output.visible_output, "Placed ETE.");
         assert_eq!(output.tool_calls.len(), 1);
         assert_eq!(driver.telemetry().turns.len(), 1);

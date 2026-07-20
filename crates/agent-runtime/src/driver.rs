@@ -108,6 +108,7 @@ pub enum ProcessError {
 pub trait ProcessInstance: fmt::Debug + Send {
     fn handle(&self) -> ProcessHandle;
     fn write<'a>(&'a mut self, bytes: &'a [u8]) -> DriverFuture<'a, Result<(), ProcessError>>;
+    fn close_input(&mut self) -> DriverFuture<'_, Result<(), ProcessError>>;
     fn next_event(&mut self) -> DriverFuture<'_, Result<ProcessEvent, ProcessError>>;
     fn terminate(&mut self) -> DriverFuture<'_, Result<ExitStatus, ProcessError>>;
 }
@@ -168,7 +169,7 @@ pub(crate) async fn spawn_tokio_process(
     let stderr = child.stderr.take().ok_or(ProcessError::Spawn)?;
     Ok(Box::new(TokioProcess {
         child,
-        stdin,
+        stdin: Some(stdin),
         stdout,
         stderr,
         stdout_closed: false,
@@ -178,7 +179,7 @@ pub(crate) async fn spawn_tokio_process(
 
 struct TokioProcess {
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     stdout: ChildStdout,
     stderr: ChildStderr,
     stdout_closed: bool,
@@ -207,11 +208,19 @@ impl ProcessInstance for TokioProcess {
 
     fn write<'a>(&'a mut self, bytes: &'a [u8]) -> DriverFuture<'a, Result<(), ProcessError>> {
         Box::pin(async move {
-            self.stdin
+            let stdin = self.stdin.as_mut().ok_or(ProcessError::Write)?;
+            stdin
                 .write_all(bytes)
                 .await
                 .map_err(|_| ProcessError::Write)?;
-            self.stdin.flush().await.map_err(|_| ProcessError::Write)
+            stdin.flush().await.map_err(|_| ProcessError::Write)
+        })
+    }
+
+    fn close_input(&mut self) -> DriverFuture<'_, Result<(), ProcessError>> {
+        Box::pin(async move {
+            self.stdin = None;
+            Ok(())
         })
     }
 
