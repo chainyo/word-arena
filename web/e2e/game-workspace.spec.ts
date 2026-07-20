@@ -50,6 +50,13 @@ test("operator selects agents and starts directly into the spectator view", asyn
   await expect(page.locator('[data-seat-owner="one"]')).toBeVisible()
   await page.getByRole("tab", { name: /Seat 2 Claude Code/ }).click()
   await expect(page.getByText("Placed E at H8.", { exact: true })).toBeVisible()
+  const seatTwoEvents = page
+    .getByRole("list", { name: "Seat two agent activity log" })
+    .getByRole("listitem")
+  await expect(seatTwoEvents.first()).toContainText(
+    "Called word_arena.observe_game"
+  )
+  await expect(seatTwoEvents.last()).toContainText("Placed E at H8.")
   await expect(page.getByText("Turn 3 started", { exact: true })).toHaveCount(0)
   await page.getByRole("tab", { name: "Match" }).click()
   await expect(

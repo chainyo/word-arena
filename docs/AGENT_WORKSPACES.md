@@ -70,6 +70,13 @@ local user. Word Arena therefore launches through a fail-closed OS sandbox:
 - a platform without a supported executable returns `SandboxUnavailable`
   instead of starting the agent without isolation.
 
+Codex on macOS additionally receives read-only access to the account's
+`.CFUserTextEncoding`, its own and global preference domains, and only the
+named SystemConfiguration, SecurityServer, and FSEvents services plus system
+sockets required by native TLS trust. These compatibility rules are scoped to
+the Codex harness and do not widen filesystem writes or access to other user
+files.
+
 The manifest network policy is translated at the sandbox boundary. `deny`
 keeps the network namespace closed. Detailed endpoint and resource enforcement
 and the explicit byte-meter capability state are documented in

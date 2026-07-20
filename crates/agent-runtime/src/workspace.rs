@@ -86,21 +86,29 @@ impl SeatSandboxBackend {
         {
             let executable = PathBuf::from("/usr/bin/sandbox-exec");
             if executable.is_file() {
+                let mut runtime_read_roots = [
+                    "/bin",
+                    "/usr",
+                    "/System",
+                    "/Library",
+                    "/opt/homebrew",
+                    "/private/var/select",
+                    "/dev",
+                ]
+                .into_iter()
+                .map(PathBuf::from)
+                .filter(|path| path.exists())
+                .collect::<Vec<_>>();
+                if let Some(text_encoding) = std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .map(|home| home.join(".CFUserTextEncoding"))
+                    .filter(|path| path.is_file())
+                {
+                    runtime_read_roots.push(text_encoding);
+                }
                 return Ok(Self::MacOsSandboxExec {
                     executable,
-                    runtime_read_roots: [
-                        "/bin",
-                        "/usr",
-                        "/System",
-                        "/Library",
-                        "/opt/homebrew",
-                        "/private/var/select",
-                        "/dev",
-                    ]
-                    .into_iter()
-                    .map(PathBuf::from)
-                    .filter(|path| path.exists())
-                    .collect(),
+                    runtime_read_roots,
                 });
             }
         }
@@ -488,6 +496,7 @@ impl SeatWorkspaceManager {
             workspace,
             state,
             mcp_config,
+            harness,
             retention: manifest.manifest().workspace.retention,
             sandbox: self.sandbox.clone(),
             network: manifest.manifest().tool_policy.network.clone(),
@@ -528,6 +537,7 @@ pub struct SeatWorkspaceLease {
     workspace: PathBuf,
     state: PathBuf,
     mcp_config: PathBuf,
+    harness: WorkspaceHarnessKind,
     retention: WorkspaceRetention,
     sandbox: SeatSandboxBackend,
     network: NetworkPolicy,
@@ -608,6 +618,7 @@ impl SeatWorkspaceLease {
                 self.root.join("home"),
                 self.root.join("tmp"),
             ],
+            harness: self.harness,
             sandbox: self.sandbox.clone(),
             network: self.network.clone(),
             environment: self.environment.clone(),
@@ -814,6 +825,7 @@ struct IsolatedSeatProcessAdapter {
     root: PathBuf,
     workspace: PathBuf,
     writable_roots: Vec<PathBuf>,
+    harness: WorkspaceHarnessKind,
     sandbox: SeatSandboxBackend,
     network: NetworkPolicy,
     environment: Arc<SeatProcessEnvironment>,
@@ -831,6 +843,7 @@ impl fmt::Debug for IsolatedSeatProcessAdapter {
         formatter
             .debug_struct("IsolatedSeatProcessAdapter")
             .field("root", &"<redacted>")
+            .field("harness", &self.harness)
             .field("sandbox", &self.sandbox)
             .field("network", &self.network)
             .field("environment", &self.environment)
@@ -942,7 +955,11 @@ impl IsolatedSeatProcessAdapter {
                 );
                 profile.push_str(" (allow file-read*");
                 for root in runtime_read_roots.iter().chain([&self.root]) {
-                    profile.push_str(" (subpath ");
+                    profile.push_str(if root.is_file() {
+                        " (literal "
+                    } else {
+                        " (subpath "
+                    });
                     profile.push_str(&sandbox_literal(root));
                     profile.push(')');
                 }
@@ -954,6 +971,7 @@ impl IsolatedSeatProcessAdapter {
                     profile.push(')');
                 }
                 profile.push(')');
+                append_macos_harness_rules(&mut profile, self.harness);
                 if !matches!(self.network, NetworkPolicy::Deny) {
                     profile.push_str(" (allow network-outbound)");
                 }
@@ -1471,6 +1489,22 @@ fn sandbox_literal(path: &Path) -> String {
     format!("\"{value}\"")
 }
 
+fn append_macos_harness_rules(profile: &mut String, harness: WorkspaceHarnessKind) {
+    if harness == WorkspaceHarnessKind::Codex {
+        profile.push_str(
+            " (allow user-preference-read \
+             (preference-domain \"com.openai.codex\")) \
+             (allow user-preference-read \
+             (preference-domain \"kCFPreferencesAnyApplication\")) \
+             (allow mach-lookup \
+             (global-name \"com.apple.SystemConfiguration.configd\") \
+             (global-name \"com.apple.SecurityServer\") \
+             (global-name \"com.apple.FSEvents\")) \
+             (allow system-socket)",
+        );
+    }
+}
+
 #[cfg(unix)]
 fn owner_id(metadata: &fs::Metadata) -> u32 {
     metadata.uid()
@@ -1489,4 +1523,22 @@ fn permission_mode(metadata: &fs::Metadata) -> u32 {
 #[cfg(not(unix))]
 fn permission_mode(_metadata: &fs::Metadata) -> u32 {
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorkspaceHarnessKind, append_macos_harness_rules};
+
+    #[test]
+    fn macos_codex_compatibility_rules_are_harness_scoped() {
+        let mut codex = String::new();
+        append_macos_harness_rules(&mut codex, WorkspaceHarnessKind::Codex);
+        assert!(codex.contains("com.openai.codex"));
+        assert!(codex.contains("com.apple.SecurityServer"));
+        assert!(codex.contains("allow system-socket"));
+
+        let mut claude = String::new();
+        append_macos_harness_rules(&mut claude, WorkspaceHarnessKind::ClaudeCode);
+        assert!(claude.is_empty());
+    }
 }
