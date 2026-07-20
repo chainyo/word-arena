@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import type { PhysicalTile } from "../src/api/types"
+import { AgentConsole } from "../src/components/game/agent-console"
 import {
   displayLetterValues,
   displayPremiums,
@@ -103,6 +104,31 @@ describe("English and French physical display rules", () => {
 })
 
 describe("semantic game components", () => {
+  test("renders redacted agent activity with a live elapsed turn", () => {
+    const html = renderToStaticMarkup(
+      <AgentConsole
+        activity={{
+          gameId: "game-one",
+          events: [
+            {
+              sequence: 1,
+              atUnixMs: 10_000,
+              seat: "one",
+              kind: "turn_started",
+              message: "Turn 3 started",
+              turnId: "1-3",
+            },
+          ],
+        }}
+        now={15_000}
+      />
+    )
+    expect(html).toContain("Agent activity")
+    expect(html).toContain("Turn 3 started")
+    expect(html).toContain("5s live")
+    expect(html).toContain("Seat one")
+  })
+
   test("renders coordinates, premium meaning, staged state, and roving board focus", () => {
     const html = renderToStaticMarkup(
       <GameBoard

@@ -219,6 +219,10 @@ games end to end.
   uses recognizable agent logos and immediately opens the live game.
 - [ ] Surface agent startup, active-turn, failure, cancellation, and terminal
   states without exposing credentials, private racks, or hidden reasoning.
+  - [x] Add a bounded human-spectator activity console and structured backend
+    tracing for startup, active turns, tool names, redacted visible output,
+    diagnostics, failures, timing, and terminal process state.
+  - [ ] Add explicit operator cancellation and surface its lifecycle state.
 - [ ] Add a real local smoke path plus fake-harness integration and browser tests
   for agent-versus-agent, agent-versus-human, unavailable harnesses, and failure.
 

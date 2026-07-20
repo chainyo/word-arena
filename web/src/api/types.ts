@@ -182,6 +182,34 @@ export type AgentMatchStatus = {
   seats: [AgentSeatStatus, AgentSeatStatus]
 }
 
+export type AgentActivityKind =
+  | "match_started"
+  | "agent_starting"
+  | "agent_ready"
+  | "agent_failed"
+  | "turn_started"
+  | "tool_called"
+  | "diagnostic"
+  | "turn_completed"
+  | "turn_failed"
+  | "agent_finished"
+  | "match_finished"
+
+export type AgentActivityEvent = {
+  sequence: number
+  atUnixMs: number
+  seat?: Seat
+  kind: AgentActivityKind
+  message: string
+  turnId?: string
+  durationMs?: number
+}
+
+export type AgentMatchActivity = {
+  gameId: string
+  events: AgentActivityEvent[]
+}
+
 export type CreateAgentMatchRequest = {
   language: "english" | "french"
   mode: "competitive" | "practice"

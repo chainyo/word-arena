@@ -100,6 +100,9 @@ Implemented foundations include:
   invalidations ([web foundation](docs/WEB.md))
 - Responsive semantic board, premium, tile, private/spectator rack, score,
   authoritative clock, move-history, and confirmed player-action components
+- A human-spectator-only live agent activity console with bounded lifecycle,
+  timing, tool-name, visible-output, diagnostic, and failure events; backend
+  terminals receive matching structured tracing without prompts or credentials
 - Bun-managed frontend dependencies
 - CI for formatting, linting, tests, type checking, builds, axe, and
   desktop/mobile browser flows
