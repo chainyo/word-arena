@@ -19,9 +19,10 @@ esac
 
 case "$name" in
   codex)
-    case " $* " in *" exec "*) ;; *) exit 65 ;; esac
+    case "$*" in "--ask-for-approval never exec "*) ;; *) exit 65 ;; esac
     case " $* " in *" --json "*) ;; *) exit 65 ;; esac
     case " $* " in *" --ephemeral "*) ;; *) exit 65 ;; esac
+    case " $* " in *" --skip-git-repo-check "*) ;; *) exit 65 ;; esac
     case " $* " in *" --model "*) ;; *) exit 65 ;; esac
     printf '%s\n' \
       '{"type":"item.completed","item":{"type":"reasoning","text":"hidden-codex-reasoning"}}' \

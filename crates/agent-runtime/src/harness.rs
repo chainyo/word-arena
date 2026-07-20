@@ -645,14 +645,15 @@ impl NativeHarnessDriver {
         let mcp_config = path_argument(&self.runtime.mcp_config);
         let mut arguments = match self.kind {
             NativeHarnessKind::Codex => vec![
+                "--ask-for-approval".to_owned(),
+                "never".to_owned(),
                 "exec".to_owned(),
                 "--json".to_owned(),
                 "--ephemeral".to_owned(),
                 "--ignore-rules".to_owned(),
+                "--skip-git-repo-check".to_owned(),
                 "--sandbox".to_owned(),
                 "workspace-write".to_owned(),
-                "--ask-for-approval".to_owned(),
-                "never".to_owned(),
                 "--config".to_owned(),
                 "web_search=\"disabled\"".to_owned(),
                 "--config".to_owned(),

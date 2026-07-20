@@ -1245,7 +1245,9 @@ function participantSubtitle(
 function statusLabel(status: AgentSeatStatus) {
   if (status.state === "waiting_for_human") return "Human turn"
   if (status.state === "thinking") return "Thinking"
-  if (status.state === "failed") return "Failed"
+  if (status.state === "failed") {
+    return `Failed: ${(status.failureCode ?? "unknown error").replaceAll("_", " ")}`
+  }
   return status.state.charAt(0).toUpperCase() + status.state.slice(1)
 }
 
