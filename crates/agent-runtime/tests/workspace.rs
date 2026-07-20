@@ -177,6 +177,19 @@ fn allocation_is_private_non_overlapping_and_contains_only_own_env_reference() {
     assert!(!debug.contains(&first_token));
     assert!(!debug.contains(&second_token));
 
+    let codex_config = fs::read_to_string(first.state_directory().join("config.toml")).unwrap();
+    let workspace_key = serde_json::to_string(&first.workspace().to_string_lossy()).unwrap();
+    assert!(
+        codex_config.contains(&format!(
+            "[projects.{workspace_key}]\ntrust_level = \"trusted\""
+        )),
+        "Codex must receive its exact isolated workspace trust entry before the first turn"
+    );
+    assert_eq!(
+        codex_config,
+        fs::read_to_string(first.root().join("config/codex.toml")).unwrap()
+    );
+
     assert_eq!(
         first.finish(WorkspaceOutcome::Completed).unwrap(),
         WorkspaceDisposition::Deleted
