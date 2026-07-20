@@ -41,6 +41,7 @@ import {
   createAgentMatch,
   DEFAULT_SERVER_ORIGIN,
   fetchAgentCatalog,
+  fetchAgentMatchActivity,
   fetchAgentMatchStatus,
   fetchSpectatorReplay,
   normalizeServerOrigin,
@@ -52,6 +53,7 @@ import { classifySessionFailure, connectionMessage } from "@/api/session"
 import type {
   AgentCatalogEntry,
   AgentHarnessId,
+  AgentMatchActivity,
   AgentMatchStatus,
   AgentSeatSelection,
   AgentSeatStatus,
@@ -65,6 +67,7 @@ import type {
 } from "@/api/types"
 import { connectInvalidationSocket } from "@/api/websocket"
 import { AgentLogo } from "@/components/agent/agent-logo"
+import { AgentConsole } from "@/components/game/agent-console"
 import { BlankAssignmentDialog } from "@/components/game/blank-assignment-dialog"
 import {
   displayLetterValues,
@@ -1210,6 +1213,35 @@ function useAgentMatchStatus(session: GameSession, token: string) {
   return status
 }
 
+function useAgentMatchActivity(session: GameSession, token: string) {
+  const [activity, setActivity] = useState<AgentMatchActivity>()
+  useEffect(() => {
+    if (session.authority !== "spectator") return
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const next = await fetchAgentMatchActivity(
+          session,
+          token,
+          controller.signal
+        )
+        if (!cancelled) setActivity(next)
+      } catch {
+        // Manually created games intentionally have no agent activity record.
+      }
+    }
+    void load()
+    const timer = window.setInterval(() => void load(), 1000)
+    return () => {
+      cancelled = true
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [session, token])
+  return activity
+}
+
 function participantName(
   status: AgentSeatStatus | undefined,
   fallback: string
@@ -1274,6 +1306,7 @@ function GameWorkspace({
 }) {
   const navigate = useNavigate()
   const matchStatus = useAgentMatchStatus(session, token)
+  const matchActivity = useAgentMatchActivity(session, token)
   const state = view.public.state
   const [draft, setDraft] = useState<MoveDraft>(EMPTY_MOVE_DRAFT)
   const [pending, setPending] = useState(false)
@@ -1611,6 +1644,12 @@ function GameWorkspace({
           className="min-w-0 lg:col-start-2 lg:row-start-2 xl:col-start-3 xl:row-start-1"
         >
           <MoveHistory moves={moves} />
+          {view.authority === "spectator" &&
+          (matchStatus !== undefined || matchActivity !== undefined) ? (
+            <div className="mt-3">
+              <AgentConsole activity={matchActivity} />
+            </div>
+          ) : null}
           <Card className="mt-3" size="sm">
             <CardHeader className="border-b">
               <CardTitle>Projection boundary</CardTitle>

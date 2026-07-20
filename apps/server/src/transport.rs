@@ -54,6 +54,8 @@ pub const AGENT_CATALOG_PATH: &str = "/api/v1/agents";
 pub const AGENT_MATCHES_PATH: &str = "/api/v1/matches";
 /// V1 local agent-managed match status route contract.
 pub const AGENT_MATCH_STATUS_PATH: &str = "/api/v1/matches/{game_id}";
+/// V1 trusted-human spectator agent activity route contract.
+pub const AGENT_MATCH_ACTIVITY_PATH: &str = "/api/v1/matches/{game_id}/activity";
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_IN_FLIGHT_REQUESTS: usize = 128;
 const MAX_WEBSOCKETS: usize = 64;
@@ -269,6 +271,7 @@ pub fn api_app(state: Arc<ServerState>) -> Router {
         .route(AGENT_CATALOG_PATH, get(agent_catalog))
         .route(AGENT_MATCHES_PATH, post(create_agent_match))
         .route(AGENT_MATCH_STATUS_PATH, get(agent_match_status))
+        .route(AGENT_MATCH_ACTIVITY_PATH, get(agent_match_activity))
         .route("/api/v1/games", post(create_game))
         .route(PUBLIC_GAME_PATH, get(public_game))
         .route(SEAT_GAME_PATH, get(seat_game))
@@ -476,6 +479,29 @@ async fn agent_match_status(
         )
     })?;
     Ok(envelope(status))
+}
+
+async fn agent_match_activity(
+    State(state): State<Arc<ServerState>>,
+    Path(game_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiEnvelope<crate::AgentMatchActivity>>, ApiError> {
+    let game_id = parse_game_id(game_id)?;
+    authenticate(
+        &state,
+        &headers,
+        &game_id,
+        CapabilityScope::ObserveHumanSpectator,
+    )
+    .await?;
+    let activity = state.agents.activity(&game_id).await.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "match_not_found",
+            "the agent-managed match was not found",
+        )
+    })?;
+    Ok(envelope(activity))
 }
 
 fn validate_match_seats(seats: &[AgentSeatSelection; 2]) -> Result<(), ApiError> {

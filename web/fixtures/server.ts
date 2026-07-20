@@ -384,6 +384,64 @@ const server = Bun.serve<SocketData>({
         },
       })
     }
+    const agentActivity = url.pathname.match(
+      /^\/api\/v1\/matches\/([^/]+)\/activity$/
+    )
+    if (request.method === "GET" && agentActivity) {
+      if (bearer(request) !== "spectator-token") {
+        return apiError(
+          401,
+          "invalid_capability",
+          "A human-spectator capability is required"
+        )
+      }
+      const gameId = decodeURIComponent(agentActivity[1] as string)
+      return json({
+        schema_version: 1,
+        data: {
+          schema_version: 1,
+          game_id: gameId,
+          events: [
+            {
+              sequence: 0,
+              at_unix_ms: Date.now() - 30_000,
+              seat: null,
+              kind: "match_started",
+              message: "Agent-managed match created",
+              turn_id: null,
+              duration_ms: null,
+            },
+            {
+              sequence: 1,
+              at_unix_ms: Date.now() - 22_000,
+              seat: "two",
+              kind: "tool_called",
+              message: "Called word_arena.observe_game",
+              turn_id: "2-2",
+              duration_ms: null,
+            },
+            {
+              sequence: 2,
+              at_unix_ms: Date.now() - 20_000,
+              seat: "two",
+              kind: "turn_completed",
+              message: "Placed E at H8.",
+              turn_id: "2-2",
+              duration_ms: 3_240,
+            },
+            {
+              sequence: 3,
+              at_unix_ms: Date.now() - 15_000,
+              seat: "one",
+              kind: "turn_started",
+              message: "Turn 3 started",
+              turn_id: "1-3",
+              duration_ms: null,
+            },
+          ],
+        },
+      })
+    }
     const agentMatch = url.pathname.match(/^\/api\/v1\/matches\/([^/]+)$/)
     if (request.method === "GET" && agentMatch) {
       if (!bearer(request)) {

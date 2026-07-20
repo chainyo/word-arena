@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     fmt, fs,
     path::PathBuf,
     process::Command,
@@ -12,13 +12,14 @@ use tokio::sync::RwLock;
 use word_arena_agent_runtime::{
     AGENT_MANIFEST_SCHEMA_VERSION, AgentDriver, AgentManifest, AuthorityAuditError,
     AuthorityBoundaryAuditEvent, AuthorityBoundaryAuditSink, AuthorityBoundaryConfig,
-    CLAUDE_CODE_MINIMUM_VERSION, CLINE_MINIMUM_VERSION, CODEX_MINIMUM_VERSION, EnvironmentIdentity,
-    ForbiddenAuthorityFingerprint, ForbiddenAuthorityKind, ForbiddenAuthorityPolicy, HarnessConfig,
-    HarnessExecutables, ModelConfig, ModelProvider, ModelSource, NetworkPolicy, PI_MINIMUM_VERSION,
-    PromptIdentity, ResourceBudgets, SeatCapability, SeatWorkspaceLease, SeatWorkspaceManager,
-    SeatWorkspaceRequest, SupportedAgentDriver, SystemDriverClock, TerminationReason, ToolPolicy,
-    TurnRequest, ValidatedAgentManifest, WorkspaceManagerConfig, WorkspaceOutcome,
-    WorkspacePersistence, WorkspacePolicy, WorkspaceRetention,
+    CLAUDE_CODE_MINIMUM_VERSION, CLINE_MINIMUM_VERSION, CODEX_MINIMUM_VERSION, DiagnosticRecord,
+    EnvironmentIdentity, ForbiddenAuthorityFingerprint, ForbiddenAuthorityKind,
+    ForbiddenAuthorityPolicy, HarnessConfig, HarnessExecutables, ModelConfig, ModelProvider,
+    ModelSource, NetworkPolicy, PI_MINIMUM_VERSION, PromptIdentity, ResourceBudgets,
+    SeatCapability, SeatWorkspaceLease, SeatWorkspaceManager, SeatWorkspaceRequest,
+    SupportedAgentDriver, SystemDriverClock, TerminationReason, ToolPolicy, TurnRequest,
+    ValidatedAgentManifest, WorkspaceManagerConfig, WorkspaceOutcome, WorkspacePersistence,
+    WorkspacePolicy, WorkspaceRetention,
 };
 use word_arena_application::{
     CreatedGameAccess, GameActionCommand, GameId, IdempotencyKey, PublicGameQuery, UnixMillis,
@@ -29,6 +30,9 @@ use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use crate::{API_SCHEMA_VERSION, ServerState};
+
+const MAX_ACTIVITY_EVENTS: usize = 256;
+const MAX_ACTIVITY_MESSAGE_CHARS: usize = 1_000;
 
 /// Stable local harness identifiers accepted by the operator match API.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -157,6 +161,47 @@ pub struct AgentMatchStatus {
     pub seats: [AgentSeatStatus; 2],
 }
 
+/// Spectator-only, bounded orchestration activity for debugging a local match.
+///
+/// Messages are derived from lifecycle state, already-redacted diagnostics, and
+/// the agent's explicit visible output. Prompts, tool arguments/results, raw
+/// command lines, credentials, and hidden reasoning are never represented.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentMatchActivity {
+    pub schema_version: u16,
+    pub game_id: GameId,
+    pub events: Vec<AgentActivityEvent>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentActivityEvent {
+    pub sequence: u64,
+    pub at_unix_ms: i64,
+    pub seat: Option<Seat>,
+    pub kind: AgentActivityKind,
+    pub message: String,
+    pub turn_id: Option<String>,
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentActivityKind {
+    MatchStarted,
+    AgentStarting,
+    AgentReady,
+    AgentFailed,
+    TurnStarted,
+    ToolCalled,
+    Diagnostic,
+    TurnCompleted,
+    TurnFailed,
+    AgentFinished,
+    MatchFinished,
+}
+
 /// Created match plus one-time observer and optional human-seat capabilities.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -208,7 +253,14 @@ impl Default for AgentMatchManagerConfig {
 struct AgentMatchManagerInner {
     config: AgentMatchManagerConfig,
     matches: RwLock<HashMap<GameId, AgentMatchStatus>>,
+    activity: RwLock<HashMap<GameId, AgentActivityLog>>,
     capabilities: RwLock<HashMap<(GameId, u8), PendingAgentCapability>>,
+}
+
+#[derive(Debug, Default)]
+struct AgentActivityLog {
+    next_sequence: u64,
+    events: VecDeque<AgentActivityEvent>,
 }
 
 #[derive(Debug)]
@@ -230,6 +282,7 @@ impl AgentMatchManager {
             inner: Arc::new(AgentMatchManagerInner {
                 config,
                 matches: RwLock::new(HashMap::new()),
+                activity: RwLock::new(HashMap::new()),
                 capabilities: RwLock::new(HashMap::new()),
             }),
         }
@@ -249,15 +302,92 @@ impl AgentMatchManager {
     }
 
     pub(crate) async fn insert(&self, status: AgentMatchStatus) {
+        let game_id = status.game_id.clone();
         self.inner
             .matches
             .write()
             .await
-            .insert(status.game_id.clone(), status);
+            .insert(game_id.clone(), status);
+        self.inner
+            .activity
+            .write()
+            .await
+            .entry(game_id.clone())
+            .or_default();
+        self.record_activity(
+            &game_id,
+            None,
+            AgentActivityKind::MatchStarted,
+            "Agent-managed match created",
+            None,
+            None,
+        )
+        .await;
     }
 
     pub(crate) async fn status(&self, game_id: &GameId) -> Option<AgentMatchStatus> {
         self.inner.matches.read().await.get(game_id).cloned()
+    }
+
+    pub(crate) async fn activity(&self, game_id: &GameId) -> Option<AgentMatchActivity> {
+        let activity = self.inner.activity.read().await;
+        let log = activity.get(game_id)?;
+        Some(AgentMatchActivity {
+            schema_version: API_SCHEMA_VERSION,
+            game_id: game_id.clone(),
+            events: log.events.iter().cloned().collect(),
+        })
+    }
+
+    async fn record_activity(
+        &self,
+        game_id: &GameId,
+        seat: Option<Seat>,
+        kind: AgentActivityKind,
+        message: impl AsRef<str>,
+        turn_id: Option<String>,
+        duration_ms: Option<u64>,
+    ) {
+        let mut activity = self.inner.activity.write().await;
+        let log = activity.entry(game_id.clone()).or_default();
+        let event = AgentActivityEvent {
+            sequence: log.next_sequence,
+            at_unix_ms: unix_millis(),
+            seat,
+            kind,
+            message: bounded_activity_message(message.as_ref()),
+            turn_id,
+            duration_ms,
+        };
+        log.next_sequence = log.next_sequence.saturating_add(1);
+        if log.events.len() == MAX_ACTIVITY_EVENTS {
+            log.events.pop_front();
+        }
+        log.events.push_back(event);
+    }
+
+    async fn record_agent_failure(
+        &self,
+        game_id: &GameId,
+        seat: Option<Seat>,
+        code: &str,
+        message: &str,
+    ) {
+        self.record_activity(
+            game_id,
+            seat,
+            AgentActivityKind::AgentFailed,
+            message,
+            None,
+            None,
+        )
+        .await;
+        tracing::warn!(
+            game_id = %game_id,
+            seat = seat.map(seat_number),
+            failure_code = code,
+            "agent orchestration failed"
+        );
     }
 
     pub(crate) async fn register_agent_capability(
@@ -305,6 +435,13 @@ impl AgentMatchManager {
         )
         .and_then(|fingerprint| ForbiddenAuthorityPolicy::new([fingerprint])) else {
             self.fail_agents(&game_id, "authority_policy").await;
+            self.record_agent_failure(
+                &game_id,
+                None,
+                "authority_policy",
+                "Agent authority boundary could not be initialized",
+            )
+            .await;
             self.abort_match(&state, &access, "authority-policy").await;
             return;
         };
@@ -314,6 +451,13 @@ impl AgentMatchManager {
             WorkspaceManagerConfig::detect(self.inner.config.workspace_root.clone(), authority)
         else {
             self.fail_agents(&game_id, "sandbox_unavailable").await;
+            self.record_agent_failure(
+                &game_id,
+                None,
+                "sandbox_unavailable",
+                "Agent sandbox is unavailable",
+            )
+            .await;
             self.abort_match(&state, &access, "sandbox-unavailable")
                 .await;
             return;
@@ -322,6 +466,13 @@ impl AgentMatchManager {
             SeatWorkspaceManager::new(workspace_config, Arc::new(SystemDriverClock))
         else {
             self.fail_agents(&game_id, "workspace_unavailable").await;
+            self.record_agent_failure(
+                &game_id,
+                None,
+                "workspace_unavailable",
+                "Agent workspace manager is unavailable",
+            )
+            .await;
             self.abort_match(&state, &access, "workspace-unavailable")
                 .await;
             return;
@@ -336,6 +487,21 @@ impl AgentMatchManager {
             let seat = if index == 0 { Seat::One } else { Seat::Two };
             self.set_seat_status(&game_id, seat, AgentSeatStatusKind::Starting)
                 .await;
+            self.record_activity(
+                &game_id,
+                Some(seat),
+                AgentActivityKind::AgentStarting,
+                format!("Starting {}", harness.display_name()),
+                None,
+                None,
+            )
+            .await;
+            tracing::info!(
+                game_id = %game_id,
+                seat = seat_number(seat),
+                harness = harness.id(),
+                "starting agent seat"
+            );
             let Some(entry) = catalog
                 .iter()
                 .find(|entry| entry.id == *harness && entry.compatible)
@@ -346,6 +512,13 @@ impl AgentMatchManager {
                     AgentSeatStatusKind::Failed {
                         code: "agent_unavailable".to_owned(),
                     },
+                )
+                .await;
+                self.record_agent_failure(
+                    &game_id,
+                    Some(seat),
+                    "agent_unavailable",
+                    "Selected agent is unavailable or incompatible",
                 )
                 .await;
                 self.abort_match(&state, &access, "agent-unavailable").await;
@@ -367,6 +540,21 @@ impl AgentMatchManager {
                     agents[index] = Some(agent);
                     self.set_seat_status(&game_id, seat, AgentSeatStatusKind::Ready)
                         .await;
+                    self.record_activity(
+                        &game_id,
+                        Some(seat),
+                        AgentActivityKind::AgentReady,
+                        format!("{} is ready", harness.display_name()),
+                        None,
+                        None,
+                    )
+                    .await;
+                    tracing::info!(
+                        game_id = %game_id,
+                        seat = seat_number(seat),
+                        harness = harness.id(),
+                        "agent seat ready"
+                    );
                 }
                 Err(code) => {
                     self.set_seat_status(
@@ -375,6 +563,13 @@ impl AgentMatchManager {
                         AgentSeatStatusKind::Failed {
                             code: code.to_owned(),
                         },
+                    )
+                    .await;
+                    self.record_agent_failure(
+                        &game_id,
+                        Some(seat),
+                        code,
+                        &format!("Agent startup failed: {code}"),
                     )
                     .await;
                     self.abort_match(&state, &access, code).await;
@@ -397,12 +592,29 @@ impl AgentMatchManager {
                 .await
             else {
                 self.fail_agents(&game_id, "game_unavailable").await;
+                self.record_agent_failure(
+                    &game_id,
+                    None,
+                    "game_unavailable",
+                    "Authoritative game state is unavailable",
+                )
+                .await;
                 break;
             };
             let public = view.game;
             self.update_public(&game_id, &public).await;
             if public.state.phase == GamePhase::Finished {
                 self.finish_agents(&game_id, &mut agents).await;
+                self.record_activity(
+                    &game_id,
+                    None,
+                    AgentActivityKind::MatchFinished,
+                    "Match finished",
+                    None,
+                    None,
+                )
+                .await;
+                tracing::info!(game_id = %game_id, "agent-managed match finished");
                 break;
             }
             let seat = public.state.current_player;
@@ -420,24 +632,105 @@ impl AgentMatchManager {
                 turn_id: format!("{}-{before}", seat_number(seat)),
                 visible_input: turn_prompt(&game_id, seat, before),
             };
-            if agent
+            let turn_id = request.turn_id.clone();
+            let started_at = unix_millis();
+            self.record_activity(
+                &game_id,
+                Some(seat),
+                AgentActivityKind::TurnStarted,
+                format!("Turn {before} started"),
+                Some(turn_id.clone()),
+                None,
+            )
+            .await;
+            tracing::info!(
+                game_id = %game_id,
+                seat = seat_number(seat),
+                turn_id,
+                game_version = before,
+                "agent turn started"
+            );
+            let turn_result = agent
                 .driver
                 .request_turn(request, &agent.cancellation)
-                .await
-                .is_err()
-            {
-                self.set_seat_status(
+                .await;
+            let duration_ms = elapsed_millis(started_at);
+            for diagnostic in agent.take_new_diagnostics() {
+                self.record_activity(
                     &game_id,
-                    seat,
-                    AgentSeatStatusKind::Failed {
-                        code: "agent_turn_failed".to_owned(),
-                    },
+                    Some(seat),
+                    AgentActivityKind::Diagnostic,
+                    format!("{}: {}", diagnostic.code, diagnostic.visible_text),
+                    Some(turn_id.clone()),
+                    None,
                 )
                 .await;
-                self.resign(&state, &access, seat, "agent-turn-failed")
-                    .await;
-                continue;
             }
+            let output = match turn_result {
+                Ok(output) => output,
+                Err(error) => {
+                    self.set_seat_status(
+                        &game_id,
+                        seat,
+                        AgentSeatStatusKind::Failed {
+                            code: "agent_turn_failed".to_owned(),
+                        },
+                    )
+                    .await;
+                    self.record_activity(
+                        &game_id,
+                        Some(seat),
+                        AgentActivityKind::TurnFailed,
+                        format!("Agent turn failed: {error}"),
+                        Some(turn_id.clone()),
+                        Some(duration_ms),
+                    )
+                    .await;
+                    tracing::warn!(
+                        game_id = %game_id,
+                        seat = seat_number(seat),
+                        turn_id,
+                        duration_ms,
+                        error = %error,
+                        "agent turn failed"
+                    );
+                    self.resign(&state, &access, seat, "agent-turn-failed")
+                        .await;
+                    continue;
+                }
+            };
+            for tool_call in &output.tool_calls {
+                self.record_activity(
+                    &game_id,
+                    Some(seat),
+                    AgentActivityKind::ToolCalled,
+                    format!("Called {}", tool_call.tool),
+                    Some(turn_id.clone()),
+                    None,
+                )
+                .await;
+            }
+            self.record_activity(
+                &game_id,
+                Some(seat),
+                AgentActivityKind::TurnCompleted,
+                if output.visible_output.trim().is_empty() {
+                    "Agent turn completed"
+                } else {
+                    output.visible_output.trim()
+                },
+                Some(turn_id.clone()),
+                Some(duration_ms),
+            )
+            .await;
+            tracing::info!(
+                game_id = %game_id,
+                seat = seat_number(seat),
+                turn_id,
+                duration_ms,
+                tool_calls = output.tool_calls.len(),
+                "agent turn process completed"
+            );
             let after = state
                 .runtime()
                 .service()
@@ -466,6 +759,21 @@ impl AgentMatchManager {
                         },
                     )
                     .await;
+                    self.record_activity(
+                        &game_id,
+                        Some(seat),
+                        AgentActivityKind::TurnFailed,
+                        "Agent completed without committing an authoritative move",
+                        Some(turn_id),
+                        Some(duration_ms),
+                    )
+                    .await;
+                    tracing::warn!(
+                        game_id = %game_id,
+                        seat = seat_number(seat),
+                        game_version = before,
+                        "agent completed without committing a move"
+                    );
                     self.resign(&state, &access, seat, "agent-did-not-move")
                         .await;
                 }
@@ -538,9 +846,11 @@ impl AgentMatchManager {
             .await
             .map_err(|_| "agent_start_failed")?;
         Ok(RunningAgent {
+            seat,
             driver,
             lease,
             cancellation,
+            reported_diagnostics: 0,
         })
     }
 
@@ -572,7 +882,17 @@ impl AgentMatchManager {
 
     async fn finish_agents(&self, game_id: &GameId, agents: &mut [Option<RunningAgent>; 2]) {
         for agent in agents.iter_mut().filter_map(Option::take) {
+            let seat = agent.seat;
             agent.finish().await;
+            self.record_activity(
+                game_id,
+                Some(seat),
+                AgentActivityKind::AgentFinished,
+                "Agent process stopped",
+                None,
+                None,
+            )
+            .await;
         }
         if let Some(record) = self.inner.matches.write().await.get_mut(game_id) {
             for seat in &mut record.seats {
@@ -669,12 +989,24 @@ impl AgentMatchManager {
 
 #[derive(Debug)]
 struct RunningAgent {
+    seat: Seat,
     driver: SupportedAgentDriver,
     lease: SeatWorkspaceLease,
     cancellation: CancellationToken,
+    reported_diagnostics: usize,
 }
 
 impl RunningAgent {
+    fn take_new_diagnostics(&mut self) -> Vec<DiagnosticRecord> {
+        let diagnostics = &self.driver.telemetry().diagnostics;
+        let new = diagnostics
+            .get(self.reported_diagnostics..)
+            .unwrap_or_default()
+            .to_vec();
+        self.reported_diagnostics = diagnostics.len();
+        new
+    }
+
     async fn finish(mut self) {
         self.cancellation.cancel();
         let _ = self.driver.terminate(TerminationReason::Completed).await;
@@ -825,6 +1157,30 @@ fn unix_millis() -> i64 {
         .unwrap_or(i64::MAX)
 }
 
+fn elapsed_millis(started_at: i64) -> u64 {
+    u64::try_from(unix_millis().saturating_sub(started_at)).unwrap_or_default()
+}
+
+fn bounded_activity_message(message: &str) -> String {
+    let mut bounded = String::new();
+    let mut truncated = false;
+    for character in message.chars() {
+        if bounded.chars().count() == MAX_ACTIVITY_MESSAGE_CHARS {
+            truncated = true;
+            break;
+        }
+        match character {
+            '\n' | '\t' => bounded.push(character),
+            value if value.is_control() => bounded.push('\u{fffd}'),
+            value => bounded.push(value),
+        }
+    }
+    if truncated {
+        bounded.push('…');
+    }
+    bounded
+}
+
 const fn seat_number(seat: Seat) -> u8 {
     match seat {
         Seat::One => 1,
@@ -944,7 +1300,12 @@ fn initial_seat_status(selection: &AgentSeatSelection) -> AgentSeatStatusKind {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_version;
+    use word_arena_application::GameId;
+
+    use super::{
+        AgentActivityKind, AgentMatchManager, AgentMatchManagerConfig, MAX_ACTIVITY_EVENTS,
+        parse_version,
+    };
 
     #[test]
     fn parses_supported_cli_version_shapes() {
@@ -957,5 +1318,29 @@ mod tests {
             "2.1.205"
         );
         assert!(parse_version("unknown").is_none());
+    }
+
+    #[tokio::test]
+    async fn activity_log_is_bounded_and_replaces_unsafe_controls() {
+        let manager = AgentMatchManager::new(AgentMatchManagerConfig::default());
+        let game_id = GameId::new("game-activity").unwrap();
+        for index in 0..(MAX_ACTIVITY_EVENTS + 4) {
+            manager
+                .record_activity(
+                    &game_id,
+                    None,
+                    AgentActivityKind::Diagnostic,
+                    format!("event-{index}\0"),
+                    None,
+                    None,
+                )
+                .await;
+        }
+
+        let activity = manager.activity(&game_id).await.unwrap();
+        assert_eq!(activity.events.len(), MAX_ACTIVITY_EVENTS);
+        assert_eq!(activity.events[0].sequence, 4);
+        assert_eq!(activity.events.last().unwrap().message, "event-259�");
+        assert!(!activity.events.last().unwrap().message.contains('\0'));
     }
 }

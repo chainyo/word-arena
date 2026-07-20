@@ -1,6 +1,7 @@
 import {
   type AgentCatalogEntry,
   type AgentHarnessId,
+  type AgentMatchActivity,
   type AgentMatchStatus,
   type AgentSeatSelection,
   type AgentSeatStatus,
@@ -543,6 +544,79 @@ export function decodeAgentMatchStatus(value: unknown): AgentMatchStatus {
     throw new DecodeError("unsupported API schema")
   }
   return agentMatchStatusData(envelope.data)
+}
+
+const AGENT_ACTIVITY_KINDS = [
+  "match_started",
+  "agent_starting",
+  "agent_ready",
+  "agent_failed",
+  "turn_started",
+  "tool_called",
+  "diagnostic",
+  "turn_completed",
+  "turn_failed",
+  "agent_finished",
+  "match_finished",
+] as const
+
+export function decodeAgentMatchActivity(value: unknown): AgentMatchActivity {
+  const envelope = record(value, "agent match activity envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const data = record(envelope.data, "agent match activity")
+  if (
+    integer(data.schema_version, "agent match activity.schema_version") !==
+    API_SCHEMA_VERSION
+  ) {
+    throw new DecodeError("unsupported agent activity schema")
+  }
+  return {
+    gameId: string(data.game_id, "agent match activity.game_id"),
+    events: array(data.events, "agent match activity.events").map(
+      (value, index) => {
+        const event = record(value, `agent activity event[${index}]`)
+        const seatValue = event.seat
+        const turnId = event.turn_id
+        const durationMs = event.duration_ms
+        return {
+          sequence: integer(
+            event.sequence,
+            `agent activity event[${index}].sequence`
+          ),
+          atUnixMs: integer(
+            event.at_unix_ms,
+            `agent activity event[${index}].at_unix_ms`
+          ),
+          seat:
+            seatValue === undefined || seatValue === null
+              ? undefined
+              : seat(seatValue, `agent activity event[${index}].seat`),
+          kind: literal(
+            event.kind,
+            AGENT_ACTIVITY_KINDS,
+            `agent activity event[${index}].kind`
+          ),
+          message: string(
+            event.message,
+            `agent activity event[${index}].message`
+          ),
+          turnId:
+            turnId === undefined || turnId === null
+              ? undefined
+              : string(turnId, `agent activity event[${index}].turn_id`),
+          durationMs:
+            durationMs === undefined || durationMs === null
+              ? undefined
+              : integer(
+                  durationMs,
+                  `agent activity event[${index}].duration_ms`
+                ),
+        }
+      }
+    ),
+  }
 }
 
 export function decodeCreatedAgentMatch(value: unknown): CreatedAgentMatch {

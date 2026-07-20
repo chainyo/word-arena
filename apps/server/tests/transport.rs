@@ -45,10 +45,10 @@ use word_arena_lexicon::{
     REQUIRED_PAYLOAD_FILES, SourceDescriptor,
 };
 use word_arena_server::{
-    AGENT_CATALOG_PATH, AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH, API_SCHEMA_VERSION,
-    AgentMatchManager, AgentMatchManagerConfig, BROWSER_WEBSOCKET_PROTOCOL, GAME_EVENTS_PATH,
-    GameInvalidation, MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH,
-    SPECTATOR_REPLAY_PATH, ServerState, api_app,
+    AGENT_CATALOG_PATH, AGENT_MATCH_ACTIVITY_PATH, AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH,
+    API_SCHEMA_VERSION, AgentMatchManager, AgentMatchManagerConfig, BROWSER_WEBSOCKET_PROTOCOL,
+    GAME_EVENTS_PATH, GameInvalidation, MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH,
+    SPECTATOR_GAME_PATH, SPECTATOR_REPLAY_PATH, ServerState, api_app,
 };
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
@@ -77,6 +77,10 @@ fn web_api_contract_matches_authoritative_server_constants() {
     assert_eq!(contract["agent_paths"]["catalog"], AGENT_CATALOG_PATH);
     assert_eq!(contract["agent_paths"]["matches"], AGENT_MATCHES_PATH);
     assert_eq!(contract["agent_paths"]["status"], AGENT_MATCH_STATUS_PATH);
+    assert_eq!(
+        contract["agent_paths"]["activity"],
+        AGENT_MATCH_ACTIVITY_PATH
+    );
     assert_eq!(contract["spectator_replay_path"], SPECTATOR_REPLAY_PATH);
     assert_eq!(
         contract["view_fields"],
@@ -166,6 +170,42 @@ async fn agent_catalog_and_match_creation_fail_closed() {
         response_json(unavailable).await["code"],
         "agent_unavailable"
     );
+}
+
+#[tokio::test]
+async fn agent_activity_is_human_spectator_only() {
+    let fixture = fixture();
+    let game_id = create_game(&fixture, "activity-auth").await;
+    let public = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::Public,
+        [CapabilityScope::ObservePublic],
+        None,
+    )
+    .await;
+    let spectator = issue(
+        &fixture,
+        &game_id,
+        CapabilityRole::HumanSpectator,
+        [CapabilityScope::ObserveHumanSpectator],
+        None,
+    )
+    .await;
+    let app = api_app(Arc::clone(&fixture.state));
+    let path = AGENT_MATCH_ACTIVITY_PATH.replace("{game_id}", game_id.as_str());
+
+    let denied = app
+        .clone()
+        .oneshot(empty_request(Method::GET, &path, Some(&public)))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    let absent = app
+        .oneshot(empty_request(Method::GET, &path, Some(&spectator)))
+        .await
+        .unwrap();
+    assert_eq!(absent.status(), StatusCode::NOT_FOUND);
 }
 
 #[derive(Debug)]

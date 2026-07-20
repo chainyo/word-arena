@@ -1,5 +1,6 @@
 import {
   decodeAgentCatalog,
+  decodeAgentMatchActivity,
   decodeAgentMatchStatus,
   decodeApiError,
   decodeCreatedAgentMatch,
@@ -10,6 +11,7 @@ import {
 } from "@/api/decode"
 import type {
   AgentCatalogEntry,
+  AgentMatchActivity,
   AgentMatchStatus,
   CreateAgentMatchRequest,
   CreatedAgentMatch,
@@ -92,6 +94,29 @@ export async function fetchAgentMatchStatus(
     }
   )
   return decodeAgentMatchStatus(await responseBody(response))
+}
+
+export async function fetchAgentMatchActivity(
+  session: GameSession,
+  token: string,
+  signal?: AbortSignal
+): Promise<AgentMatchActivity> {
+  if (session.authority !== "spectator") {
+    throw new GameApiError(
+      403,
+      "spectator_required",
+      "Agent activity requires a human-spectator capability"
+    )
+  }
+  const response = await fetch(
+    `${session.serverOrigin}/api/v1/matches/${encodeURIComponent(session.gameId)}/activity`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal,
+    }
+  )
+  return decodeAgentMatchActivity(await responseBody(response))
 }
 
 export async function fetchSpectatorReplay(

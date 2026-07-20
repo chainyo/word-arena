@@ -12,6 +12,7 @@ import { credentialVault } from "../src/api/credentials"
 import {
   DecodeError,
   decodeAgentCatalog,
+  decodeAgentMatchActivity,
   decodeAgentMatchStatus,
   decodeApiError,
   decodeGameView,
@@ -148,6 +149,36 @@ describe("HTTP V1 decoding and drift", () => {
     expect(status.seats[1].participant).toEqual({ kind: "human", name: "Ada" })
   })
 
+  test("decodes the spectator-only agent activity feed", () => {
+    const activity = decodeAgentMatchActivity({
+      schema_version: 1,
+      data: {
+        schema_version: 1,
+        game_id: "game-one",
+        events: [
+          {
+            sequence: 4,
+            at_unix_ms: 12_000,
+            seat: "one",
+            kind: "turn_started",
+            message: "Turn 3 started",
+            turn_id: "1-3",
+            duration_ms: null,
+          },
+        ],
+      },
+    })
+    expect(activity.events[0]).toEqual({
+      sequence: 4,
+      atUnixMs: 12_000,
+      seat: "one",
+      kind: "turn_started",
+      message: "Turn 3 started",
+      turnId: "1-3",
+      durationMs: undefined,
+    })
+  })
+
   test("shares exact schema, route, and WebSocket constants", () => {
     expect(API_SCHEMA_VERSION).toBe(contract.api_schema_version)
     expect(PROJECTION_SCHEMA_VERSION).toBe(contract.projection_schema_version)
@@ -165,6 +196,9 @@ describe("HTTP V1 decoding and drift", () => {
     }
     expect(contract.spectator_replay_path).toBe(
       "/api/v1/games/{game_id}/spectator/replay"
+    )
+    expect(contract.agent_paths.activity).toBe(
+      "/api/v1/matches/{game_id}/activity"
     )
   })
 
