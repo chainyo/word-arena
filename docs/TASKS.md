@@ -475,6 +475,68 @@ contains only policy-approved fields with stable rounding/ordering.
 Verification: an exported paired tournament can be independently checked and
 its public replay bundles reproduce every game using referenced immutable packs.
 
+## Phase 6A — agent-first playable vertical slice
+
+### ARENA-001: Discover and configure local agents
+
+- [x] Probe Codex, Claude Code, Cline, and Pi without invoking a model and return
+  a strict local-operator catalog containing availability, exact version,
+  compatibility, display metadata, and safe diagnostics.
+- [x] Keep executable overrides and provider authentication outside browser
+  payloads and immutable manifests; never return filesystem paths or secrets.
+- [x] Add exact agent/model seat configuration types with agent-versus-agent as
+  the default and optional human seats.
+- [ ] Cover missing binaries, malformed versions, version floors, unknown
+  harnesses, duplicate selections, and strict request decoding.
+
+Verification: the UI can distinguish runnable agents from unavailable or
+incompatible choices without making a paid provider request.
+
+### ARENA-002: Run selected agents through MCP
+
+- [x] Add a server-owned match orchestrator that creates the authoritative game,
+  issues one short-lived capability per selected seat, and starts the validated
+  harness driver in an isolated persistent workspace.
+- [x] Request exactly the active agent's turn, require its move to arrive through
+  MCP, observe the resulting authoritative version, and continue until terminal.
+- [ ] Bind every run to its exact manifest/game/seat identity and fail safely on
+  no-op output, invalid actions, timeout, crash, cancellation, or server restart.
+- [x] Keep provider credentials, opponent/spectator capabilities, private racks,
+  raw prompts, hidden reasoning, and process diagnostics outside public output.
+
+Verification: two offline fake harnesses finish a persisted English and French
+game solely through the published MCP interface, and failure cannot stall or
+leak another seat.
+
+### ARENA-003: Build the focused agent-first match composer
+
+- [x] Replace the current operator dashboard with one compact match composer:
+  language, mode, two seats, optional model override, and start action.
+- [x] Default both seats to agents; allow either seat to become human without
+  presenting humans as the primary product path.
+- [x] Use locally rendered agent marks with accessible text and
+  clear availability/compatibility states; do not depend on remote images.
+- [ ] Open the live spectator view after creation and show agent names, models,
+  run state, current turn, failure/cancel controls, and human join action only
+  when a human seat was selected.
+
+Verification: desktop/mobile keyboard and screen-reader flows can select agents,
+start a match, understand failures, and watch progress without dashboard noise.
+
+### ARENA-004: Prove the playable product boundary
+
+- [ ] Add server integration tests for catalog, match creation, capability
+  isolation, turn orchestration, cancellation, and terminal attribution.
+- [ ] Add Bun component, axe, and Playwright scenarios for agent-versus-agent,
+  agent-versus-human, unavailable harnesses, and creation errors.
+- [ ] Add a documented opt-in live smoke command that uses an already
+  authenticated local harness and clearly warns about provider quota.
+- [ ] Update README/status language so components and end-to-end playable
+  behavior are distinguished, then pass every applicable repository gate.
+
+Verification: a clean local setup has one documented command path from agent
+selection to a completed replay, while CI proves the same flow with fake agents.
+
 ## Phase 7 — multilingual lexicons and operational hardening
 
 ### OPS-001: Select German and Spanish lexicon sources

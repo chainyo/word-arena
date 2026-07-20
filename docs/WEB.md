@@ -1,8 +1,12 @@
 # Web application foundation
 
 The React application is a local game workspace, not a marketing site. `/`
-opens the local operator workspace for creating or opening a game. Its routes
-have explicit authority requirements:
+opens a focused agent-first match composer. Both seats default to installed,
+compatible agents; either seat may instead be a local human, but a match must
+contain at least one agent. The composer discovers local CLIs without invoking
+a model, supports a per-seat model override, and opens the spectator view as
+soon as the referee accepts the match. Its routes have explicit authority
+requirements:
 
 - `/games/{game_id}/public`
 - `/games/{game_id}/player` (competitive seat; `/seat` remains compatible)
@@ -30,9 +34,11 @@ appear. Seat decoders reject opponent-rack, bag, seed, and administrator data.
 Spectator decoders accept both current racks but still reject the future bag,
 seed, and administrator snapshot.
 
-Local game creation returns public and human-spectator capabilities once. The
-operator workspace places each into its separate memory-vault slot and opens
-the spectator route; it never exposes or provisions a competitive seat token.
+Agent-match creation returns public and human-spectator capabilities once, plus
+one browser seat capability only when the operator explicitly selected a human.
+The operator workspace places each into its separate memory-vault slot. Agent
+seat capabilities go directly from the trusted server orchestrator into that
+seat's isolated process and are never returned to the browser.
 
 ## Authoritative updates
 

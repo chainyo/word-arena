@@ -11,10 +11,10 @@ import {
   Plus,
   Radio,
   RefreshCw,
-  ShieldCheck,
   Sun,
   Trophy,
   Unplug,
+  UserRound,
 } from "lucide-react"
 import {
   Component,
@@ -38,8 +38,10 @@ import {
 } from "react-router-dom"
 
 import {
-  createLocalGame,
+  createAgentMatch,
   DEFAULT_SERVER_ORIGIN,
+  fetchAgentCatalog,
+  fetchAgentMatchStatus,
   fetchSpectatorReplay,
   normalizeServerOrigin,
   submitGameAction,
@@ -48,6 +50,11 @@ import { credentialVault } from "@/api/credentials"
 import { gameQueryKey, gameQueryOptions, rulesQueryOptions } from "@/api/query"
 import { classifySessionFailure, connectionMessage } from "@/api/session"
 import type {
+  AgentCatalogEntry,
+  AgentHarnessId,
+  AgentMatchStatus,
+  AgentSeatSelection,
+  AgentSeatStatus,
   ConnectionState,
   Coordinate,
   GameAuthority,
@@ -57,6 +64,7 @@ import type {
   Ruleset,
 } from "@/api/types"
 import { connectInvalidationSocket } from "@/api/websocket"
+import { AgentLogo } from "@/components/agent/agent-logo"
 import { BlankAssignmentDialog } from "@/components/game/blank-assignment-dialog"
 import {
   displayLetterValues,
@@ -288,18 +296,70 @@ function OperatorWorkspace() {
   const serverOrigin = normalizeServerOrigin(DEFAULT_SERVER_ORIGIN)
   const [language, setLanguage] = useState<"english" | "french">("english")
   const [mode, setMode] = useState<"competitive" | "practice">("competitive")
+  const [catalog, setCatalog] = useState<AgentCatalogEntry[]>([])
+  const [catalogPending, setCatalogPending] = useState(true)
+  const [seats, setSeats] = useState<[SeatDraft, SeatDraft]>([
+    { kind: "agent", harness: "codex", model: "" },
+    { kind: "agent", harness: "codex", model: "" },
+  ])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setCatalogPending(true)
+    void fetchAgentCatalog(serverOrigin, controller.signal)
+      .then((entries) => {
+        setCatalog(entries)
+        const first = entries.find(
+          (entry) => entry.available && entry.compatible
+        )
+        if (first) {
+          setSeats(
+            (current) =>
+              current.map((seat) =>
+                seat.kind === "agent" &&
+                !entries.some(
+                  (entry) =>
+                    entry.id === seat.harness &&
+                    entry.available &&
+                    entry.compatible
+                )
+                  ? { ...seat, harness: first.id }
+                  : seat
+              ) as [SeatDraft, SeatDraft]
+          )
+        }
+      })
+      .catch((caught) => {
+        if (!controller.signal.aborted) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Unable to inspect local agents"
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCatalogPending(false)
+      })
+    return () => controller.abort()
+  }, [serverOrigin])
 
   const createGame = async (event: FormEvent) => {
     event.preventDefault()
     setPending(true)
     setError(undefined)
     try {
-      const created = await createLocalGame(serverOrigin, {
+      const selected = seats.map(toSeatSelection) as [
+        AgentSeatSelection,
+        AgentSeatSelection,
+      ]
+      const created = await createAgentMatch(serverOrigin, {
         language,
         mode,
-        idempotency_key: `web-create-${crypto.randomUUID()}`,
+        seats: selected,
+        idempotency_key: `web-match-${crypto.randomUUID()}`,
       })
       const publicSession: GameSession = {
         authority: "public",
@@ -317,7 +377,16 @@ function OperatorWorkspace() {
         observedAt: Date.now(),
         public: created.public,
       } satisfies GameView)
-      navigate(`/games/${encodeURIComponent(created.gameId)}/spectator`)
+      if (created.humanCapability) {
+        const humanSession: GameSession = {
+          ...publicSession,
+          authority: "seat",
+        }
+        credentialVault.set(humanSession, created.humanCapability)
+        navigate(`/games/${encodeURIComponent(created.gameId)}/player`)
+      } else {
+        navigate(`/games/${encodeURIComponent(created.gameId)}/spectator`)
+      }
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Unable to create this game"
@@ -329,174 +398,259 @@ function OperatorWorkspace() {
 
   return (
     <div className="min-h-svh bg-background">
-      <WorkspaceHeader subtitle="Local game operator" />
+      <WorkspaceHeader subtitle="Agent match console" />
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto grid max-w-[1400px] items-start gap-4 p-3 sm:p-5 lg:grid-cols-[23rem_minmax(0,1fr)]"
+        className="mx-auto max-w-5xl p-3 sm:p-6"
       >
-        <section className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={(event) => void createGame(event)}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <Badge variant="secondary">
+                <Bot /> Agent-first
+              </Badge>
+              <h2 className="mt-3 font-heading text-2xl font-semibold tracking-tight">
+                Start a match
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Pick the two seats. Humans are optional; agents play through
+                MCP.
+              </p>
+            </div>
+            <Button
+              onClick={() => navigate("/connect")}
+              type="button"
+              variant="ghost"
+            >
+              <Radio /> Open existing game
+            </Button>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {(["one", "two"] as const).map((seatKey, index) => (
+              <AgentSeatPicker
+                catalog={catalog}
+                disabled={pending || catalogPending}
+                key={seatKey}
+                label={`Seat ${index + 1}`}
+                onChange={(next) =>
+                  setSeats((current) => {
+                    const updated = [...current] as [SeatDraft, SeatDraft]
+                    updated[index] = next
+                    return updated
+                  })
+                }
+                seat={seats[index]}
+                humanAllowed={seats[index === 0 ? 1 : 0].kind === "agent"}
+              />
+            ))}
+          </div>
+
           <Card size="sm">
-            <CardHeader className="border-b">
-              <div className="mb-1 flex items-center gap-2">
-                <Badge variant="secondary">
-                  <ShieldCheck /> Local operator
-                </Badge>
-              </div>
-              <CardTitle>Create a game</CardTitle>
-              <CardDescription>
-                Start one authoritative game and open its human-spectator view.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="space-y-4"
-                onSubmit={(event) => void createGame(event)}
-              >
-                <div className="space-y-1.5">
-                  <Label htmlFor="create-language">Language pack</Label>
-                  <Select
-                    onValueChange={(value) =>
-                      setLanguage(value as "english" | "french")
-                    }
-                    value={language}
-                  >
-                    <SelectTrigger className="w-full" id="create-language">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="english">English</SelectItem>
-                      <SelectItem value="french">French</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="create-mode">Game mode</Label>
-                  <Select
-                    onValueChange={(value) =>
-                      setMode(value as "competitive" | "practice")
-                    }
-                    value={mode}
-                  >
-                    <SelectTrigger className="w-full" id="create-mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="competitive">Competitive</SelectItem>
-                      <SelectItem value="practice">Practice</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Referee: {serverOrigin}. Observer capabilities remain only in
-                  this tab's memory.
-                </p>
-                {error ? (
-                  <Alert variant="destructive">
-                    <AlertCircle />
-                    <AlertTitle>Game was not created</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                ) : null}
-                <Button className="w-full" disabled={pending} type="submit">
-                  {pending ? (
-                    <LoaderCircle className="animate-spin motion-reduce:animate-none" />
-                  ) : (
-                    <Plus />
-                  )}
-                  Create and spectate
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-          <Button
-            className="w-full"
-            onClick={() => navigate("/connect")}
-            variant="outline"
-          >
-            <Radio /> Open an existing game
-          </Button>
-        </section>
-        <section className="space-y-4">
-          <Card size="sm">
-            <CardHeader className="border-b sm:grid-cols-[1fr_auto]">
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <Badge variant="outline">Phase 6 data source pending</Badge>
-                </div>
-                <CardTitle>Tournament lobby</CardTitle>
-                <CardDescription>
-                  Scheduled and live matches will appear here once tournament
-                  orchestration supplies authoritative records.
-                </CardDescription>
-              </div>
-              <Trophy className="size-5 self-center text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-2 sm:grid-cols-[1fr_12rem]">
-                <Input
-                  aria-label="Filter tournaments"
-                  placeholder="Filter tournaments"
-                />
-                <Select defaultValue="all">
-                  <SelectTrigger aria-label="Tournament status filter">
+            <CardContent className="grid gap-4 pt-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="create-language">Language</Label>
+                <Select
+                  onValueChange={(value) =>
+                    setLanguage(value as "english" | "french")
+                  }
+                  value={language}
+                >
+                  <SelectTrigger className="w-full" id="create-language">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
-                    <SelectItem value="running">Running</SelectItem>
-                    <SelectItem value="finished">Finished</SelectItem>
+                    <SelectItem value="english">English</SelectItem>
+                    <SelectItem value="french">French</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid min-h-52 place-items-center rounded-xl border border-dashed p-6 text-center">
-                <div>
-                  <Trophy className="mx-auto mb-3 size-8 text-muted-foreground" />
-                  <p className="font-heading font-medium">
-                    No tournament records
-                  </p>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    The route is ready without fabricating standings or agent
-                    statistics before their persisted Phase 6 sources exist.
-                  </p>
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-mode">Rules</Label>
+                <Select
+                  onValueChange={(value) =>
+                    setMode(value as "competitive" | "practice")
+                  }
+                  value={mode}
+                >
+                  <SelectTrigger className="w-full" id="create-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="competitive">Competitive</SelectItem>
+                    <SelectItem value="practice">Practice</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>0 tournaments</span>
-                <span>Page 1 of 1</span>
-              </div>
+              <Button
+                className="min-w-40"
+                disabled={
+                  pending ||
+                  catalogPending ||
+                  catalog.every((agent) => !agent.compatible)
+                }
+                size="lg"
+                type="submit"
+              >
+                {pending ? (
+                  <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Plus />
+                )}
+                Start match
+              </Button>
             </CardContent>
           </Card>
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              {
-                icon: <Radio />,
-                title: "Live spectator",
-                text: "Human-only authority can inspect both racks, never the future bag.",
-              },
-              {
-                icon: <History />,
-                title: "Recorded replay",
-                text: "Finished games reveal exact deterministic inputs and public export.",
-              },
-              {
-                icon: <Bot />,
-                title: "Private player",
-                text: "A seat capability sees only its own rack and can act only for itself.",
-              },
-            ].map((item) => (
-              <Card key={item.title} size="sm">
-                <CardHeader>
-                  <span className="text-muted-foreground">{item.icon}</span>
-                  <CardTitle>{item.title}</CardTitle>
-                  <CardDescription>{item.text}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        </section>
+
+          {error ? (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>Match could not start</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <p className="text-center text-xs text-muted-foreground">
+            {catalogPending
+              ? "Checking installed agents…"
+              : `${catalog.filter((agent) => agent.available && agent.compatible).length} of ${catalog.length} compatible CLIs · ${serverOrigin}`}
+          </p>
+        </form>
       </main>
     </div>
+  )
+}
+
+type SeatDraft =
+  | { kind: "agent"; harness: AgentHarnessId; model: string }
+  | { kind: "human"; name: string }
+
+function toSeatSelection(seat: SeatDraft): AgentSeatSelection {
+  if (seat.kind === "human") return seat
+  const model = seat.model.trim()
+  return {
+    kind: "agent",
+    harness: seat.harness,
+    model: model || undefined,
+  }
+}
+
+function AgentSeatPicker({
+  catalog,
+  disabled,
+  humanAllowed,
+  label,
+  onChange,
+  seat,
+}: {
+  catalog: AgentCatalogEntry[]
+  disabled: boolean
+  humanAllowed: boolean
+  label: string
+  onChange: (seat: SeatDraft) => void
+  seat: SeatDraft
+}) {
+  return (
+    <Card size="sm">
+      <CardHeader className="border-b">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle>{label}</CardTitle>
+            <CardDescription>
+              {seat.kind === "agent"
+                ? "Autonomous MCP player"
+                : "Local human player"}
+            </CardDescription>
+          </div>
+          <Button
+            disabled={disabled || (!humanAllowed && seat.kind === "agent")}
+            onClick={() =>
+              onChange(
+                seat.kind === "agent"
+                  ? { kind: "human", name: "Human" }
+                  : { kind: "agent", harness: "codex", model: "" }
+              )
+            }
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {seat.kind === "agent" ? <UserRound /> : <Bot />}
+            {seat.kind === "agent" ? "Use human" : "Use agent"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-4">
+        {seat.kind === "human" ? (
+          <div className="space-y-1.5">
+            <Label htmlFor={`${label}-human-name`}>Player name</Label>
+            <Input
+              id={`${label}-human-name`}
+              maxLength={64}
+              onChange={(event) =>
+                onChange({ kind: "human", name: event.target.value })
+              }
+              value={seat.name}
+            />
+          </div>
+        ) : (
+          <>
+            <div
+              className="grid grid-cols-2 gap-2"
+              role="radiogroup"
+              aria-label={`${label} agent`}
+            >
+              {catalog.map((agent) => {
+                const ready = agent.available && agent.compatible
+                const selected = seat.harness === agent.id
+                return (
+                  <label
+                    className={`relative flex min-h-20 items-center gap-3 rounded-xl border p-3 text-left transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${selected ? "border-primary bg-accent" : "bg-card hover:bg-accent/60"} ${ready ? "" : "cursor-not-allowed opacity-45"}`}
+                    key={agent.id}
+                  >
+                    <input
+                      checked={selected}
+                      className="absolute inset-0 z-10 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                      disabled={disabled || !ready}
+                      name={`${label}-agent`}
+                      onChange={() => onChange({ ...seat, harness: agent.id })}
+                      type="radio"
+                      value={agent.id}
+                    />
+                    <AgentLogo agent={agent.id} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">
+                        {agent.displayName}
+                      </span>
+                      <span
+                        className={`block truncate text-xs ${selected ? "text-foreground" : "text-muted-foreground"}`}
+                      >
+                        {agent.version ? `v${agent.version}` : agent.diagnostic}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${label}-model`}>Model override</Label>
+              <Input
+                id={`${label}-model`}
+                maxLength={128}
+                onChange={(event) =>
+                  onChange({ ...seat, model: event.target.value })
+                }
+                placeholder="Use agent default"
+                value={seat.model}
+              />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1028,6 +1182,73 @@ function LoadingWorkspace({ gameId }: { gameId: string }) {
   )
 }
 
+function useAgentMatchStatus(session: GameSession, token: string) {
+  const [status, setStatus] = useState<AgentMatchStatus>()
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const next = await fetchAgentMatchStatus(
+          session,
+          token,
+          controller.signal
+        )
+        if (!cancelled) setStatus(next)
+      } catch {
+        // Manually created games intentionally have no agent-match record.
+      }
+    }
+    void load()
+    const timer = window.setInterval(() => void load(), 1000)
+    return () => {
+      cancelled = true
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [session, token])
+  return status
+}
+
+function participantName(
+  status: AgentSeatStatus | undefined,
+  fallback: string
+) {
+  if (!status) return fallback
+  return status.participant.kind === "human"
+    ? status.participant.name
+    : status.participant.harness === "claude_code"
+      ? "Claude Code"
+      : status.participant.harness === "codex"
+        ? "Codex"
+        : status.participant.harness === "cline"
+          ? "Cline"
+          : "Pi"
+}
+
+function participantHarness(status: AgentSeatStatus | undefined) {
+  return status?.participant.kind === "agent"
+    ? status.participant.harness
+    : undefined
+}
+
+function participantSubtitle(
+  status: AgentSeatStatus | undefined,
+  rackCount: number
+) {
+  if (status?.participant.kind === "agent" && status.participant.model) {
+    return `${status.participant.model} · ${rackCount} tiles`
+  }
+  return `${rackCount} tiles`
+}
+
+function statusLabel(status: AgentSeatStatus) {
+  if (status.state === "waiting_for_human") return "Human turn"
+  if (status.state === "thinking") return "Thinking"
+  if (status.state === "failed") return "Failed"
+  return status.state.charAt(0).toUpperCase() + status.state.slice(1)
+}
+
 function GameWorkspace({
   connection,
   onAuthoritativeView,
@@ -1050,6 +1271,7 @@ function GameWorkspace({
   view: GameView
 }) {
   const navigate = useNavigate()
+  const matchStatus = useAgentMatchStatus(session, token)
   const state = view.public.state
   const [draft, setDraft] = useState<MoveDraft>(EMPTY_MOVE_DRAFT)
   const [pending, setPending] = useState(false)
@@ -1170,7 +1392,9 @@ function GameWorkspace({
         >
           <PlayerCard
             active={state.phase === "active" && state.current_player === "one"}
-            agent="Seat one"
+            agent={participantName(matchStatus?.seats[0], "Seat one")}
+            harness={participantHarness(matchStatus?.seats[0])}
+            human={matchStatus?.seats[0].participant.kind === "human"}
             deadlineAt={
               view.turnDeadline?.seat === "one"
                 ? view.turnDeadline.deadlineAt
@@ -1178,11 +1402,17 @@ function GameWorkspace({
             }
             observedAt={view.observedAt}
             score={state.scores[0]}
-            subtitle={`${state.rack_counts[0]} tiles`}
+            subtitle={participantSubtitle(
+              matchStatus?.seats[0],
+              state.rack_counts[0]
+            )}
+            status={matchStatus ? statusLabel(matchStatus.seats[0]) : undefined}
           />
           <PlayerCard
             active={state.phase === "active" && state.current_player === "two"}
-            agent="Seat two"
+            agent={participantName(matchStatus?.seats[1], "Seat two")}
+            harness={participantHarness(matchStatus?.seats[1])}
+            human={matchStatus?.seats[1].participant.kind === "human"}
             deadlineAt={
               view.turnDeadline?.seat === "two"
                 ? view.turnDeadline.deadlineAt
@@ -1190,7 +1420,11 @@ function GameWorkspace({
             }
             observedAt={view.observedAt}
             score={state.scores[1]}
-            subtitle={`${state.rack_counts[1]} tiles`}
+            subtitle={participantSubtitle(
+              matchStatus?.seats[1],
+              state.rack_counts[1]
+            )}
+            status={matchStatus ? statusLabel(matchStatus.seats[1]) : undefined}
           />
           <Card className="sm:col-span-2 xl:col-span-1" size="sm">
             <CardHeader className="border-b">

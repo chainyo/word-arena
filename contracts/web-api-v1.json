@@ -10,6 +10,11 @@
   },
   "spectator_replay_path": "/api/v1/games/{game_id}/spectator/replay",
   "events_path": "/api/v1/games/{game_id}/events",
+  "agent_paths": {
+    "catalog": "/api/v1/agents",
+    "matches": "/api/v1/matches",
+    "status": "/api/v1/matches/{game_id}"
+  },
   "view_fields": ["observed_at", "turn_deadline", "game"],
   "turn_deadline_fields": ["turn", "seat", "deadline_at", "policy_version"],
   "invalidation_fields": ["schema_version", "game_id", "version"]

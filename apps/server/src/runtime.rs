@@ -17,7 +17,8 @@ use word_arena_persistence::{
     MigrationError, SqliteCapabilityRepository, SqliteGameRepository, connect_and_migrate,
 };
 
-use crate::{RuntimeLexicons, ServerState};
+use crate::{AgentMatchManager, AgentMatchManagerConfig, RuntimeLexicons, ServerState};
+use word_arena_agent_runtime::HarnessExecutables;
 
 const DATABASE_FILE: &str = "word-arena.sqlite3";
 const CAPABILITY_KEY_FILE: &str = "server-capability-hmac.key";
@@ -68,7 +69,32 @@ pub async fn build_production_state(
             digest_key,
         ),
     ));
-    Ok(Arc::new(ServerState::new(runtime)))
+    let agents = AgentMatchManager::new(agent_manager_config(paths));
+    Ok(Arc::new(ServerState::with_agent_manager(runtime, agents)))
+}
+
+fn agent_manager_config(paths: &WordArenaPaths) -> AgentMatchManagerConfig {
+    let executables = HarnessExecutables {
+        codex: std::env::var("WORD_ARENA_CODEX_BIN").unwrap_or_else(|_| "codex".to_owned()),
+        claude_code: std::env::var("WORD_ARENA_CLAUDE_BIN").unwrap_or_else(|_| "claude".to_owned()),
+        cline: std::env::var("WORD_ARENA_CLINE_BIN").unwrap_or_else(|_| "cline".to_owned()),
+        pi: std::env::var("WORD_ARENA_PI_BIN").unwrap_or_else(|_| "pi".to_owned()),
+    };
+    let codex_auth_file = std::env::var_os("WORD_ARENA_CODEX_AUTH_FILE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .map(|home| home.join(".codex/auth.json"))
+        })
+        .filter(|path| path.is_file());
+    AgentMatchManagerConfig {
+        executables,
+        workspace_root: paths.data_dir().join("agent-workspaces"),
+        mcp_origin: std::env::var("WORD_ARENA_AGENT_SERVER_ORIGIN")
+            .unwrap_or_else(|_| "http://127.0.0.1:3000".to_owned()),
+        codex_auth_file,
+    }
 }
 
 #[derive(Debug)]

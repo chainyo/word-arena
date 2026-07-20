@@ -55,6 +55,8 @@ pub enum WorkspaceError {
     SandboxUnavailable,
     #[error("human-spectator or administrator authority reached an agent boundary")]
     ForbiddenAuthority,
+    #[error("trusted provider credential state is invalid")]
+    InvalidProviderCredential,
     #[error("forbidden-authority audit could not be recorded")]
     AuditUnavailable,
 }
@@ -619,6 +621,45 @@ impl SeatWorkspaceLease {
         })
     }
 
+    /// Installs one trusted provider JSON state file beneath the isolated state
+    /// directory and registers every secret-looking string for process-output
+    /// redaction. The source path and bytes never enter manifests or telemetry.
+    ///
+    /// # Errors
+    ///
+    /// Rejects paths, oversized/malformed JSON, or any human-only capability.
+    pub fn install_provider_json(
+        &mut self,
+        file_name: &str,
+        bytes: &[u8],
+    ) -> Result<(), WorkspaceError> {
+        if file_name.is_empty()
+            || file_name.len() > 64
+            || file_name.contains(['/', '\\'])
+            || file_name.starts_with('.')
+            || !file_name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+            || bytes.is_empty()
+            || bytes.len() > 1024 * 1024
+        {
+            return Err(WorkspaceError::InvalidProviderCredential);
+        }
+        if self.authority.policy.find(bytes).is_some() {
+            return Err(WorkspaceError::ForbiddenAuthority);
+        }
+        let value: serde_json::Value =
+            serde_json::from_slice(bytes).map_err(|_| WorkspaceError::InvalidProviderCredential)?;
+        let mut redactions = Vec::new();
+        collect_json_redactions(&value, &mut redactions);
+        if redactions.is_empty() {
+            return Err(WorkspaceError::InvalidProviderCredential);
+        }
+        write_private_file(&self.state.join(file_name), bytes)?;
+        self.redactions.extend(redactions);
+        Ok(())
+    }
+
     /// Wraps the isolated seat adapter with the run's shared budget controller.
     #[must_use]
     pub fn budgeted_process_adapter(
@@ -655,6 +696,28 @@ impl SeatWorkspaceLease {
             safe_remove_workspace(&self.root)?;
             Ok(WorkspaceDisposition::Deleted)
         }
+    }
+}
+
+fn collect_json_redactions(value: &serde_json::Value, redactions: &mut Vec<Vec<u8>>) {
+    match value {
+        serde_json::Value::Object(values) => {
+            for value in values.values() {
+                collect_json_redactions(value, redactions);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_json_redactions(value, redactions);
+            }
+        }
+        serde_json::Value::String(value) if value.len() >= 8 => {
+            redactions.push(value.as_bytes().to_vec());
+        }
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => {}
     }
 }
 

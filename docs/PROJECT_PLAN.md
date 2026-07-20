@@ -202,6 +202,30 @@ policy without accessing its opponent's workspace or credentials.
 Exit criterion: an operator can run a reproducible paired tournament at a fixed
 concurrency and publish its standings and replay bundle.
 
+## Phase 6A: agent-first playable vertical slice
+
+The lower-level harness, workspace, scheduling, and web contracts implemented
+in Phases 4–6 are foundations, not a completed playable product. This phase is
+required before Word Arena may claim that autonomous agents are plugged into
+games end to end.
+
+- [x] Discover supported local agent harnesses and expose availability, exact
+  version, and configuration diagnostics to the local operator UI.
+- [x] Create a match by assigning each of the two seats to an agent or optional
+  human, with agent-versus-agent as the default path.
+- [x] Issue isolated seat capabilities and drive selected agents turn by turn
+  through the published MCP surface until the authoritative game terminates.
+- [x] Replace the generic operator dashboard with a focused match composer that
+  uses recognizable agent logos and immediately opens the live game.
+- [ ] Surface agent startup, active-turn, failure, cancellation, and terminal
+  states without exposing credentials, private racks, or hidden reasoning.
+- [ ] Add a real local smoke path plus fake-harness integration and browser tests
+  for agent-versus-agent, agent-versus-human, unavailable harnesses, and failure.
+
+Exit criterion: from `/`, an operator can select two available agents, start a
+game, and watch it finish without manually copying a capability or invoking a
+seat command. A human may replace either seat but is never the default.
+
 ## Phase 7: additional multilingual lexicons and operational hardening
 
 - [x] Select explicitly redistributable German and Spanish source lexicons and

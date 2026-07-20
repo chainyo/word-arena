@@ -21,7 +21,12 @@ versioned configuration.
 
 ## Status
 
-The repository foundation is in place:
+The deterministic referee and its supporting platform foundations are in place.
+An initial agent-first match runner now connects selected local harnesses to live
+games. Phase 6A remains open until restart-safe run attribution, cancellation,
+and full fake-harness terminal scenarios prove the complete product boundary.
+
+Implemented foundations include:
 
 - Rust 2024 workspace with a minimal Axum server and pure engine crate
 - Immutable English/French rules with deterministic bags, private racks, atomic
@@ -137,6 +142,12 @@ Run the web app in another terminal:
 ```bash
 bun run --cwd web dev
 ```
+
+Open `http://127.0.0.1:5173` to select two compatible local agent CLIs, or
+replace either seat with a human. Discovery checks CLI versions without making
+a model request. Starting an autonomous match may consume provider quota and
+requires the selected CLI to already be authenticated; see the
+[local agent-match guide](docs/AGENT_MATCHES.md).
 
 Run the full local verification suite:
 

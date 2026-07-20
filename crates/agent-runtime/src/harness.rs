@@ -657,8 +657,6 @@ impl NativeHarnessDriver {
                 "web_search=\"disabled\"".to_owned(),
                 "--config".to_owned(),
                 "sandbox_workspace_write.network_access=false".to_owned(),
-                "--model".to_owned(),
-                self.model_id.clone(),
                 "--cd".to_owned(),
                 workspace,
             ],
@@ -667,8 +665,6 @@ impl NativeHarnessDriver {
                 "--output-format".to_owned(),
                 "stream-json".to_owned(),
                 "--verbose".to_owned(),
-                "--model".to_owned(),
-                self.model_id.clone(),
                 "--permission-mode".to_owned(),
                 "dontAsk".to_owned(),
                 "--strict-mcp-config".to_owned(),
@@ -676,7 +672,7 @@ impl NativeHarnessDriver {
                 mcp_config,
             ],
             NativeHarnessKind::Cline => {
-                let mut arguments = vec![
+                let arguments = vec![
                     "--json".to_owned(),
                     "--auto-approve".to_owned(),
                     "true".to_owned(),
@@ -691,10 +687,7 @@ impl NativeHarnessDriver {
                             .parent()
                             .unwrap_or(&self.runtime.mcp_config),
                     ),
-                    "--model".to_owned(),
-                    self.model_id.clone(),
                 ];
-                append_provider(&mut arguments, "--provider", &self.model_source);
                 arguments
             }
             NativeHarnessKind::Pi => {
@@ -703,14 +696,17 @@ impl NativeHarnessDriver {
                     "json".to_owned(),
                     "--session-dir".to_owned(),
                     state_directory,
-                    "--model".to_owned(),
-                    self.model_id.clone(),
                 ];
-                append_provider(&mut arguments, "--provider", &self.model_source);
                 arguments.push("--print".to_owned());
                 arguments
             }
         };
+        if !matches!(self.model_source, ModelSource::HarnessDefault) {
+            arguments.extend(["--model".to_owned(), self.model_id.clone()]);
+            if matches!(self.kind, NativeHarnessKind::Cline | NativeHarnessKind::Pi) {
+                append_provider(&mut arguments, "--provider", &self.model_source);
+            }
+        }
         arguments.push(request.visible_input.clone());
         ProcessSpec {
             executable: self.runtime.executables.get(self.kind).to_owned(),

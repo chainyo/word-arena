@@ -141,6 +141,59 @@ export type CreatedGame = {
   spectatorCapability: string
 }
 
+export type AgentHarnessId = "codex" | "claude_code" | "cline" | "pi"
+
+export type AgentCatalogEntry = {
+  id: AgentHarnessId
+  displayName: string
+  logo: string
+  available: boolean
+  compatible: boolean
+  version?: string
+  minimumVersion: string
+  diagnostic: string
+}
+
+export type AgentSeatSelection =
+  | { kind: "agent"; harness: AgentHarnessId; model?: string }
+  | { kind: "human"; name: string }
+
+export type AgentSeatStatusKind =
+  | "queued"
+  | "starting"
+  | "ready"
+  | "thinking"
+  | "waiting_for_human"
+  | "finished"
+  | "failed"
+
+export type AgentSeatStatus = {
+  seat: Seat
+  participant: AgentSeatSelection
+  state: AgentSeatStatusKind
+  failureCode?: string
+}
+
+export type AgentMatchStatus = {
+  gameId: string
+  phase: GamePhase
+  version: number
+  currentSeat: Seat
+  seats: [AgentSeatStatus, AgentSeatStatus]
+}
+
+export type CreateAgentMatchRequest = {
+  language: "english" | "french"
+  mode: "competitive" | "practice"
+  seats: [AgentSeatSelection, AgentSeatSelection]
+  idempotency_key: string
+}
+
+export type CreatedAgentMatch = CreatedGame & {
+  humanCapability?: string
+  status: AgentMatchStatus
+}
+
 export type RulesetIdentity = {
   schemaVersion: number
   rulesetId: Ruleset["id"]

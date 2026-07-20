@@ -11,6 +11,8 @@ import {
 import { credentialVault } from "../src/api/credentials"
 import {
   DecodeError,
+  decodeAgentCatalog,
+  decodeAgentMatchStatus,
   decodeApiError,
   decodeGameView,
   decodeInvalidation,
@@ -101,6 +103,51 @@ function envelope(authority: GameAuthority): unknown {
 }
 
 describe("HTTP V1 decoding and drift", () => {
+  test("decodes the local agent catalog and content-free match status", () => {
+    expect(
+      decodeAgentCatalog({
+        schema_version: 1,
+        data: [
+          {
+            id: "codex",
+            display_name: "Codex",
+            logo: "openai",
+            available: true,
+            compatible: true,
+            version: "0.144.1",
+            minimum_version: "0.144.0",
+            diagnostic: "Ready",
+          },
+        ],
+      })[0]
+    ).toMatchObject({ id: "codex", compatible: true, version: "0.144.1" })
+
+    const status = decodeAgentMatchStatus({
+      schema_version: 1,
+      data: {
+        schema_version: 1,
+        game_id: "game-one",
+        phase: "active",
+        version: 3,
+        current_seat: "one",
+        seats: [
+          {
+            seat: "one",
+            participant: { kind: "agent", harness: "codex", model: null },
+            status: { state: "thinking" },
+          },
+          {
+            seat: "two",
+            participant: { kind: "human", name: "Ada" },
+            status: { state: "waiting_for_human" },
+          },
+        ],
+      },
+    })
+    expect(status.seats[0].state).toBe("thinking")
+    expect(status.seats[1].participant).toEqual({ kind: "human", name: "Ada" })
+  })
+
   test("shares exact schema, route, and WebSocket constants", () => {
     expect(API_SCHEMA_VERSION).toBe(contract.api_schema_version)
     expect(PROJECTION_SCHEMA_VERSION).toBe(contract.projection_schema_version)

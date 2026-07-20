@@ -1,11 +1,18 @@
 import {
+  decodeAgentCatalog,
+  decodeAgentMatchStatus,
   decodeApiError,
+  decodeCreatedAgentMatch,
   decodeCreatedGame,
   decodeGameView,
   decodeReplayBundle,
   decodeRuleset,
 } from "@/api/decode"
 import type {
+  AgentCatalogEntry,
+  AgentMatchStatus,
+  CreateAgentMatchRequest,
+  CreatedAgentMatch,
   CreatedGame,
   CreateGameRequest,
   GameActionRequest,
@@ -43,6 +50,48 @@ export async function createLocalGame(
     signal,
   })
   return decodeCreatedGame(await responseBody(response))
+}
+
+export async function fetchAgentCatalog(
+  serverOrigin: string,
+  signal?: AbortSignal
+): Promise<AgentCatalogEntry[]> {
+  const response = await fetch(`${serverOrigin}/api/v1/agents`, {
+    cache: "no-store",
+    signal,
+  })
+  return decodeAgentCatalog(await responseBody(response))
+}
+
+export async function createAgentMatch(
+  serverOrigin: string,
+  request: CreateAgentMatchRequest,
+  signal?: AbortSignal
+): Promise<CreatedAgentMatch> {
+  const response = await fetch(`${serverOrigin}/api/v1/matches`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    cache: "no-store",
+    signal,
+  })
+  return decodeCreatedAgentMatch(await responseBody(response))
+}
+
+export async function fetchAgentMatchStatus(
+  session: GameSession,
+  token: string,
+  signal?: AbortSignal
+): Promise<AgentMatchStatus> {
+  const response = await fetch(
+    `${session.serverOrigin}/api/v1/matches/${encodeURIComponent(session.gameId)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal,
+    }
+  )
+  return decodeAgentMatchStatus(await responseBody(response))
 }
 
 export async function fetchSpectatorReplay(
