@@ -21,6 +21,7 @@ use tokio_tungstenite::{
     tungstenite::{Message, client::IntoClientRequest},
 };
 use tower::ServiceExt;
+use word_arena_agent_runtime::HarnessExecutables;
 use word_arena_application::{
     AgentRunId, ApplicationClock, ApplicationRuntime, AuditOutcome, CapabilityAdapters,
     CapabilityDigestKey, CapabilityError, CapabilityRole, CapabilityScope, GameId, GameIdSource,
@@ -44,8 +45,9 @@ use word_arena_lexicon::{
     REQUIRED_PAYLOAD_FILES, SourceDescriptor,
 };
 use word_arena_server::{
-    API_SCHEMA_VERSION, BROWSER_WEBSOCKET_PROTOCOL, GAME_EVENTS_PATH, GameInvalidation,
-    MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH,
+    AGENT_CATALOG_PATH, AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH, API_SCHEMA_VERSION,
+    AgentMatchManager, AgentMatchManagerConfig, BROWSER_WEBSOCKET_PROTOCOL, GAME_EVENTS_PATH,
+    GameInvalidation, MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH,
     SPECTATOR_REPLAY_PATH, ServerState, api_app,
 };
 
@@ -72,6 +74,9 @@ fn web_api_contract_matches_authoritative_server_constants() {
         SPECTATOR_GAME_PATH
     );
     assert_eq!(contract["events_path"], GAME_EVENTS_PATH);
+    assert_eq!(contract["agent_paths"]["catalog"], AGENT_CATALOG_PATH);
+    assert_eq!(contract["agent_paths"]["matches"], AGENT_MATCHES_PATH);
+    assert_eq!(contract["agent_paths"]["status"], AGENT_MATCH_STATUS_PATH);
     assert_eq!(contract["spectator_replay_path"], SPECTATOR_REPLAY_PATH);
     assert_eq!(
         contract["view_fields"],
@@ -84,6 +89,82 @@ fn web_api_contract_matches_authoritative_server_constants() {
     assert_eq!(
         contract["invalidation_fields"],
         json!(["schema_version", "game_id", "version"])
+    );
+}
+
+#[tokio::test]
+async fn agent_catalog_and_match_creation_fail_closed() {
+    let fixture = fixture();
+    let temporary = tempfile::tempdir().unwrap();
+    let missing = temporary.path().join("not-installed").display().to_string();
+    let manager = AgentMatchManager::new(AgentMatchManagerConfig {
+        executables: HarnessExecutables {
+            codex: missing.clone(),
+            claude_code: missing.clone(),
+            cline: missing.clone(),
+            pi: missing,
+        },
+        workspace_root: temporary.path().join("runs"),
+        mcp_origin: "http://127.0.0.1:3000".to_owned(),
+        codex_auth_file: None,
+    });
+    let state = Arc::new(ServerState::with_agent_manager(
+        Arc::clone(&fixture.runtime),
+        manager,
+    ));
+    let app = api_app(state);
+
+    let catalog = app
+        .clone()
+        .oneshot(empty_request(Method::GET, AGENT_CATALOG_PATH, None))
+        .await
+        .unwrap();
+    assert_eq!(catalog.status(), StatusCode::OK);
+    let catalog = response_json(catalog).await;
+    let entries = catalog["data"].as_array().unwrap();
+    assert_eq!(entries.len(), 4);
+    assert!(entries.iter().all(|entry| entry["available"] == false));
+
+    let no_agent = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            AGENT_MATCHES_PATH,
+            None,
+            &json!({
+                "language":"english",
+                "seats":[
+                    {"kind":"human","name":"Alice"},
+                    {"kind":"human","name":"Bob"}
+                ],
+                "idempotency_key":"no-agent"
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(no_agent.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response_json(no_agent).await["code"], "agent_required");
+
+    let unavailable = app
+        .oneshot(json_request(
+            Method::POST,
+            AGENT_MATCHES_PATH,
+            None,
+            &json!({
+                "language":"english",
+                "seats":[
+                    {"kind":"agent","harness":"codex"},
+                    {"kind":"human","name":"Human"}
+                ],
+                "idempotency_key":"unavailable-agent"
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(unavailable.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response_json(unavailable).await["code"],
+        "agent_unavailable"
     );
 }
 

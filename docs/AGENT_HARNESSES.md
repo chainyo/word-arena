@@ -64,6 +64,17 @@ The workspace manager supplies only one seat's short-lived capability and
 secret-free MCP/CLI configuration. Opponent, spectator, administrator, and
 database credentials remain absent from commands, files, and telemetry.
 
+The local match runner probes only `<executable> --version`; this confirms
+installation and compatibility, not provider login or remaining quota. Codex
+login state is copied from `~/.codex/auth.json` (or
+`WORD_ARENA_CODEX_AUTH_FILE`) into the private isolated state directory at run
+startup and registered with output redaction. Other harnesses retain their
+native authentication behavior; a missing login fails the seat visibly after
+match creation without returning credential bytes to the browser.
+
+The operator-facing lifecycle is documented in
+[`AGENT_MATCHES.md`](AGENT_MATCHES.md).
+
 ## Verification and local smoke checks
 
 CI uses one executable fake fixture, exposed under all five harness names. It

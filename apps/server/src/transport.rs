@@ -27,9 +27,12 @@ use word_arena_application::{
     HumanSpectatorGameQuery, HumanSpectatorReplayQuery, IdempotencyKey, IssueCapabilityRequest,
     PublicGameQuery, RepositoryError, SeatGameQuery,
 };
-use word_arena_engine::{GameMode, Language, Move, Ruleset, RulesetId, Turn};
+use word_arena_engine::{GameMode, Language, Move, Ruleset, RulesetId, Seat, Turn};
 
-use crate::{RuntimeLexicons, mcp::McpGateway};
+use crate::{
+    AgentMatchManager, AgentMatchManagerConfig, AgentSeatSelection, CreateAgentMatchRequest,
+    CreateAgentMatchResponse, RuntimeLexicons, agent_match::initial_status, mcp::McpGateway,
+};
 
 /// Stable V1 REST and WebSocket schema version.
 pub const API_SCHEMA_VERSION: u16 = 1;
@@ -45,6 +48,12 @@ pub const SPECTATOR_GAME_PATH: &str = "/api/v1/games/{game_id}/spectator";
 pub const SPECTATOR_REPLAY_PATH: &str = "/api/v1/games/{game_id}/spectator/replay";
 /// V1 public-only invalidation stream route contract.
 pub const GAME_EVENTS_PATH: &str = "/api/v1/games/{game_id}/events";
+/// V1 local agent-harness discovery route contract.
+pub const AGENT_CATALOG_PATH: &str = "/api/v1/agents";
+/// V1 local agent-managed match creation route contract.
+pub const AGENT_MATCHES_PATH: &str = "/api/v1/matches";
+/// V1 local agent-managed match status route contract.
+pub const AGENT_MATCH_STATUS_PATH: &str = "/api/v1/matches/{game_id}";
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_IN_FLIGHT_REQUESTS: usize = 128;
 const MAX_WEBSOCKETS: usize = 64;
@@ -52,6 +61,7 @@ const WEBSOCKET_BUFFER: usize = 64;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PUBLIC_CAPABILITY_LIFETIME_MS: i64 = 24 * 60 * 60 * 1_000;
 const SPECTATOR_CAPABILITY_LIFETIME_MS: i64 = 24 * 60 * 60 * 1_000;
+const SEAT_CAPABILITY_LIFETIME_MS: i64 = 60 * 60 * 1_000;
 const DEADLINE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEADLINE_BATCH_SIZE: u32 = 64;
 
@@ -62,17 +72,28 @@ pub struct ServerState {
     notifications: NotificationHub,
     websocket_slots: Arc<Semaphore>,
     mcp: McpGateway,
+    agents: AgentMatchManager,
 }
 
 impl ServerState {
     /// Creates isolated server state around one authoritative application.
     #[must_use]
     pub fn new(runtime: Arc<ApplicationRuntime>) -> Self {
+        Self::with_agent_manager(
+            runtime,
+            AgentMatchManager::new(AgentMatchManagerConfig::default()),
+        )
+    }
+
+    /// Creates state with an explicit trusted local agent manager.
+    #[must_use]
+    pub fn with_agent_manager(runtime: Arc<ApplicationRuntime>, agents: AgentMatchManager) -> Self {
         Self {
             mcp: McpGateway::new(&runtime),
             runtime,
             notifications: NotificationHub::default(),
             websocket_slots: Arc::new(Semaphore::new(MAX_WEBSOCKETS)),
+            agents,
         }
     }
 
@@ -85,6 +106,15 @@ impl ServerState {
     /// Cancels every active MCP session during trusted process shutdown.
     pub fn cancel_mcp(&self) {
         self.mcp.cancel();
+    }
+
+    pub(crate) async fn publish_game_update(&self, game_id: GameId, version: u64) {
+        self.notifications.publish(GameInvalidation {
+            schema_version: API_SCHEMA_VERSION,
+            game_id: game_id.clone(),
+            version,
+        });
+        self.mcp.notify_game_updated(&game_id).await;
     }
 }
 
@@ -236,6 +266,9 @@ pub fn application_app(lexicons: Arc<RuntimeLexicons>, state: Arc<ServerState>) 
 /// full-corpus lexicon artifacts.
 pub fn api_app(state: Arc<ServerState>) -> Router {
     Router::new()
+        .route(AGENT_CATALOG_PATH, get(agent_catalog))
+        .route(AGENT_MATCHES_PATH, post(create_agent_match))
+        .route(AGENT_MATCH_STATUS_PATH, get(agent_match_status))
         .route("/api/v1/games", post(create_game))
         .route(PUBLIC_GAME_PATH, get(public_game))
         .route(SEAT_GAME_PATH, get(seat_game))
@@ -322,6 +355,218 @@ async fn mcp_endpoint(
         .mcp
         .handle(&state.runtime, game_id, &bearer, request)
         .await
+}
+
+async fn agent_catalog(
+    State(state): State<Arc<ServerState>>,
+) -> Json<ApiEnvelope<Vec<crate::AgentCatalogEntry>>> {
+    envelope(state.agents.catalog().await)
+}
+
+async fn create_agent_match(
+    State(state): State<Arc<ServerState>>,
+    payload: Result<Json<CreateAgentMatchRequest>, JsonRejection>,
+) -> Result<Json<ApiEnvelope<CreateAgentMatchResponse>>, ApiError> {
+    let Json(request) = payload.map_err(|error| json_rejection(&error))?;
+    validate_match_seats(&request.seats)?;
+    let catalog = state.agents.catalog().await;
+    for selection in &request.seats {
+        if let AgentSeatSelection::Agent { harness, .. } = selection {
+            let runnable = catalog
+                .iter()
+                .any(|entry| entry.id == *harness && entry.available && entry.compatible);
+            if !runnable {
+                return Err(ApiError::new(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "agent_unavailable",
+                    "a selected agent is unavailable or incompatible",
+                ));
+            }
+        }
+    }
+
+    let command = state.runtime.service().prepare_create_game_with_mode(
+        request.language,
+        request.mode,
+        request.idempotency_key,
+    );
+    let created = state
+        .runtime
+        .service()
+        .create_game(command)
+        .await
+        .map_err(|error| map_application_error(&error))?;
+    let public_capability = issue_public_capability(&state, &created).await?;
+    let spectator_capability = issue_spectator_capability(&state, &created).await?;
+
+    let mut human_capability = None;
+    for (index, selection) in request.seats.iter().enumerate() {
+        let seat = if index == 0 { Seat::One } else { Seat::Two };
+        let expires_at = created
+            .created_at
+            .0
+            .checked_add(SEAT_CAPABILITY_LIFETIME_MS)
+            .map(word_arena_application::UnixMillis)
+            .ok_or_else(|| {
+                ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "time", "time overflow")
+            })?;
+        let mut scopes = [
+            CapabilityScope::ObservePublic,
+            CapabilityScope::ObserveSeat,
+            CapabilityScope::Act,
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+        if request.mode == GameMode::Practice {
+            scopes.insert(CapabilityScope::Preview);
+        }
+        let issued = state
+            .runtime
+            .issue_capability(IssueCapabilityRequest {
+                game_id: created.game_id.clone(),
+                role: CapabilityRole::Seat(seat),
+                scopes,
+                expires_at,
+                // Raw browser input can never choose an agent-run binding.
+                agent_run_id: None,
+            })
+            .await
+            .map_err(|error| map_capability_error(&error))?;
+        let raw = issued.token.into_secret();
+        if matches!(selection, AgentSeatSelection::Human { .. }) {
+            human_capability = Some(raw);
+        } else {
+            state
+                .agents
+                .register_agent_capability(created.game_id.clone(), seat, raw, expires_at)
+                .await;
+        }
+    }
+
+    let status = initial_status(created.game_id.clone(), &created.public, &request.seats);
+    state.agents.insert(status.clone()).await;
+    state.agents.start(
+        Arc::clone(&state),
+        created.access.clone(),
+        spectator_capability.clone(),
+    );
+
+    Ok(envelope(CreateAgentMatchResponse {
+        game_id: created.game_id,
+        public: created.public,
+        public_capability,
+        spectator_capability,
+        human_capability,
+        status,
+    }))
+}
+
+async fn agent_match_status(
+    State(state): State<Arc<ServerState>>,
+    Path(game_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiEnvelope<crate::AgentMatchStatus>>, ApiError> {
+    let game_id = parse_game_id(game_id)?;
+    authenticate(&state, &headers, &game_id, CapabilityScope::ObservePublic).await?;
+    let status = state.agents.status(&game_id).await.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "match_not_found",
+            "the agent-managed match was not found",
+        )
+    })?;
+    Ok(envelope(status))
+}
+
+fn validate_match_seats(seats: &[AgentSeatSelection; 2]) -> Result<(), ApiError> {
+    let human_count = seats
+        .iter()
+        .filter(|seat| matches!(seat, AgentSeatSelection::Human { .. }))
+        .count();
+    if human_count > 1 {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "agent_required",
+            "an agent-first match requires at least one agent",
+        ));
+    }
+    for seat in seats {
+        match seat {
+            AgentSeatSelection::Agent { model, .. } => {
+                if model.as_ref().is_some_and(|value| {
+                    value.is_empty()
+                        || value.len() > 128
+                        || value.trim() != value
+                        || value.chars().any(char::is_control)
+                }) {
+                    return Err(invalid_payload());
+                }
+            }
+            AgentSeatSelection::Human { name } => {
+                if name.is_empty()
+                    || name.len() > 64
+                    || name.trim() != name
+                    || name.chars().any(char::is_control)
+                {
+                    return Err(invalid_payload());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn issue_public_capability(
+    state: &ServerState,
+    created: &word_arena_application::CreatedGame,
+) -> Result<String, ApiError> {
+    let expires_at = created
+        .created_at
+        .0
+        .checked_add(PUBLIC_CAPABILITY_LIFETIME_MS)
+        .map(word_arena_application::UnixMillis)
+        .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "time", "time overflow"))?;
+    state
+        .runtime
+        .issue_capability(IssueCapabilityRequest {
+            game_id: created.game_id.clone(),
+            role: CapabilityRole::Public,
+            scopes: [CapabilityScope::ObservePublic].into_iter().collect(),
+            expires_at,
+            agent_run_id: None,
+        })
+        .await
+        .map(|issued| issued.token.into_secret())
+        .map_err(|error| map_capability_error(&error))
+}
+
+async fn issue_spectator_capability(
+    state: &ServerState,
+    created: &word_arena_application::CreatedGame,
+) -> Result<String, ApiError> {
+    let expires_at = created
+        .created_at
+        .0
+        .checked_add(SPECTATOR_CAPABILITY_LIFETIME_MS)
+        .map(word_arena_application::UnixMillis)
+        .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "time", "time overflow"))?;
+    state
+        .runtime
+        .issue_capability(IssueCapabilityRequest {
+            game_id: created.game_id.clone(),
+            role: CapabilityRole::HumanSpectator,
+            scopes: [
+                CapabilityScope::ObservePublic,
+                CapabilityScope::ObserveHumanSpectator,
+            ]
+            .into_iter()
+            .collect(),
+            expires_at,
+            agent_run_id: None,
+        })
+        .await
+        .map(|issued| issued.token.into_secret())
+        .map_err(|error| map_capability_error(&error))
 }
 
 async fn create_game(

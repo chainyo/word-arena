@@ -23,18 +23,42 @@ async function expectNoAxeViolations(page: Page) {
   ).toEqual([])
 }
 
-test("operator creates a game directly into the human spectator view", async ({
+test("operator selects agents and starts directly into the spectator view", async ({
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Create a game", { exact: true })).toBeVisible()
+  await expect(page.getByText("Start a match", { exact: true })).toBeVisible()
+  await expect(page.getByRole("radio", { name: /Codex/ })).toHaveCount(2)
+  await expect(page.getByRole("radio", { name: /Claude Code/ })).toHaveCount(2)
   await expectNoAxeViolations(page)
 
-  await page.getByRole("button", { name: "Create and spectate" }).click()
+  await page
+    .getByRole("radio", { name: /Claude Code/ })
+    .last()
+    .check()
+  await page.getByRole("button", { name: "Start match" }).click()
   await expect(page).toHaveURL(/\/games\/created-game\/spectator$/)
+  await expect(page.getByText("Codex", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText("Claude Code", { exact: true })).toBeVisible()
   await expect(page.getByText("Seat one rack", { exact: true })).toBeVisible()
   await expect(page.getByText("Seat two rack", { exact: true })).toBeVisible()
   await expect(page.getByText("Both current racks are available")).toBeVisible()
+  await expectNoAxeViolations(page)
+})
+
+test("operator can replace either agent seat with an optional human", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Use human" }).first().click()
+  await page.getByRole("textbox", { name: "Player name" }).fill("Reviewer")
+  await expect(page.getByRole("button", { name: "Use human" })).toBeDisabled()
+
+  await page.getByRole("button", { name: "Start match" }).click()
+  await expect(page).toHaveURL(/\/games\/created-game\/player$/)
+  await expect(page.getByText("Reviewer", { exact: true })).toBeVisible()
+  await expect(page.getByText("Seat one rack", { exact: true })).toBeVisible()
+  await expect(page.getByText("Seat two rack", { exact: true })).toHaveCount(0)
   await expectNoAxeViolations(page)
 })
 

@@ -16,6 +16,7 @@ rmcp.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+semver.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -25,6 +26,7 @@ tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 word-arena-application = { path = "../../crates/application" }
+word-arena-agent-runtime = { path = "../../crates/agent-runtime" }
 word-arena-engine = { path = "../../crates/engine" }
 word-arena-lexicon = { path = "../../crates/lexicon" }
 word-arena-persistence = { path = "../../crates/persistence" }

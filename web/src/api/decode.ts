@@ -1,7 +1,13 @@
 import {
+  type AgentCatalogEntry,
+  type AgentHarnessId,
+  type AgentMatchStatus,
+  type AgentSeatSelection,
+  type AgentSeatStatus,
   API_SCHEMA_VERSION,
   type ApiErrorPayload,
   type BoardTile,
+  type CreatedAgentMatch,
   type CreatedGame,
   type GameAuthority,
   type GameEvent,
@@ -42,6 +48,13 @@ function string(value: unknown, label: string): string {
 function integer(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new DecodeError(`${label} must be an integer`)
+  }
+  return value
+}
+
+function boolean(value: unknown, label: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new DecodeError(`${label} must be boolean`)
   }
   return value
 }
@@ -409,6 +422,153 @@ export function decodeCreatedGame(value: unknown): CreatedGame {
       data.spectator_capability,
       "created game.spectator_capability"
     ),
+  }
+}
+
+const AGENT_HARNESSES = [
+  "codex",
+  "claude_code",
+  "cline",
+  "pi",
+] as const satisfies readonly AgentHarnessId[]
+
+function agentSeatSelection(value: unknown, label: string): AgentSeatSelection {
+  const selection = record(value, label)
+  const kind = literal(selection.kind, ["agent", "human"], `${label}.kind`)
+  if (kind === "human") {
+    return { kind, name: string(selection.name, `${label}.name`) }
+  }
+  const model = selection.model
+  return {
+    kind,
+    harness: literal(selection.harness, AGENT_HARNESSES, `${label}.harness`),
+    model:
+      model === undefined || model === null
+        ? undefined
+        : string(model, `${label}.model`),
+  }
+}
+
+function agentSeatStatus(value: unknown, label: string): AgentSeatStatus {
+  const item = record(value, label)
+  const status = record(item.status, `${label}.status`)
+  const state = literal(
+    status.state,
+    [
+      "queued",
+      "starting",
+      "ready",
+      "thinking",
+      "waiting_for_human",
+      "finished",
+      "failed",
+    ],
+    `${label}.status.state`
+  )
+  return {
+    seat: seat(item.seat, `${label}.seat`),
+    participant: agentSeatSelection(item.participant, `${label}.participant`),
+    state,
+    failureCode:
+      state === "failed"
+        ? string(status.code, `${label}.status.code`)
+        : undefined,
+  }
+}
+
+function agentMatchStatusData(value: unknown): AgentMatchStatus {
+  const item = record(value, "agent match status")
+  if (
+    integer(item.schema_version, "agent match status.schema_version") !==
+    API_SCHEMA_VERSION
+  ) {
+    throw new DecodeError("unsupported agent match schema")
+  }
+  const seats = array(item.seats, "agent match status.seats")
+  if (seats.length !== 2) {
+    throw new DecodeError("agent match must contain two seats")
+  }
+  return {
+    gameId: string(item.game_id, "agent match status.game_id"),
+    phase: literal(
+      item.phase,
+      ["active", "finished"],
+      "agent match status.phase"
+    ),
+    version: integer(item.version, "agent match status.version"),
+    currentSeat: seat(item.current_seat, "agent match status.current_seat"),
+    seats: [
+      agentSeatStatus(seats[0], "agent match status.seats[0]"),
+      agentSeatStatus(seats[1], "agent match status.seats[1]"),
+    ],
+  }
+}
+
+export function decodeAgentCatalog(value: unknown): AgentCatalogEntry[] {
+  const envelope = record(value, "agent catalog envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  return array(envelope.data, "agent catalog").map((value, index) => {
+    const item = record(value, `agent catalog[${index}]`)
+    const version = item.version
+    return {
+      id: literal(item.id, AGENT_HARNESSES, `agent catalog[${index}].id`),
+      displayName: string(
+        item.display_name,
+        `agent catalog[${index}].display_name`
+      ),
+      logo: string(item.logo, `agent catalog[${index}].logo`),
+      available: boolean(item.available, `agent catalog[${index}].available`),
+      compatible: boolean(
+        item.compatible,
+        `agent catalog[${index}].compatible`
+      ),
+      version:
+        version === undefined || version === null
+          ? undefined
+          : string(version, `agent catalog[${index}].version`),
+      minimumVersion: string(
+        item.minimum_version,
+        `agent catalog[${index}].minimum_version`
+      ),
+      diagnostic: string(item.diagnostic, `agent catalog[${index}].diagnostic`),
+    }
+  })
+}
+
+export function decodeAgentMatchStatus(value: unknown): AgentMatchStatus {
+  const envelope = record(value, "agent match envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  return agentMatchStatusData(envelope.data)
+}
+
+export function decodeCreatedAgentMatch(value: unknown): CreatedAgentMatch {
+  const envelope = record(value, "create agent match envelope")
+  if (integer(envelope.schema_version, "API schema") !== API_SCHEMA_VERSION) {
+    throw new DecodeError("unsupported API schema")
+  }
+  const data = record(envelope.data, "created agent match")
+  assertPrivacy(data.public, "public")
+  const humanCapability = data.human_capability
+  return {
+    gameId: string(data.game_id, "created agent match.game_id"),
+    public: publicProjection(data.public),
+    publicCapability: string(
+      data.public_capability,
+      "created agent match.public_capability"
+    ),
+    spectatorCapability: string(
+      data.spectator_capability,
+      "created agent match.spectator_capability"
+    ),
+    humanCapability:
+      humanCapability === undefined || humanCapability === null
+        ? undefined
+        : string(humanCapability, "created agent match.human_capability"),
+    status: agentMatchStatusData(data.status),
   }
 }
 

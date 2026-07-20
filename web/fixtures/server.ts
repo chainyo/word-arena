@@ -282,16 +282,117 @@ function validToken(authority: Authority, token: string | undefined) {
 
 type SocketData = { gameId: string; reconnect: boolean }
 
+const agentCatalog = [
+  {
+    id: "codex",
+    display_name: "Codex",
+    logo: "openai",
+    available: true,
+    compatible: true,
+    version: "0.144.1",
+    minimum_version: "0.144.0",
+    diagnostic: "Ready",
+  },
+  {
+    id: "claude_code",
+    display_name: "Claude Code",
+    logo: "claude",
+    available: true,
+    compatible: true,
+    version: "2.1.205",
+    minimum_version: "2.1.205",
+    diagnostic: "Ready",
+  },
+  ...["cline", "pi"].map((id) => ({
+    id,
+    display_name: id === "cline" ? "Cline" : "Pi",
+    logo: id,
+    available: false,
+    compatible: false,
+    version: null,
+    minimum_version: id === "cline" ? "3.0.46" : "0.73.1",
+    diagnostic: "Not installed",
+  })),
+]
+
+type FixtureSeatSelection =
+  | { kind: "agent"; harness: string; model?: string }
+  | { kind: "human"; name: string }
+
+const defaultMatchSeats: [FixtureSeatSelection, FixtureSeatSelection] = [
+  { kind: "agent", harness: "codex" },
+  { kind: "agent", harness: "claude_code" },
+]
+const matchSeats = new Map<
+  string,
+  [FixtureSeatSelection, FixtureSeatSelection]
+>()
+
+function agentMatchStatus(gameId: string) {
+  const seats = matchSeats.get(gameId) ?? defaultMatchSeats
+  return {
+    schema_version: 1,
+    game_id: gameId,
+    phase: "active",
+    version: versions.get(gameId) ?? 3,
+    current_seat: "one",
+    seats: seats.map((participant, index) => ({
+      seat: index === 0 ? "one" : "two",
+      participant,
+      status: {
+        state:
+          participant.kind === "human"
+            ? "waiting_for_human"
+            : index === 0
+              ? "thinking"
+              : "ready",
+      },
+    })),
+  }
+}
+
 const server = Bun.serve<SocketData>({
   hostname: HOSTNAME,
   port: PORT,
-  fetch(request, server) {
+  async fetch(request, server) {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders })
     }
     const url = new URL(request.url)
     if (request.method === "GET" && url.pathname === "/health") {
       return json({ status: "ok" })
+    }
+    if (request.method === "GET" && url.pathname === "/api/v1/agents") {
+      return json({ schema_version: 1, data: agentCatalog })
+    }
+    if (request.method === "POST" && url.pathname === "/api/v1/matches") {
+      const scenario = scenarios.get("created-game") as Scenario
+      const payload = (await request.json()) as {
+        seats: [FixtureSeatSelection, FixtureSeatSelection]
+      }
+      matchSeats.set(scenario.gameId, payload.seats)
+      const human = payload.seats.some((seat) => seat.kind === "human")
+      return json({
+        schema_version: 1,
+        data: {
+          game_id: scenario.gameId,
+          public: publicProjection(scenario),
+          public_capability: "public-token",
+          spectator_capability: "spectator-token",
+          human_capability: human ? "seat-token" : null,
+          status: agentMatchStatus(scenario.gameId),
+        },
+      })
+    }
+    const agentMatch = url.pathname.match(/^\/api\/v1\/matches\/([^/]+)$/)
+    if (request.method === "GET" && agentMatch) {
+      if (!bearer(request)) {
+        return apiError(401, "invalid_capability", "Capability is invalid")
+      }
+      return json({
+        schema_version: 1,
+        data: agentMatchStatus(decodeURIComponent(agentMatch[1] as string)),
+      })
     }
     if (request.method === "POST" && url.pathname === "/api/v1/games") {
       const scenario = scenarios.get("created-game") as Scenario
