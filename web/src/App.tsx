@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
   AlertCircle,
   Bot,
+  Eye,
   History,
   Languages,
   Layers3,
@@ -42,9 +43,11 @@ import {
   DEFAULT_SERVER_ORIGIN,
   fetchAgentCatalog,
   fetchAgentMatchActivity,
+  fetchAgentMatches,
   fetchAgentMatchStatus,
   fetchSpectatorReplay,
   normalizeServerOrigin,
+  recoverAgentMatch,
   submitGameAction,
 } from "@/api/client"
 import { credentialVault } from "@/api/credentials"
@@ -54,6 +57,7 @@ import type {
   AgentCatalogEntry,
   AgentHarnessId,
   AgentMatchActivity,
+  AgentMatchList,
   AgentMatchStatus,
   AgentSeatSelection,
   AgentSeatStatus,
@@ -116,6 +120,14 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -308,6 +320,9 @@ function OperatorWorkspace() {
   ])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
+  const [matches, setMatches] = useState<AgentMatchList>({ matches: [] })
+  const [matchesError, setMatchesError] = useState<string>()
+  const [openingGameId, setOpeningGameId] = useState<string>()
 
   useEffect(() => {
     const controller = new AbortController()
@@ -349,6 +364,60 @@ function OperatorWorkspace() {
       })
     return () => controller.abort()
   }, [serverOrigin])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const next = await fetchAgentMatches(serverOrigin, controller.signal)
+        if (!cancelled) {
+          setMatches(next)
+          setMatchesError(undefined)
+        }
+      } catch (caught) {
+        if (!cancelled && !controller.signal.aborted) {
+          setMatchesError(
+            caught instanceof Error
+              ? caught.message
+              : "Unable to load local matches"
+          )
+        }
+      }
+    }
+    void load()
+    const timer = window.setInterval(() => void load(), 2_000)
+    return () => {
+      cancelled = true
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [serverOrigin])
+
+  const openMatch = async (match: AgentMatchStatus) => {
+    setOpeningGameId(match.gameId)
+    setMatchesError(undefined)
+    try {
+      const recovered = await recoverAgentMatch(serverOrigin, match.gameId)
+      const session: GameSession = {
+        authority: "spectator",
+        gameId: match.gameId,
+        serverOrigin,
+      }
+      credentialVault.set(session, recovered.spectatorCapability)
+      navigate(
+        match.phase === "finished"
+          ? `/games/${encodeURIComponent(match.gameId)}/replay`
+          : `/games/${encodeURIComponent(match.gameId)}/spectator`
+      )
+    } catch (caught) {
+      setMatchesError(
+        caught instanceof Error ? caught.message : "Unable to open this match"
+      )
+    } finally {
+      setOpeningGameId(undefined)
+    }
+  }
 
   const createGame = async (event: FormEvent) => {
     event.preventDefault()
@@ -406,7 +475,7 @@ function OperatorWorkspace() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto max-w-5xl p-3 sm:p-6"
+        className="mx-auto max-w-6xl space-y-6 p-3 sm:p-6"
       >
         <form
           className="space-y-4"
@@ -523,9 +592,208 @@ function OperatorWorkspace() {
               : `${catalog.filter((agent) => agent.available && agent.compatible).length} of ${catalog.length} compatible CLIs · ${serverOrigin}`}
           </p>
         </form>
+        <MatchArchive
+          error={matchesError}
+          matches={matches.matches}
+          onOpen={(match) => void openMatch(match)}
+          openingGameId={openingGameId}
+        />
       </main>
     </div>
   )
+}
+
+function MatchArchive({
+  error,
+  matches,
+  onOpen,
+  openingGameId,
+}: {
+  error?: string
+  matches: AgentMatchStatus[]
+  onOpen: (match: AgentMatchStatus) => void
+  openingGameId?: string
+}) {
+  const live = matches.filter(
+    (match) => match.phase === "active" && match.orchestration === "active"
+  )
+  const history = matches.filter(
+    (match) => match.phase === "finished" || match.orchestration !== "active"
+  )
+  return (
+    <section aria-labelledby="local-matches-title" className="space-y-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h2
+            className="font-heading text-xl font-semibold tracking-tight"
+            id="local-matches-title"
+          >
+            Local matches
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Reopen a live board or inspect a completed replay after refreshing.
+          </p>
+        </div>
+        <Badge variant="outline">{matches.length} retained</Badge>
+      </div>
+      {error ? (
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>Match archive unavailable</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <MatchArchiveCard
+        description="Currently driven by the local agent runner"
+        empty="No live matches"
+        matches={live}
+        onOpen={onOpen}
+        openingGameId={openingGameId}
+        title="Live"
+      />
+      <MatchArchiveCard
+        description="Finished games and runners interrupted by a server restart"
+        empty="No completed matches yet"
+        matches={history}
+        onOpen={onOpen}
+        openingGameId={openingGameId}
+        title="History"
+      />
+    </section>
+  )
+}
+
+function MatchArchiveCard({
+  description,
+  empty,
+  matches,
+  onOpen,
+  openingGameId,
+  title,
+}: {
+  description: string
+  empty: string
+  matches: AgentMatchStatus[]
+  onOpen: (match: AgentMatchStatus) => void
+  openingGameId?: string
+  title: string
+}) {
+  return (
+    <Card className="overflow-hidden" size="sm">
+      <CardHeader className="border-b">
+        <CardTitle aria-level={3} role="heading">
+          {title}
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      {matches.length === 0 ? (
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          {empty}
+        </CardContent>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Players</TableHead>
+              <TableHead>Game</TableHead>
+              <TableHead>Score</TableHead>
+              <TableHead>Updated</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {matches.map((match) => (
+              <TableRow key={match.gameId}>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    {match.seats.map((seat) =>
+                      seat.participant.kind === "agent" ? (
+                        <AgentLogo
+                          agent={seat.participant.harness}
+                          className="size-7 rounded-lg [&_svg]:size-4"
+                          key={seat.seat}
+                        />
+                      ) : (
+                        <span
+                          className="grid size-7 place-items-center rounded-lg border bg-background"
+                          key={seat.seat}
+                        >
+                          <UserRound className="size-4" />
+                        </span>
+                      )
+                    )}
+                    <span className="ml-1 max-w-48 truncate font-medium">
+                      {match.seats.map(participantLabel).join(" vs ")}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        match.orchestration === "active"
+                          ? "secondary"
+                          : "outline"
+                      }
+                    >
+                      {match.orchestration}
+                    </Badge>
+                    <span className="text-muted-foreground capitalize">
+                      {match.language} · {match.mode} · turn {match.version}
+                    </span>
+                  </div>
+                  <div className="mt-1 max-w-72 truncate font-mono text-[11px] text-muted-foreground">
+                    {match.gameId}
+                  </div>
+                </TableCell>
+                <TableCell className="font-heading text-base font-semibold tabular-nums">
+                  {match.scores[0]}–{match.scores[1]}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatMatchTime(match.updatedAtUnixMs)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    aria-label={`Open ${match.gameId}`}
+                    disabled={openingGameId === match.gameId}
+                    onClick={() => onOpen(match)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {openingGameId === match.gameId ? (
+                      <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                    ) : match.phase === "finished" ? (
+                      <History />
+                    ) : (
+                      <Eye />
+                    )}
+                    {match.phase === "finished" ? "Replay" : "Watch"}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Card>
+  )
+}
+
+function participantLabel(status: AgentSeatStatus) {
+  if (status.participant.kind === "human") return status.participant.name
+  if (status.participant.harness === "claude_code") return "Claude Code"
+  if (status.participant.harness === "codex") return "Codex"
+  if (status.participant.harness === "cline") return "Cline"
+  return "Pi"
+}
+
+function formatMatchTime(value: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value))
 }
 
 type SeatDraft =
@@ -671,9 +939,8 @@ function ReplayRoute() {
         : undefined,
     [gameId]
   )
-  const [token, setToken] = useState(() =>
-    session ? credentialVault.get(session) : undefined
-  )
+  const { recovering, recoveryFailed, setToken, token } =
+    useLocalSpectatorCredential(session)
   const [replay, setReplay] =
     useState<Awaited<ReturnType<typeof fetchSpectatorReplay>>>()
   const [error, setError] = useState<string>()
@@ -691,8 +958,13 @@ function ReplayRoute() {
     return () => controller.abort()
   }, [session, token])
   if (!session) return <Navigate replace to="/" />
+  if (recovering) return <LoadingWorkspace gameId={session.gameId} />
   if (!token) {
-    return <WorkspaceConnect onConnected={setToken} session={session} />
+    return recoveryFailed ? (
+      <WorkspaceConnect onConnected={setToken} session={session} />
+    ) : (
+      <LoadingWorkspace gameId={session.gameId} />
+    )
   }
   return (
     <div className="min-h-svh bg-background">
@@ -1091,9 +1363,15 @@ function useLiveGame(session: GameSession, token: string) {
 }
 
 function LiveWorkspace({ session }: { session: GameSession }) {
-  const [token, setToken] = useState(() => credentialVault.get(session))
+  const { recovering, recoveryFailed, setToken, token } =
+    useLocalSpectatorCredential(session)
+  if (recovering) return <LoadingWorkspace gameId={session.gameId} />
   if (!token) {
-    return <WorkspaceConnect onConnected={setToken} session={session} />
+    return recoveryFailed || session.authority !== "spectator" ? (
+      <WorkspaceConnect onConnected={setToken} session={session} />
+    ) : (
+      <LoadingWorkspace gameId={session.gameId} />
+    )
   }
   return (
     <AuthenticatedWorkspace
@@ -1106,6 +1384,50 @@ function LiveWorkspace({ session }: { session: GameSession }) {
       token={token}
     />
   )
+}
+
+function useLocalSpectatorCredential(session?: GameSession) {
+  const authority = session?.authority
+  const gameId = session?.gameId
+  const serverOrigin = session?.serverOrigin
+  const [token, setTokenState] = useState(() =>
+    session ? credentialVault.get(session) : undefined
+  )
+  const [recovery, setRecovery] = useState<"idle" | "recovering" | "failed">(
+    "idle"
+  )
+  useEffect(() => {
+    if (authority !== "spectator" || !gameId || !serverOrigin || token) {
+      return undefined
+    }
+    const recoverySession: GameSession = {
+      authority,
+      gameId,
+      serverOrigin,
+    }
+    const controller = new AbortController()
+    setRecovery("recovering")
+    void recoverAgentMatch(serverOrigin, gameId, controller.signal)
+      .then((recovered) => {
+        credentialVault.set(recoverySession, recovered.spectatorCapability)
+        setTokenState(recovered.spectatorCapability)
+        setRecovery("idle")
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRecovery("failed")
+      })
+    return () => controller.abort()
+  }, [authority, gameId, serverOrigin, token])
+  const setToken = (next?: string) => {
+    setTokenState(next)
+    if (next) setRecovery("idle")
+  }
+  return {
+    recovering: recovery === "recovering",
+    recoveryFailed: recovery === "failed",
+    setToken,
+    token,
+  }
 }
 
 function AuthenticatedWorkspace({

@@ -107,6 +107,12 @@ impl ApplicationRuntime {
         &self.service
     }
 
+    /// Returns the injected operator clock for local capability issuance flows.
+    #[must_use]
+    pub fn current_time(&self) -> UnixMillis {
+        self.service.clock.now()
+    }
+
     /// Issues a public-view credential after confirming that the game exists.
     ///
     /// # Errors

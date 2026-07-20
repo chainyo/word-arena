@@ -1,6 +1,8 @@
 import {
   decodeAgentCatalog,
   decodeAgentMatchActivity,
+  decodeAgentMatchList,
+  decodeAgentMatchRecovery,
   decodeAgentMatchStatus,
   decodeApiError,
   decodeCreatedAgentMatch,
@@ -12,6 +14,8 @@ import {
 import type {
   AgentCatalogEntry,
   AgentMatchActivity,
+  AgentMatchList,
+  AgentMatchRecovery,
   AgentMatchStatus,
   CreateAgentMatchRequest,
   CreatedAgentMatch,
@@ -78,6 +82,33 @@ export async function createAgentMatch(
     signal,
   })
   return decodeCreatedAgentMatch(await responseBody(response))
+}
+
+export async function fetchAgentMatches(
+  serverOrigin: string,
+  signal?: AbortSignal
+): Promise<AgentMatchList> {
+  const response = await fetch(`${serverOrigin}/api/v1/matches`, {
+    cache: "no-store",
+    signal,
+  })
+  return decodeAgentMatchList(await responseBody(response))
+}
+
+export async function recoverAgentMatch(
+  serverOrigin: string,
+  gameId: string,
+  signal?: AbortSignal
+): Promise<AgentMatchRecovery> {
+  const response = await fetch(
+    `${serverOrigin}/api/v1/matches/${encodeURIComponent(gameId)}/spectator`,
+    {
+      method: "POST",
+      cache: "no-store",
+      signal,
+    }
+  )
+  return decodeAgentMatchRecovery(await responseBody(response))
 }
 
 export async function fetchAgentMatchStatus(

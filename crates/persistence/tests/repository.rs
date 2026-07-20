@@ -11,7 +11,10 @@ use word_arena_engine::{
     TileFace, WordValidator,
 };
 use word_arena_lexicon::{NormalizedKey, PackIdentity};
-use word_arena_persistence::{SqliteGameRepository, connect_and_migrate};
+use word_arena_persistence::{
+    LocalMatchRepositoryError, SqliteGameRepository, SqliteLocalMatchRepository,
+    StoredLocalAgentMatch, connect_and_migrate,
+};
 
 #[derive(Debug)]
 struct AcceptingLexicon(PackIdentity);
@@ -24,6 +27,73 @@ impl WordValidator for AcceptingLexicon {
     fn contains(&self, _key: &NormalizedKey) -> bool {
         true
     }
+}
+
+#[tokio::test]
+async fn local_agent_match_index_upserts_and_lists_newest_first() {
+    let database = Database::open("local-match-index").await;
+    let (_, _, _, first_game) = fixture("match-one");
+    let (_, _, _, second_game) = fixture("match-two");
+    database.repository.insert(first_game).await.unwrap();
+    database.repository.insert(second_game).await.unwrap();
+    let matches = SqliteLocalMatchRepository::new(database.repository.pool().clone());
+
+    matches
+        .upsert(StoredLocalAgentMatch {
+            game_id: "match-one".to_owned(),
+            status_schema_version: 1,
+            status_json: br#"{"phase":"active"}"#.to_vec(),
+            created_at_ms: 1_000,
+            updated_at_ms: 1_000,
+        })
+        .await
+        .unwrap();
+    matches
+        .upsert(StoredLocalAgentMatch {
+            game_id: "match-two".to_owned(),
+            status_schema_version: 1,
+            status_json: br#"{"phase":"finished"}"#.to_vec(),
+            created_at_ms: 1_001,
+            updated_at_ms: 1_002,
+        })
+        .await
+        .unwrap();
+    matches
+        .upsert(StoredLocalAgentMatch {
+            game_id: "match-one".to_owned(),
+            status_schema_version: 1,
+            status_json: br#"{"phase":"finished"}"#.to_vec(),
+            created_at_ms: 1_000,
+            updated_at_ms: 1_003,
+        })
+        .await
+        .unwrap();
+
+    let stored = matches.list().await.unwrap();
+    assert_eq!(stored.len(), 2);
+    assert_eq!(stored[0].game_id, "match-one");
+    assert_eq!(stored[0].created_at_ms, 1_000);
+    assert_eq!(stored[0].updated_at_ms, 1_003);
+    assert_eq!(stored[0].status_json, br#"{"phase":"finished"}"#);
+    assert_eq!(stored[1].game_id, "match-two");
+}
+
+#[tokio::test]
+async fn local_agent_match_index_rejects_invalid_records() {
+    let database = Database::open("local-match-invalid").await;
+    let matches = SqliteLocalMatchRepository::new(database.repository.pool().clone());
+    assert_eq!(
+        matches
+            .upsert(StoredLocalAgentMatch {
+                game_id: String::new(),
+                status_schema_version: 1,
+                status_json: vec![b'{', b'}'],
+                created_at_ms: 2,
+                updated_at_ms: 1,
+            })
+            .await,
+        Err(LocalMatchRepositoryError::Invalid)
+    );
 }
 
 #[tokio::test]

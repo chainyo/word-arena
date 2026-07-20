@@ -25,6 +25,7 @@ use word_arena_application::{
     CreatedGameAccess, GameActionCommand, GameId, IdempotencyKey, PublicGameQuery, UnixMillis,
 };
 use word_arena_engine::{GameMode, GamePhase, Language, Move, PublicProjection, Seat, Turn};
+use word_arena_persistence::{SqliteLocalMatchRepository, StoredLocalAgentMatch};
 
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
@@ -155,10 +156,25 @@ pub struct AgentSeatStatus {
 pub struct AgentMatchStatus {
     pub schema_version: u16,
     pub game_id: GameId,
+    pub language: Language,
+    pub mode: GameMode,
     pub phase: GamePhase,
+    pub orchestration: AgentMatchLifecycle,
     pub version: u64,
     pub current_seat: Seat,
+    pub scores: [i32; 2],
+    pub created_at_unix_ms: i64,
+    pub updated_at_unix_ms: i64,
     pub seats: [AgentSeatStatus; 2],
+}
+
+/// Whether the local runner is available for a persisted match.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentMatchLifecycle {
+    Active,
+    Finished,
+    Interrupted,
 }
 
 /// Spectator-only, bounded orchestration activity for debugging a local match.
@@ -214,6 +230,21 @@ pub struct CreateAgentMatchResponse {
     pub status: AgentMatchStatus,
 }
 
+/// Privacy-safe local operator index of current and completed matches.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentMatchList {
+    pub matches: Vec<AgentMatchStatus>,
+}
+
+/// Fresh spectator access issued from the trusted local operator boundary.
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentMatchRecovery {
+    pub game_id: GameId,
+    pub spectator_capability: String,
+}
+
 /// Trusted local process configuration. Browser requests cannot override it.
 #[derive(Clone)]
 pub struct AgentMatchManagerConfig {
@@ -221,6 +252,7 @@ pub struct AgentMatchManagerConfig {
     pub workspace_root: PathBuf,
     pub mcp_origin: String,
     pub codex_auth_file: Option<PathBuf>,
+    pub match_repository: Option<SqliteLocalMatchRepository>,
 }
 
 impl fmt::Debug for AgentMatchManagerConfig {
@@ -234,6 +266,10 @@ impl fmt::Debug for AgentMatchManagerConfig {
                 "codex_auth_file",
                 &self.codex_auth_file.as_ref().map(|_| "<configured>"),
             )
+            .field(
+                "match_repository",
+                &self.match_repository.as_ref().map(|_| "<configured>"),
+            )
             .finish()
     }
 }
@@ -245,6 +281,7 @@ impl Default for AgentMatchManagerConfig {
             workspace_root: std::env::temp_dir().join("word-arena-agent-runs"),
             mcp_origin: "http://127.0.0.1:3000".to_owned(),
             codex_auth_file: None,
+            match_repository: None,
         }
     }
 }
@@ -288,6 +325,67 @@ impl AgentMatchManager {
         }
     }
 
+    /// Restores persisted finished matches and marks abandoned live runners as interrupted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable archive category when persisted status cannot be read,
+    /// strictly decoded, or updated after detecting an interrupted runner.
+    pub async fn restore(&self) -> Result<(), &'static str> {
+        let Some(repository) = &self.inner.config.match_repository else {
+            return Ok(());
+        };
+        let records = repository.list().await.map_err(|_| "match_archive_read")?;
+        let mut restored = HashMap::with_capacity(records.len());
+        for stored in records {
+            let mut status: AgentMatchStatus =
+                serde_json::from_slice(&stored.status_json).map_err(|_| "match_archive_corrupt")?;
+            if status.schema_version != API_SCHEMA_VERSION
+                || status.game_id.as_str() != stored.game_id
+                || status.created_at_unix_ms != stored.created_at_ms
+                || status.updated_at_unix_ms != stored.updated_at_ms
+            {
+                return Err("match_archive_corrupt");
+            }
+            if status.orchestration == AgentMatchLifecycle::Active {
+                status.orchestration = AgentMatchLifecycle::Interrupted;
+                status.updated_at_unix_ms = unix_millis();
+                for seat in &mut status.seats {
+                    if matches!(seat.participant, AgentSeatSelection::Agent { .. }) {
+                        seat.status = AgentSeatStatusKind::Failed {
+                            code: "server_restarted".to_owned(),
+                        };
+                    }
+                }
+                persist_match(repository, &status)
+                    .await
+                    .map_err(|()| "match_archive_write")?;
+            }
+            restored.insert(status.game_id.clone(), status);
+        }
+        *self.inner.matches.write().await = restored;
+        Ok(())
+    }
+
+    /// Returns every local match newest first without exposing capabilities or racks.
+    pub async fn list(&self) -> Vec<AgentMatchStatus> {
+        let mut matches = self
+            .inner
+            .matches
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| {
+            right
+                .created_at_unix_ms
+                .cmp(&left.created_at_unix_ms)
+                .then_with(|| right.game_id.as_str().cmp(left.game_id.as_str()))
+        });
+        matches
+    }
+
     /// Probes all supported executables without issuing a model request.
     pub async fn catalog(&self) -> Vec<AgentCatalogEntry> {
         let config = self.inner.config.clone();
@@ -301,8 +399,13 @@ impl AgentMatchManager {
         .unwrap_or_else(|_| AgentHarnessId::ALL.into_iter().map(probe_failure).collect())
     }
 
-    pub(crate) async fn insert(&self, status: AgentMatchStatus) {
+    pub(crate) async fn insert(&self, status: AgentMatchStatus) -> Result<(), &'static str> {
         let game_id = status.game_id.clone();
+        if let Some(repository) = &self.inner.config.match_repository {
+            persist_match(repository, &status)
+                .await
+                .map_err(|()| "match_archive_write")?;
+        }
         self.inner
             .matches
             .write()
@@ -323,6 +426,7 @@ impl AgentMatchManager {
             None,
         )
         .await;
+        Ok(())
     }
 
     pub(crate) async fn status(&self, game_id: &GameId) -> Option<AgentMatchStatus> {
@@ -857,15 +961,25 @@ impl AgentMatchManager {
     async fn set_seat_status(&self, game_id: &GameId, seat: Seat, status: AgentSeatStatusKind) {
         if let Some(record) = self.inner.matches.write().await.get_mut(game_id) {
             record.seats[seat_index(seat)].status = status;
+            record.updated_at_unix_ms = unix_millis();
         }
+        self.persist_status(game_id).await;
     }
 
     async fn update_public(&self, game_id: &GameId, public: &PublicProjection) {
         if let Some(record) = self.inner.matches.write().await.get_mut(game_id) {
             record.phase = public.state.phase;
+            record.orchestration = if public.state.phase == GamePhase::Finished {
+                AgentMatchLifecycle::Finished
+            } else {
+                record.orchestration
+            };
             record.version = public.state.version;
             record.current_seat = public.state.current_player;
+            record.scores = public.state.scores.map(word_arena_engine::Score::value);
+            record.updated_at_unix_ms = unix_millis();
         }
+        self.persist_status(game_id).await;
     }
 
     async fn fail_agents(&self, game_id: &GameId, code: &str) {
@@ -877,7 +991,9 @@ impl AgentMatchManager {
                     };
                 }
             }
+            record.updated_at_unix_ms = unix_millis();
         }
+        self.persist_status(game_id).await;
     }
 
     async fn finish_agents(&self, game_id: &GameId, agents: &mut [Option<RunningAgent>; 2]) {
@@ -909,6 +1025,20 @@ impl AgentMatchManager {
                     seat.status = AgentSeatStatusKind::Finished;
                 }
             }
+            record.updated_at_unix_ms = unix_millis();
+        }
+        self.persist_status(game_id).await;
+    }
+
+    async fn persist_status(&self, game_id: &GameId) {
+        let Some(repository) = &self.inner.config.match_repository else {
+            return;
+        };
+        let Some(status) = self.inner.matches.read().await.get(game_id).cloned() else {
+            return;
+        };
+        if persist_match(repository, &status).await.is_err() {
+            tracing::error!(game_id = %game_id, "local match status persistence failed");
         }
     }
 
@@ -1291,15 +1421,23 @@ fn probe_failure(harness: AgentHarnessId) -> AgentCatalogEntry {
 
 pub(crate) fn initial_status(
     game_id: GameId,
+    language: Language,
     public: &PublicProjection,
     seats: &[AgentSeatSelection; 2],
+    created_at: UnixMillis,
 ) -> AgentMatchStatus {
     AgentMatchStatus {
         schema_version: API_SCHEMA_VERSION,
         game_id,
+        language,
+        mode: public.state.mode,
         phase: public.state.phase,
+        orchestration: AgentMatchLifecycle::Active,
         version: public.state.version,
         current_seat: public.state.current_player,
+        scores: public.state.scores.map(word_arena_engine::Score::value),
+        created_at_unix_ms: created_at.0,
+        updated_at_unix_ms: created_at.0,
         seats: [
             AgentSeatStatus {
                 seat: Seat::One,
@@ -1313,6 +1451,23 @@ pub(crate) fn initial_status(
             },
         ],
     }
+}
+
+async fn persist_match(
+    repository: &SqliteLocalMatchRepository,
+    status: &AgentMatchStatus,
+) -> Result<(), ()> {
+    let status_json = serde_json::to_vec(status).map_err(|_| ())?;
+    repository
+        .upsert(StoredLocalAgentMatch {
+            game_id: status.game_id.as_str().to_owned(),
+            status_schema_version: status.schema_version,
+            status_json,
+            created_at_ms: status.created_at_unix_ms,
+            updated_at_ms: status.updated_at_unix_ms,
+        })
+        .await
+        .map_err(|_| ())
 }
 
 fn initial_seat_status(selection: &AgentSeatSelection) -> AgentSeatStatusKind {

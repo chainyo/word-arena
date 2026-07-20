@@ -327,21 +327,36 @@ const matchSeats = new Map<
   string,
   [FixtureSeatSelection, FixtureSeatSelection]
 >()
+const localMatchIds = new Set([
+  "spectator-live",
+  "replay-game",
+  "terminal-game",
+])
 
 function agentMatchStatus(gameId: string) {
   const seats = matchSeats.get(gameId) ?? defaultMatchSeats
+  const scenario =
+    scenarios.get(gameId) ?? ({ gameId, phase: "active" } as const)
+  const finished = scenario.phase === "finished"
   return {
     schema_version: 1,
     game_id: gameId,
-    phase: "active",
-    version: versions.get(gameId) ?? 3,
-    current_seat: "one",
+    language: "english",
+    mode: "practice",
+    phase: scenario.phase,
+    orchestration: finished ? "finished" : "active",
+    version: versions.get(gameId) ?? (finished ? 5 : 3),
+    current_seat: finished ? "two" : "one",
+    scores: finished ? [10, 0] : [2, 0],
+    created_at_unix_ms: NOW - (finished ? 86_400_000 : 60_000),
+    updated_at_unix_ms: NOW - (finished ? 82_800_000 : 5_000),
     seats: seats.map((participant, index) => ({
       seat: index === 0 ? "one" : "two",
       participant,
       status: {
-        state:
-          participant.kind === "human"
+        state: finished
+          ? "finished"
+          : participant.kind === "human"
             ? "waiting_for_human"
             : index === 0
               ? "thinking"
@@ -365,12 +380,21 @@ const server = Bun.serve<SocketData>({
     if (request.method === "GET" && url.pathname === "/api/v1/agents") {
       return json({ schema_version: 1, data: agentCatalog })
     }
+    if (request.method === "GET" && url.pathname === "/api/v1/matches") {
+      return json({
+        schema_version: 1,
+        data: {
+          matches: [...localMatchIds].map(agentMatchStatus),
+        },
+      })
+    }
     if (request.method === "POST" && url.pathname === "/api/v1/matches") {
       const scenario = scenarios.get("created-game") as Scenario
       const payload = (await request.json()) as {
         seats: [FixtureSeatSelection, FixtureSeatSelection]
       }
       matchSeats.set(scenario.gameId, payload.seats)
+      localMatchIds.add(scenario.gameId)
       const human = payload.seats.some((seat) => seat.kind === "human")
       return json({
         schema_version: 1,
@@ -439,6 +463,22 @@ const server = Bun.serve<SocketData>({
               duration_ms: null,
             },
           ],
+        },
+      })
+    }
+    const matchRecovery = url.pathname.match(
+      /^\/api\/v1\/matches\/([^/]+)\/spectator$/
+    )
+    if (request.method === "POST" && matchRecovery) {
+      const gameId = decodeURIComponent(matchRecovery[1] as string)
+      if (!localMatchIds.has(gameId)) {
+        return apiError(404, "match_not_found", "Match not found")
+      }
+      return json({
+        schema_version: 1,
+        data: {
+          game_id: gameId,
+          spectator_capability: "spectator-token",
         },
       })
     }

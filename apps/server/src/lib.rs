@@ -22,17 +22,18 @@ pub use mcp::MCP_PROTOCOL_VERSION;
 
 pub use agent_match::{
     AgentActivityEvent, AgentActivityKind, AgentCatalogEntry, AgentHarnessId, AgentMatchActivity,
-    AgentMatchManager, AgentMatchManagerConfig, AgentMatchStatus, AgentSeatSelection,
-    AgentSeatStatus, AgentSeatStatusKind, CreateAgentMatchRequest, CreateAgentMatchResponse,
+    AgentMatchLifecycle, AgentMatchList, AgentMatchManager, AgentMatchManagerConfig,
+    AgentMatchRecovery, AgentMatchStatus, AgentSeatSelection, AgentSeatStatus, AgentSeatStatusKind,
+    CreateAgentMatchRequest, CreateAgentMatchResponse,
 };
 
 pub use runtime::{ProductionRuntimeError, build_production_state};
 pub use transport::{
-    AGENT_CATALOG_PATH, AGENT_MATCH_ACTIVITY_PATH, AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH,
-    API_SCHEMA_VERSION, ApiEnvelope, ApiErrorBody, BROWSER_WEBSOCKET_PROTOCOL, CreateGameRequest,
-    CreateGameResponse, GAME_EVENTS_PATH, GameActionRequest, GameInvalidation, PUBLIC_GAME_PATH,
-    SEAT_GAME_PATH, SPECTATOR_GAME_PATH, SPECTATOR_REPLAY_PATH, ServerState, api_app,
-    application_app, serve_application,
+    AGENT_CATALOG_PATH, AGENT_MATCH_ACTIVITY_PATH, AGENT_MATCH_RECOVERY_PATH,
+    AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH, API_SCHEMA_VERSION, ApiEnvelope, ApiErrorBody,
+    BROWSER_WEBSOCKET_PROTOCOL, CreateGameRequest, CreateGameResponse, GAME_EVENTS_PATH,
+    GameActionRequest, GameInvalidation, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH,
+    SPECTATOR_REPLAY_PATH, ServerState, api_app, application_app, serve_application,
 };
 
 /// Fully verified immutable indexes retained for the server lifetime.

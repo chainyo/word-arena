@@ -217,6 +217,9 @@ games end to end.
   through the published MCP surface until the authoritative game terminates.
 - [x] Replace the generic operator dashboard with a focused match composer that
   uses recognizable agent logos and immediately opens the live game.
+- [x] Persist a privacy-safe local match index in SQLite and show separate live
+  and history tables on `/`; reopening or refreshing issues a fresh short-lived
+  human-spectator capability instead of storing raw capabilities in the browser.
 - [ ] Surface agent startup, active-turn, failure, cancellation, and terminal
   states without exposing credentials, private racks, or hidden reasoning.
   - [x] Add a bounded human-spectator activity console and structured backend

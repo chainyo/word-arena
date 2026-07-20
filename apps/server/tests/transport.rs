@@ -45,10 +45,11 @@ use word_arena_lexicon::{
     REQUIRED_PAYLOAD_FILES, SourceDescriptor,
 };
 use word_arena_server::{
-    AGENT_CATALOG_PATH, AGENT_MATCH_ACTIVITY_PATH, AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH,
-    API_SCHEMA_VERSION, AgentMatchManager, AgentMatchManagerConfig, BROWSER_WEBSOCKET_PROTOCOL,
-    GAME_EVENTS_PATH, GameInvalidation, MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH,
-    SPECTATOR_GAME_PATH, SPECTATOR_REPLAY_PATH, ServerState, api_app,
+    AGENT_CATALOG_PATH, AGENT_MATCH_ACTIVITY_PATH, AGENT_MATCH_RECOVERY_PATH,
+    AGENT_MATCH_STATUS_PATH, AGENT_MATCHES_PATH, API_SCHEMA_VERSION, AgentMatchManager,
+    AgentMatchManagerConfig, BROWSER_WEBSOCKET_PROTOCOL, GAME_EVENTS_PATH, GameInvalidation,
+    MCP_PROTOCOL_VERSION, PUBLIC_GAME_PATH, SEAT_GAME_PATH, SPECTATOR_GAME_PATH,
+    SPECTATOR_REPLAY_PATH, ServerState, api_app,
 };
 
 const NOW: UnixMillis = UnixMillis(1_700_000_000_000);
@@ -81,6 +82,10 @@ fn web_api_contract_matches_authoritative_server_constants() {
         contract["agent_paths"]["activity"],
         AGENT_MATCH_ACTIVITY_PATH
     );
+    assert_eq!(
+        contract["agent_paths"]["spectator_recovery"],
+        AGENT_MATCH_RECOVERY_PATH
+    );
     assert_eq!(contract["spectator_replay_path"], SPECTATOR_REPLAY_PATH);
     assert_eq!(
         contract["view_fields"],
@@ -111,6 +116,7 @@ async fn agent_catalog_and_match_creation_fail_closed() {
         workspace_root: temporary.path().join("runs"),
         mcp_origin: "http://127.0.0.1:3000".to_owned(),
         codex_auth_file: None,
+        match_repository: None,
     });
     let state = Arc::new(ServerState::with_agent_manager(
         Arc::clone(&fixture.runtime),
@@ -170,6 +176,97 @@ async fn agent_catalog_and_match_creation_fail_closed() {
         response_json(unavailable).await["code"],
         "agent_unavailable"
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn local_match_list_and_spectator_recovery_are_refresh_safe() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fixture = fixture();
+    let temporary = tempfile::tempdir().unwrap();
+    let executable = temporary.path().join("fake-agent");
+    std::fs::write(
+        &executable,
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'fake 999.0.0'; exit 0; fi\nexit 1\n",
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&executable).unwrap().permissions();
+    permissions.set_mode(0o700);
+    std::fs::set_permissions(&executable, permissions).unwrap();
+    let executable = executable.display().to_string();
+    let manager = AgentMatchManager::new(AgentMatchManagerConfig {
+        executables: HarnessExecutables {
+            codex: executable.clone(),
+            claude_code: executable.clone(),
+            cline: executable.clone(),
+            pi: executable,
+        },
+        workspace_root: temporary.path().join("runs"),
+        mcp_origin: "http://127.0.0.1:9".to_owned(),
+        codex_auth_file: None,
+        match_repository: None,
+    });
+    let state = Arc::new(ServerState::with_agent_manager(
+        Arc::clone(&fixture.runtime),
+        manager,
+    ));
+    let app = api_app(state);
+
+    let created = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            AGENT_MATCHES_PATH,
+            None,
+            &json!({
+                "language":"english",
+                "mode":"practice",
+                "seats":[
+                    {"kind":"agent","harness":"codex"},
+                    {"kind":"human","name":"Human"}
+                ],
+                "idempotency_key":"refresh-safe"
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::OK);
+    let created = response_json(created).await;
+    let game_id = created["data"]["game_id"].as_str().unwrap();
+
+    let listed = app
+        .clone()
+        .oneshot(empty_request(Method::GET, AGENT_MATCHES_PATH, None))
+        .await
+        .unwrap();
+    assert_eq!(listed.status(), StatusCode::OK);
+    let listed = response_json(listed).await;
+    assert_eq!(listed["data"]["matches"][0]["game_id"], game_id);
+    assert_eq!(listed["data"]["matches"][0]["language"], "english");
+    assert_eq!(listed["data"]["matches"][0]["mode"], "practice");
+    assert_no_keys(
+        &listed["data"],
+        &["capability", "token", "rack", "bag", "seed"],
+    );
+
+    let recovery_path = AGENT_MATCH_RECOVERY_PATH.replace("{game_id}", game_id);
+    let recovered = app
+        .clone()
+        .oneshot(empty_request(Method::POST, &recovery_path, None))
+        .await
+        .unwrap();
+    assert_eq!(recovered.status(), StatusCode::OK);
+    let recovered = response_json(recovered).await;
+    let spectator = recovered["data"]["spectator_capability"].as_str().unwrap();
+    assert_ne!(spectator, created["data"]["spectator_capability"]);
+
+    let status_path = AGENT_MATCH_STATUS_PATH.replace("{game_id}", game_id);
+    let reopened = app
+        .oneshot(empty_request(Method::GET, &status_path, Some(spectator)))
+        .await
+        .unwrap();
+    assert_eq!(reopened.status(), StatusCode::OK);
 }
 
 #[tokio::test]

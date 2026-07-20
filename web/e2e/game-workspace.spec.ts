@@ -66,6 +66,32 @@ test("operator selects agents and starts directly into the spectator view", asyn
   await expectNoAxeViolations(page)
 })
 
+test("local match tables reopen live and completed games after refresh", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await expect(page.getByRole("heading", { name: "Live" })).toBeVisible()
+  await expect(page.getByText("spectator-live", { exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "History" })).toBeVisible()
+  await expect(page.getByText("replay-game", { exact: true })).toBeVisible()
+
+  await page.getByRole("button", { name: "Open spectator-live" }).click()
+  await expect(page).toHaveURL(/\/games\/spectator-live\/spectator$/)
+  await expect(page.getByText("Seat one rack", { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByText("Seat one rack", { exact: true })).toBeVisible()
+  await expect(page.getByLabel("Capability")).toHaveCount(0)
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "Open replay-game" }).click()
+  await expect(page).toHaveURL(/\/games\/replay-game\/replay$/)
+  await expect(page.getByText("Exact replay inputs")).toBeVisible()
+  await page.reload()
+  await expect(page.getByText("Exact replay inputs")).toBeVisible()
+  await expect(page.getByLabel("Capability")).toHaveCount(0)
+  await expectNoAxeViolations(page)
+})
+
 test("operator can replace either agent seat with an optional human", async ({
   page,
 }) => {
@@ -110,7 +136,7 @@ test("player stages and commits a move without exposing another rack or a token"
 test("spectator sees both current racks but no secret game inputs", async ({
   page,
 }) => {
-  await connect(page, "spectator-live", "spectator", "spectator-token")
+  await page.goto("/games/spectator-live/spectator")
   await expect(page.getByText("Seat one rack", { exact: true })).toBeVisible()
   await expect(page.getByText("Seat two rack", { exact: true })).toBeVisible()
   await expect(
@@ -154,7 +180,7 @@ test("expired authority fails closed before any private state is rendered", asyn
 test("finished spectator game opens its immutable replay with exact inputs", async ({
   page,
 }) => {
-  await connect(page, "terminal-game", "spectator", "spectator-token")
+  await page.goto("/games/terminal-game/spectator")
   await expect(page.getByText("Finished", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Open recorded replay" }).click()
   await expect(page).toHaveURL(/\/games\/terminal-game\/replay$/)
@@ -176,11 +202,13 @@ test("dropped invalidation stream reconnects and refreshes the authoritative ver
     isMobile,
     "The deterministic reconnect transition runs once per fixture server"
   )
+  let socketCount = 0
+  page.on("websocket", () => {
+    socketCount += 1
+  })
   await connect(page, "reconnect-game", "public", "public-token")
   await expect(page.getByText("live", { exact: true })).toBeVisible()
-  await expect(
-    page.getByText("Showing the last authoritative board", { exact: true })
-  ).toBeVisible({ timeout: 3_000 })
+  await expect.poll(() => socketCount).toBeGreaterThan(1)
   await expect(page.getByText("Version 4", { exact: true })).toBeVisible({
     timeout: 5_000,
   })
@@ -192,7 +220,7 @@ test("mobile workspace keeps the board in its named horizontal scroll region", a
   page,
 }) => {
   test.skip(!isMobile, "Mobile-only viewport assertion")
-  await connect(page, "spectator-live", "spectator", "spectator-token")
+  await page.goto("/games/spectator-live/spectator")
   const boardRegion = page.getByRole("region", {
     name: "Scrollable 15 by 15 word game board region",
   })

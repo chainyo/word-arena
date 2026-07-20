@@ -56,6 +56,8 @@ pub const AGENT_MATCHES_PATH: &str = "/api/v1/matches";
 pub const AGENT_MATCH_STATUS_PATH: &str = "/api/v1/matches/{game_id}";
 /// V1 trusted-human spectator agent activity route contract.
 pub const AGENT_MATCH_ACTIVITY_PATH: &str = "/api/v1/matches/{game_id}/activity";
+/// V1 trusted-local-operator spectator recovery route contract.
+pub const AGENT_MATCH_RECOVERY_PATH: &str = "/api/v1/matches/{game_id}/spectator";
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_IN_FLIGHT_REQUESTS: usize = 128;
 const MAX_WEBSOCKETS: usize = 64;
@@ -269,9 +271,13 @@ pub fn application_app(lexicons: Arc<RuntimeLexicons>, state: Arc<ServerState>) 
 pub fn api_app(state: Arc<ServerState>) -> Router {
     Router::new()
         .route(AGENT_CATALOG_PATH, get(agent_catalog))
-        .route(AGENT_MATCHES_PATH, post(create_agent_match))
+        .route(
+            AGENT_MATCHES_PATH,
+            get(agent_matches).post(create_agent_match),
+        )
         .route(AGENT_MATCH_STATUS_PATH, get(agent_match_status))
         .route(AGENT_MATCH_ACTIVITY_PATH, get(agent_match_activity))
+        .route(AGENT_MATCH_RECOVERY_PATH, post(recover_agent_match))
         .route("/api/v1/games", post(create_game))
         .route(PUBLIC_GAME_PATH, get(public_game))
         .route(SEAT_GAME_PATH, get(seat_game))
@@ -446,8 +452,18 @@ async fn create_agent_match(
         }
     }
 
-    let status = initial_status(created.game_id.clone(), &created.public, &request.seats);
-    state.agents.insert(status.clone()).await;
+    let status = initial_status(
+        created.game_id.clone(),
+        request.language,
+        &created.public,
+        &request.seats,
+        created.created_at,
+    );
+    state
+        .agents
+        .insert(status.clone())
+        .await
+        .map_err(match_archive_error)?;
     state.agents.start(
         Arc::clone(&state),
         created.access.clone(),
@@ -461,6 +477,63 @@ async fn create_agent_match(
         spectator_capability,
         human_capability,
         status,
+    }))
+}
+
+fn match_archive_error(_: &'static str) -> ApiError {
+    ApiError::new(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "match_archive",
+        "the local match index could not be updated",
+    )
+}
+
+async fn agent_matches(
+    State(state): State<Arc<ServerState>>,
+) -> Json<ApiEnvelope<crate::AgentMatchList>> {
+    envelope(crate::AgentMatchList {
+        matches: state.agents.list().await,
+    })
+}
+
+async fn recover_agent_match(
+    State(state): State<Arc<ServerState>>,
+    Path(game_id): Path<String>,
+) -> Result<Json<ApiEnvelope<crate::AgentMatchRecovery>>, ApiError> {
+    let game_id = parse_game_id(game_id)?;
+    state.agents.status(&game_id).await.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            "match_not_found",
+            "the local agent-managed match was not found",
+        )
+    })?;
+    let expires_at = state
+        .runtime
+        .current_time()
+        .0
+        .checked_add(SPECTATOR_CAPABILITY_LIFETIME_MS)
+        .map(word_arena_application::UnixMillis)
+        .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "time", "time overflow"))?;
+    let issued = state
+        .runtime
+        .issue_capability(IssueCapabilityRequest {
+            game_id: game_id.clone(),
+            role: CapabilityRole::HumanSpectator,
+            scopes: [
+                CapabilityScope::ObservePublic,
+                CapabilityScope::ObserveHumanSpectator,
+            ]
+            .into_iter()
+            .collect(),
+            expires_at,
+            agent_run_id: None,
+        })
+        .await
+        .map_err(|error| map_capability_error(&error))?;
+    Ok(envelope(crate::AgentMatchRecovery {
+        game_id,
+        spectator_capability: issued.token.into_secret(),
     }))
 }
 
