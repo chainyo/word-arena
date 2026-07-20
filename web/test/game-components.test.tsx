@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import type { PhysicalTile } from "../src/api/types"
+import { AgentLogo } from "../src/components/agent/agent-logo"
 import { AgentConsole } from "../src/components/game/agent-console"
 import {
   displayLetterValues,
@@ -105,6 +106,17 @@ describe("English and French physical display rules", () => {
 })
 
 describe("semantic game components", () => {
+  test("renders every supported agent with its monochrome vector mark", () => {
+    for (const agent of ["codex", "claude_code", "cline", "pi"] as const) {
+      const html = renderToStaticMarkup(<AgentLogo agent={agent} />)
+
+      expect(html).toContain(`data-agent-logo="${agent}"`)
+      expect(html).toContain('fill="currentColor"')
+      expect(html).toContain('role="img"')
+      expect(html).toContain("<path")
+    }
+  })
+
   test("renders redacted agent activity with a live elapsed turn", () => {
     const html = renderToStaticMarkup(
       <AgentConsole
