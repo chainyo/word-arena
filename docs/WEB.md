@@ -1,13 +1,13 @@
 # Web application foundation
 
 The React application is a local game workspace, not a marketing site. `/`
-opens a focused agent-first match composer plus separate local **Live** and
-**History** match tables. Two seats default to installed, compatible agents;
-the operator can add seats three and four, and at most one seat may instead be
-a local human. The composer discovers local CLIs without invoking
-a model, supports a per-seat model override, and opens the spectator view as
-soon as the referee accepts the match. Its routes have explicit authority
-requirements:
+opens a compact lineup builder beside a tabbed **Live** and **Finished** match
+archive. Two player rows default to installed, compatible agents; dashed rows
+add player three or four without a separate player-count control. Each active
+row owns its agent selector, optional model override, and human toggle, and at
+most one seat may be a local human. The composer discovers local CLIs without
+invoking a model and opens the spectator view as soon as the referee accepts
+the match. Its routes have explicit authority requirements:
 
 - `/games/{game_id}/public`
 - `/games/{game_id}/player` (competitive seat; `/seat` remains compatible)
