@@ -129,8 +129,6 @@ import {
   languageLabel,
   rulesetLabel,
   SEATS,
-  seatBorderClasses,
-  seatColorClasses,
   seatLabel,
 } from "@/lib/game-labels"
 import { cn } from "@/lib/utils"
@@ -145,6 +143,20 @@ const placeholderSquares = Array.from(
   { length: 225 },
   (_, index) => `square-${Math.floor(index / 15)}-${index % 15}`
 )
+
+const lineupSeatBorderClasses: Record<(typeof SEATS)[number], string> = {
+  one: "border-l-seat-one",
+  two: "border-l-seat-two",
+  three: "border-l-seat-three",
+  four: "border-l-seat-four",
+}
+
+const lineupSeatBadgeClasses: Record<(typeof SEATS)[number], string> = {
+  one: "border-seat-one/60 bg-seat-one/85 text-background",
+  two: "border-seat-two/60 bg-seat-two/85 text-background",
+  three: "border-seat-three/60 bg-seat-three/85 text-background",
+  four: "border-seat-four/60 bg-seat-four/85 text-background",
+}
 
 type AppErrorBoundaryState = { error?: Error }
 
@@ -490,38 +502,32 @@ function OperatorWorkspace() {
 
   return (
     <div className="min-h-svh bg-background">
-      <WorkspaceHeader subtitle="Agent match console" />
+      <WorkspaceHeader
+        onOpenGame={() => navigate("/connect")}
+        status="Local connected"
+        subtitle="Agent match console"
+      />
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto max-w-[1500px] p-3 sm:p-6"
+        className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-7"
       >
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_32rem] xl:gap-6">
           <form
             className="space-y-3"
             onSubmit={(event) => void createGame(event)}
           >
             <Card className="gap-0 py-0">
-              <CardHeader className="border-b px-5 py-5 sm:px-7 sm:py-6">
-                <CardTitle className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+              <CardHeader className="border-b px-5 py-6 sm:px-10 sm:py-8">
+                <CardTitle className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
                   Build your lineup
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="mt-1 text-base">
                   Configure two players, or add up to four.
                 </CardDescription>
-                <CardAction>
-                  <Button
-                    onClick={() => navigate("/connect")}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Radio /> Open game
-                  </Button>
-                </CardAction>
               </CardHeader>
 
-              <CardContent className="space-y-3 px-4 py-4 sm:px-6 sm:py-5">
+              <CardContent className="space-y-4 px-4 pt-5 pb-9 sm:px-7 sm:pt-4 sm:pb-14">
                 {seats.map((seat, index) => (
                   <AgentSeatPicker
                     catalog={catalog}
@@ -560,13 +566,13 @@ function OperatorWorkspace() {
                 ).map((targetCount) => (
                   <button
                     aria-label={`Add player ${targetCount}`}
-                    className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-dashed bg-muted/20 px-4 text-left text-muted-foreground transition-colors hover:border-primary/45 hover:bg-muted/45 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none"
+                    className="flex min-h-20 w-full items-center gap-4 rounded-xl border border-dashed bg-muted/15 px-5 text-left text-muted-foreground transition-colors hover:border-primary/45 hover:bg-muted/40 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none"
                     disabled={pending || catalogPending}
                     key={targetCount}
                     onClick={() => addPlayersThrough(targetCount)}
                     type="button"
                   >
-                    <span className="grid size-9 place-items-center rounded-lg border border-dashed font-heading text-base tabular-nums">
+                    <span className="grid size-10 place-items-center rounded-lg border border-dashed font-heading text-lg tabular-nums">
                       {targetCount}
                     </span>
                     <span className="font-medium">Add player</span>
@@ -575,7 +581,7 @@ function OperatorWorkspace() {
                 ))}
               </CardContent>
 
-              <CardFooter className="grid gap-3 bg-muted/25 px-4 py-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(10rem,1fr)] sm:px-6">
+              <CardFooter className="m-4 mt-0 grid gap-4 rounded-xl border bg-muted/15 px-4 py-5 sm:m-7 sm:mt-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(10rem,1fr)] sm:px-5 sm:py-6">
                 <div className="space-y-1.5">
                   <Label className="sr-only" htmlFor="create-language">
                     Language
@@ -586,7 +592,10 @@ function OperatorWorkspace() {
                     }
                     value={language}
                   >
-                    <SelectTrigger className="h-10 w-full" id="create-language">
+                    <SelectTrigger
+                      className="min-h-12 w-full"
+                      id="create-language"
+                    >
                       <SelectValue>{languageLabel(language)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -605,7 +614,7 @@ function OperatorWorkspace() {
                     }
                     value={mode}
                   >
-                    <SelectTrigger className="h-10 w-full" id="create-mode">
+                    <SelectTrigger className="min-h-12 w-full" id="create-mode">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -615,7 +624,7 @@ function OperatorWorkspace() {
                   </Select>
                 </div>
                 <Button
-                  className="h-10 w-full"
+                  className="min-h-12 w-full text-base"
                   disabled={
                     pending ||
                     catalogPending ||
@@ -681,7 +690,7 @@ function MatchArchive({
   return (
     <aside
       aria-labelledby="recent-matches-title"
-      className="xl:sticky xl:top-20"
+      className="xl:sticky xl:top-24"
     >
       {error ? (
         <Alert className="mb-3" variant="destructive">
@@ -690,23 +699,26 @@ function MatchArchive({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Card className="gap-0 py-0">
-        <Tabs className="gap-0" defaultValue="live">
-          <CardHeader className="border-b px-5 pt-5 pb-0">
+      <Card className="gap-0 py-0 xl:min-h-[calc(100svh-9.125rem)]">
+        <Tabs
+          className="gap-0 xl:min-h-[calc(100svh-9.125rem)]"
+          defaultValue="live"
+        >
+          <CardHeader className="border-b px-6 pt-7 pb-0">
             <CardTitle
-              className="font-heading text-xl font-semibold tracking-tight"
+              className="font-heading text-2xl font-semibold tracking-tight"
               id="recent-matches-title"
             >
               Recent matches
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="max-w-72 text-base">
               Reopen a board or inspect a completed replay.
             </CardDescription>
             <CardAction>
               <Badge variant="outline">{matches.length} retained</Badge>
             </CardAction>
             <TabsList
-              className="mt-3 grid h-10 w-full grid-cols-2"
+              className="mt-5 grid h-12 w-full grid-cols-2"
               variant="line"
             >
               <TabsTrigger value="live">Live · {live.length}</TabsTrigger>
@@ -750,7 +762,7 @@ function MatchArchiveList({
 }) {
   if (matches.length === 0) {
     return (
-      <div className="grid min-h-44 place-items-center px-5 py-8 text-center text-sm text-muted-foreground">
+      <div className="grid min-h-64 place-items-center px-6 py-12 text-center text-sm text-muted-foreground">
         {empty}
       </div>
     )
@@ -883,22 +895,22 @@ function AgentSeatPicker({
 
   return (
     <Card
-      className={cn("gap-0 border-l-4 py-0", seatBorderClasses[seatId])}
+      className={cn("gap-0 border-l-4 py-0", lineupSeatBorderClasses[seatId])}
       size="sm"
     >
-      <CardContent className="px-4 py-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <CardContent className="px-4 py-5 sm:px-6">
+        <div className="mb-5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span
               className={cn(
-                "grid size-8 place-items-center rounded-lg border font-heading text-sm font-semibold tabular-nums",
-                seatColorClasses[seatId]
+                "grid size-10 place-items-center rounded-lg border font-heading text-base font-semibold tabular-nums",
+                lineupSeatBadgeClasses[seatId]
               )}
             >
               {seatIndex + 1}
             </span>
             <div>
-              <CardTitle>{label}</CardTitle>
+              <CardTitle className="text-base">{label}</CardTitle>
               <CardDescription>
                 {seat.kind === "agent"
                   ? "Autonomous MCP player"
@@ -920,11 +932,12 @@ function AgentSeatPicker({
           ) : null}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[minmax(13rem,1.25fr)_minmax(11rem,1fr)_auto] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[minmax(14rem,1.25fr)_minmax(12rem,0.9fr)_9rem] md:items-end">
           {seat.kind === "human" ? (
             <div className="space-y-1.5">
               <Label htmlFor={`${label}-human-name`}>Player name</Label>
               <Input
+                className="min-h-12"
                 id={`${label}-human-name`}
                 maxLength={64}
                 onChange={(event) =>
@@ -945,7 +958,7 @@ function AgentSeatPicker({
               >
                 <SelectTrigger
                   aria-label={`${label} agent`}
-                  className="h-12 w-full px-2.5"
+                  className="min-h-12 w-full px-3"
                   id={`${label}-agent`}
                 >
                   <AgentLogo
@@ -999,6 +1012,7 @@ function AgentSeatPicker({
           <div className="space-y-1.5">
             <Label htmlFor={`${label}-model`}>Model</Label>
             <Input
+              className="min-h-12"
               disabled={disabled || seat.kind === "human"}
               id={`${label}-model`}
               maxLength={128}
@@ -1014,7 +1028,7 @@ function AgentSeatPicker({
             />
           </div>
 
-          <div className="flex min-h-8 items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2 md:min-w-32 md:flex-col md:items-start md:justify-center md:gap-2">
+          <div className="flex min-h-12 items-center justify-between gap-3 px-1 py-2 md:flex-col md:items-start md:justify-center md:gap-2">
             <Label htmlFor={`${label}-human`}>Use human</Label>
             <Switch
               aria-label={`Use human for ${label}`}
@@ -1218,7 +1232,15 @@ function DeferredDataRoute({ kind }: { kind: "agent" | "standings" }) {
   )
 }
 
-function WorkspaceHeader({ subtitle }: { subtitle: string }) {
+function WorkspaceHeader({
+  onOpenGame,
+  status,
+  subtitle,
+}: {
+  onOpenGame?: () => void
+  status?: string
+  subtitle: string
+}) {
   const { resolvedTheme, setTheme, theme } = useTheme()
   return (
     <>
@@ -1229,21 +1251,53 @@ function WorkspaceHeader({ subtitle }: { subtitle: string }) {
         Skip to game content
       </a>
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur-sm">
-        <div className="mx-auto flex min-h-14 max-w-[1600px] items-center justify-between gap-3 px-3 py-2 sm:px-5">
+        <div className="mx-auto flex min-h-18 max-w-[1600px] items-center justify-between gap-4 px-4 py-2 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary font-heading text-xs font-semibold text-primary-foreground shadow-sm">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/35 bg-primary/10 font-heading text-sm font-semibold text-primary shadow-sm">
               WA
             </span>
             <div className="min-w-0">
-              <h1 className="truncate font-heading text-sm font-medium tracking-tight">
+              <h1 className="truncate font-heading text-base font-semibold tracking-tight">
                 Word Arena
               </h1>
-              <p className="truncate text-[11px] text-muted-foreground">
+              <p className="truncate text-xs text-muted-foreground">
                 {subtitle}
               </p>
             </div>
           </div>
-          <nav aria-label="Workspace controls">
+          <nav
+            aria-label="Workspace controls"
+            className="flex items-center gap-2 sm:gap-4"
+          >
+            {onOpenGame ? (
+              <>
+                <Button
+                  className="hidden sm:inline-flex"
+                  onClick={onOpenGame}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Radio /> Open game
+                </Button>
+                <Button
+                  aria-label="Open game"
+                  className="sm:hidden"
+                  onClick={onOpenGame}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Radio />
+                </Button>
+              </>
+            ) : null}
+            {status ? (
+              <span className="hidden items-center gap-2 text-sm text-muted-foreground md:flex">
+                <span className="size-2.5 rounded-full bg-primary" />
+                {status}
+              </span>
+            ) : null}
             <Select
               onValueChange={(value) => {
                 if (value) setTheme(value as Theme)
