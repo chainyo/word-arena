@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
   AlertCircle,
+  ArrowRight,
   Bot,
   ChevronRight,
   History,
@@ -156,6 +157,22 @@ const lineupSeatBadgeClasses: Record<(typeof SEATS)[number], string> = {
   two: "border-seat-two/60 bg-seat-two/85 text-background",
   three: "border-seat-three/60 bg-seat-three/85 text-background",
   four: "border-seat-four/60 bg-seat-four/85 text-background",
+}
+
+function LanguageChoiceLabel({ language }: { language: "english" | "french" }) {
+  const option =
+    language === "english"
+      ? { flag: "🇬🇧", label: "English" }
+      : { flag: "🇫🇷", label: "Français" }
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <span aria-hidden="true" className="shrink-0 text-base leading-none">
+        {option.flag}
+      </span>
+      <span className="leading-none">{option.label}</span>
+    </span>
+  )
 }
 
 type AppErrorBoundaryState = { error?: Error }
@@ -581,7 +598,7 @@ function OperatorWorkspace() {
                 ))}
               </CardContent>
 
-              <CardFooter className="m-4 mt-0 grid gap-4 rounded-xl border bg-muted/15 px-4 py-5 sm:m-7 sm:mt-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(10rem,1fr)] sm:px-5 sm:py-6">
+              <CardFooter className="m-4 mt-0 grid gap-4 px-4 py-5 sm:m-7 sm:mt-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(10rem,1fr)] sm:px-5 sm:py-6">
                 <div className="space-y-1.5">
                   <Label className="sr-only" htmlFor="create-language">
                     Language
@@ -596,11 +613,17 @@ function OperatorWorkspace() {
                       className="min-h-12 w-full"
                       id="create-language"
                     >
-                      <SelectValue>{languageLabel(language)}</SelectValue>
+                      <SelectValue>
+                        <LanguageChoiceLabel language={language} />
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="english">🇬🇧 English</SelectItem>
-                      <SelectItem value="french">🇫🇷 Français</SelectItem>
+                      <SelectItem value="english">
+                        <LanguageChoiceLabel language="english" />
+                      </SelectItem>
+                      <SelectItem value="french">
+                        <LanguageChoiceLabel language="french" />
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -638,7 +661,7 @@ function OperatorWorkspace() {
                   {pending ? (
                     <LoaderCircle className="animate-spin motion-reduce:animate-none" />
                   ) : (
-                    <Plus />
+                    <ArrowRight />
                   )}
                   Start match
                 </Button>
