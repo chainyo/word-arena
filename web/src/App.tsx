@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
   AlertCircle,
   Bot,
-  Eye,
+  ChevronRight,
   History,
   Languages,
   Layers3,
@@ -105,8 +105,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -121,20 +123,17 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   languageLabel,
   rulesetLabel,
   SEATS,
+  seatBorderClasses,
+  seatColorClasses,
   seatLabel,
 } from "@/lib/game-labels"
+import { cn } from "@/lib/utils"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -472,164 +471,191 @@ function OperatorWorkspace() {
     }
   }
 
+  const defaultHarness =
+    catalog.find((agent) => agent.available && agent.compatible)?.id ?? "codex"
+
+  const addPlayersThrough = (targetCount: number) => {
+    setSeats((current) => {
+      const updated = [...current]
+      while (updated.length < targetCount) {
+        updated.push({
+          kind: "agent",
+          harness: defaultHarness,
+          model: "",
+        })
+      }
+      return updated
+    })
+  }
+
   return (
     <div className="min-h-svh bg-background">
       <WorkspaceHeader subtitle="Agent match console" />
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto max-w-6xl space-y-6 p-3 sm:p-6"
+        className="mx-auto max-w-[1500px] p-3 sm:p-6"
       >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => void createGame(event)}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <Badge variant="secondary">
-                <Bot /> Agent-first
-              </Badge>
-              <h2 className="mt-3 font-heading text-2xl font-semibold tracking-tight">
-                Start a match
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Start with two players, or add up to four. Humans are optional;
-                agents play through MCP.
-              </p>
-            </div>
-            <Button
-              onClick={() => navigate("/connect")}
-              type="button"
-              variant="ghost"
-            >
-              <Radio /> Open existing game
-            </Button>
-          </div>
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
+          <form
+            className="space-y-3"
+            onSubmit={(event) => void createGame(event)}
+          >
+            <Card className="gap-0 py-0">
+              <CardHeader className="border-b px-5 py-5 sm:px-7 sm:py-6">
+                <CardTitle className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Build your lineup
+                </CardTitle>
+                <CardDescription>
+                  Configure two players, or add up to four.
+                </CardDescription>
+                <CardAction>
+                  <Button
+                    onClick={() => navigate("/connect")}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Radio /> Open game
+                  </Button>
+                </CardAction>
+              </CardHeader>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            {seats.map((seat, index) => (
-              <AgentSeatPicker
-                catalog={catalog}
-                disabled={pending || catalogPending}
-                key={SEATS[index]}
-                label={`Seat ${index + 1}`}
-                onChange={(next) =>
-                  setSeats((current) => {
-                    const updated = [...current]
-                    updated[index] = next
-                    return updated
-                  })
-                }
-                onRemove={
-                  seats.length > 2 && index >= 2
-                    ? () =>
-                        setSeats((current) =>
-                          current.filter(
-                            (_, currentIndex) => currentIndex !== index
-                          )
-                        )
-                    : undefined
-                }
-                seat={seat}
-                humanAllowed={seats.every(
-                  (other, otherIndex) =>
-                    otherIndex === index || other.kind === "agent"
-                )}
-              />
-            ))}
-          </div>
+              <CardContent className="space-y-3 px-4 py-4 sm:px-6 sm:py-5">
+                {seats.map((seat, index) => (
+                  <AgentSeatPicker
+                    catalog={catalog}
+                    disabled={pending || catalogPending}
+                    key={SEATS[index]}
+                    label={`Player ${index + 1}`}
+                    onChange={(next) =>
+                      setSeats((current) => {
+                        const updated = [...current]
+                        updated[index] = next
+                        return updated
+                      })
+                    }
+                    onRemove={
+                      seats.length > 2 && index >= 2
+                        ? () =>
+                            setSeats((current) =>
+                              current.filter(
+                                (_, currentIndex) => currentIndex !== index
+                              )
+                            )
+                        : undefined
+                    }
+                    seat={seat}
+                    seatIndex={index}
+                    humanAllowed={seats.every(
+                      (other, otherIndex) =>
+                        otherIndex === index || other.kind === "agent"
+                    )}
+                  />
+                ))}
 
-          {seats.length < 4 ? (
-            <Button
-              disabled={pending || catalogPending}
-              onClick={() =>
-                setSeats((current) => [
-                  ...current,
-                  { kind: "agent", harness: "codex", model: "" },
-                ])
-              }
-              type="button"
-              variant="outline"
-            >
-              <Plus /> Add player
-            </Button>
-          ) : null}
+                {Array.from(
+                  { length: 4 - seats.length },
+                  (_, offset) => seats.length + offset + 1
+                ).map((targetCount) => (
+                  <button
+                    aria-label={`Add player ${targetCount}`}
+                    className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-dashed bg-muted/20 px-4 text-left text-muted-foreground transition-colors hover:border-primary/45 hover:bg-muted/45 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none"
+                    disabled={pending || catalogPending}
+                    key={targetCount}
+                    onClick={() => addPlayersThrough(targetCount)}
+                    type="button"
+                  >
+                    <span className="grid size-9 place-items-center rounded-lg border border-dashed font-heading text-base tabular-nums">
+                      {targetCount}
+                    </span>
+                    <span className="font-medium">Add player</span>
+                    <Plus className="ml-auto size-5" />
+                  </button>
+                ))}
+              </CardContent>
 
-          <Card size="sm">
-            <CardContent className="grid gap-4 pt-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <div className="space-y-1.5">
-                <Label htmlFor="create-language">Language</Label>
-                <Select
-                  onValueChange={(value) =>
-                    setLanguage(value as "english" | "french")
+              <CardFooter className="grid gap-3 bg-muted/25 px-4 py-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(10rem,1fr)] sm:px-6">
+                <div className="space-y-1.5">
+                  <Label className="sr-only" htmlFor="create-language">
+                    Language
+                  </Label>
+                  <Select
+                    onValueChange={(value) =>
+                      setLanguage(value as "english" | "french")
+                    }
+                    value={language}
+                  >
+                    <SelectTrigger className="h-10 w-full" id="create-language">
+                      <SelectValue>{languageLabel(language)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">🇬🇧 English</SelectItem>
+                      <SelectItem value="french">🇫🇷 Français</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="sr-only" htmlFor="create-mode">
+                    Rules
+                  </Label>
+                  <Select
+                    onValueChange={(value) =>
+                      setMode(value as "competitive" | "practice")
+                    }
+                    value={mode}
+                  >
+                    <SelectTrigger className="h-10 w-full" id="create-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="competitive">Competitive</SelectItem>
+                      <SelectItem value="practice">Practice</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  className="h-10 w-full"
+                  disabled={
+                    pending ||
+                    catalogPending ||
+                    catalog.every(
+                      (agent) => !agent.available || !agent.compatible
+                    )
                   }
-                  value={language}
+                  size="lg"
+                  type="submit"
                 >
-                  <SelectTrigger className="w-full" id="create-language">
-                    <SelectValue>{languageLabel(language)}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="english">🇬🇧 English</SelectItem>
-                    <SelectItem value="french">🇫🇷 Français</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-mode">Rules</Label>
-                <Select
-                  onValueChange={(value) =>
-                    setMode(value as "competitive" | "practice")
-                  }
-                  value={mode}
-                >
-                  <SelectTrigger className="w-full" id="create-mode">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="competitive">Competitive</SelectItem>
-                    <SelectItem value="practice">Practice</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                className="min-w-40"
-                disabled={
-                  pending ||
-                  catalogPending ||
-                  catalog.every((agent) => !agent.compatible)
-                }
-                size="lg"
-                type="submit"
-              >
-                {pending ? (
-                  <LoaderCircle className="animate-spin motion-reduce:animate-none" />
-                ) : (
-                  <Plus />
-                )}
-                Start match
-              </Button>
-            </CardContent>
-          </Card>
+                  {pending ? (
+                    <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Plus />
+                  )}
+                  Start match
+                </Button>
+              </CardFooter>
+            </Card>
 
-          {error ? (
-            <Alert variant="destructive">
-              <AlertCircle />
-              <AlertTitle>Match could not start</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-          <p className="text-center text-xs text-muted-foreground">
-            {catalogPending
-              ? "Checking installed agents…"
-              : `${catalog.filter((agent) => agent.available && agent.compatible).length} of ${catalog.length} compatible CLIs · ${serverOrigin}`}
-          </p>
-        </form>
-        <MatchArchive
-          error={matchesError}
-          matches={matches.matches}
-          onOpen={(match) => void openMatch(match)}
-          openingGameId={openingGameId}
-        />
+            {error ? (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertTitle>Match could not start</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            <p className="px-2 text-xs text-muted-foreground">
+              {catalogPending
+                ? "Checking installed agents…"
+                : `${catalog.filter((agent) => agent.available && agent.compatible).length} of ${catalog.length} compatible CLIs · ${serverOrigin}`}
+            </p>
+          </form>
+          <MatchArchive
+            error={matchesError}
+            matches={matches.matches}
+            onOpen={(match) => void openMatch(match)}
+            openingGameId={openingGameId}
+          />
+        </div>
       </main>
     </div>
   )
@@ -653,162 +679,147 @@ function MatchArchive({
     (match) => match.phase === "finished" || match.orchestration !== "active"
   )
   return (
-    <section aria-labelledby="local-matches-title" className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h2
-            className="font-heading text-xl font-semibold tracking-tight"
-            id="local-matches-title"
-          >
-            Local matches
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Reopen a live board or inspect a completed replay after refreshing.
-          </p>
-        </div>
-        <Badge variant="outline">{matches.length} retained</Badge>
-      </div>
+    <aside
+      aria-labelledby="recent-matches-title"
+      className="xl:sticky xl:top-20"
+    >
       {error ? (
-        <Alert variant="destructive">
+        <Alert className="mb-3" variant="destructive">
           <AlertCircle />
           <AlertTitle>Match archive unavailable</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <MatchArchiveCard
-        description="Currently driven by the local agent runner"
-        empty="No live matches"
-        matches={live}
-        onOpen={onOpen}
-        openingGameId={openingGameId}
-        title="Live"
-      />
-      <MatchArchiveCard
-        description="Finished games and runners interrupted by a server restart"
-        empty="No completed matches yet"
-        matches={history}
-        onOpen={onOpen}
-        openingGameId={openingGameId}
-        title="History"
-      />
-    </section>
+      <Card className="gap-0 py-0">
+        <Tabs className="gap-0" defaultValue="live">
+          <CardHeader className="border-b px-5 pt-5 pb-0">
+            <CardTitle
+              className="font-heading text-xl font-semibold tracking-tight"
+              id="recent-matches-title"
+            >
+              Recent matches
+            </CardTitle>
+            <CardDescription>
+              Reopen a board or inspect a completed replay.
+            </CardDescription>
+            <CardAction>
+              <Badge variant="outline">{matches.length} retained</Badge>
+            </CardAction>
+            <TabsList
+              className="mt-3 grid h-10 w-full grid-cols-2"
+              variant="line"
+            >
+              <TabsTrigger value="live">Live · {live.length}</TabsTrigger>
+              <TabsTrigger value="finished">
+                Finished · {history.length}
+              </TabsTrigger>
+            </TabsList>
+          </CardHeader>
+          <TabsContent value="live">
+            <MatchArchiveList
+              empty="No live matches"
+              matches={live}
+              onOpen={onOpen}
+              openingGameId={openingGameId}
+            />
+          </TabsContent>
+          <TabsContent value="finished">
+            <MatchArchiveList
+              empty="No completed matches yet"
+              matches={history}
+              onOpen={onOpen}
+              openingGameId={openingGameId}
+            />
+          </TabsContent>
+        </Tabs>
+      </Card>
+    </aside>
   )
 }
 
-function MatchArchiveCard({
-  description,
+function MatchArchiveList({
   empty,
   matches,
   onOpen,
   openingGameId,
-  title,
 }: {
-  description: string
   empty: string
   matches: AgentMatchStatus[]
   onOpen: (match: AgentMatchStatus) => void
   openingGameId?: string
-  title: string
 }) {
+  if (matches.length === 0) {
+    return (
+      <div className="grid min-h-44 place-items-center px-5 py-8 text-center text-sm text-muted-foreground">
+        {empty}
+      </div>
+    )
+  }
+
   return (
-    <Card className="overflow-hidden" size="sm">
-      <CardHeader className="border-b">
-        <CardTitle aria-level={3} role="heading">
-          {title}
-        </CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      {matches.length === 0 ? (
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          {empty}
-        </CardContent>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Players</TableHead>
-              <TableHead>Game</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {matches.map((match) => (
-              <TableRow key={match.gameId}>
-                <TableCell>
-                  <div className="flex items-center gap-1.5">
-                    {match.seats.map((seat) =>
-                      seat.participant.kind === "agent" ? (
-                        <AgentLogo
-                          agent={seat.participant.harness}
-                          className="size-7 rounded-lg [&_svg]:size-4"
-                          key={seat.seat}
-                        />
-                      ) : (
-                        <span
-                          className="grid size-7 place-items-center rounded-lg border bg-background"
-                          key={seat.seat}
-                        >
-                          <UserRound className="size-4" />
-                        </span>
-                      )
-                    )}
-                    <span className="ml-1 max-w-48 truncate font-medium">
-                      {match.seats.map(participantLabel).join(" vs ")}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={
-                        match.orchestration === "active"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {match.orchestration}
-                    </Badge>
-                    <span className="text-muted-foreground capitalize">
-                      {languageLabel(match.language)} · {match.mode} · turn{" "}
-                      {match.version}
-                    </span>
-                  </div>
-                  <div className="mt-1 max-w-72 truncate font-mono text-[11px] text-muted-foreground">
-                    {match.gameId}
-                  </div>
-                </TableCell>
-                <TableCell className="font-heading text-base font-semibold tabular-nums">
-                  {match.scores.join("–")}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatMatchTime(match.updatedAtUnixMs)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    aria-label={`Open ${match.gameId}`}
-                    disabled={openingGameId === match.gameId}
-                    onClick={() => onOpen(match)}
-                    size="sm"
-                    variant="outline"
+    <ul aria-label="Recent local matches" className="divide-y">
+      {matches.map((match) => (
+        <li className="p-4" key={match.gameId}>
+          <div className="flex items-start gap-3">
+            <div className="flex shrink-0 -space-x-1.5">
+              {match.seats.map((seat) =>
+                seat.participant.kind === "agent" ? (
+                  <AgentLogo
+                    agent={seat.participant.harness}
+                    className="size-8 rounded-full bg-card ring-2 ring-card [&_svg]:size-4"
+                    key={seat.seat}
+                  />
+                ) : (
+                  <span
+                    className="grid size-8 place-items-center rounded-full border bg-card ring-2 ring-card"
+                    key={seat.seat}
                   >
-                    {openingGameId === match.gameId ? (
-                      <LoaderCircle className="animate-spin motion-reduce:animate-none" />
-                    ) : match.phase === "finished" ? (
-                      <History />
-                    ) : (
-                      <Eye />
-                    )}
-                    {match.phase === "finished" ? "Replay" : "Watch"}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </Card>
+                    <UserRound className="size-4" />
+                  </span>
+                )
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <p className="truncate font-medium">
+                  {match.seats.map(participantLabel).join(" vs ")}
+                </p>
+                <span className="shrink-0 font-heading text-base font-semibold tabular-nums">
+                  {match.scores.join("–")}
+                </span>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted-foreground capitalize">
+                {languageLabel(match.language)} · {match.mode} · turn{" "}
+                {match.version}
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-[10px] text-muted-foreground">
+                    {match.gameId}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {formatMatchTime(match.updatedAtUnixMs)}
+                  </p>
+                </div>
+                <Button
+                  aria-label={`Open ${match.gameId}`}
+                  disabled={openingGameId === match.gameId}
+                  onClick={() => onOpen(match)}
+                  size="icon-sm"
+                  variant="ghost"
+                >
+                  {openingGameId === match.gameId ? (
+                    <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <ChevronRight />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -851,6 +862,7 @@ function AgentSeatPicker({
   onChange,
   onRemove,
   seat,
+  seatIndex,
 }: {
   catalog: AgentCatalogEntry[]
   disabled: boolean
@@ -859,120 +871,180 @@ function AgentSeatPicker({
   onChange: (seat: SeatDraft) => void
   onRemove?: () => void
   seat: SeatDraft
+  seatIndex: number
 }) {
+  const seatId = SEATS[seatIndex] ?? "one"
+  const currentAgent =
+    seat.kind === "agent"
+      ? catalog.find((agent) => agent.id === seat.harness)
+      : undefined
+  const fallbackHarness =
+    catalog.find((agent) => agent.available && agent.compatible)?.id ?? "codex"
+
   return (
-    <Card size="sm">
-      <CardHeader className="border-b">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle>{label}</CardTitle>
-            <CardDescription>
-              {seat.kind === "agent"
-                ? "Autonomous MCP player"
-                : "Local human player"}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            {onRemove ? (
-              <Button
-                aria-label={`Remove ${label}`}
-                disabled={disabled}
-                onClick={onRemove}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <Minus />
-              </Button>
-            ) : null}
-            <Button
-              disabled={disabled || (!humanAllowed && seat.kind === "agent")}
-              onClick={() =>
-                onChange(
-                  seat.kind === "agent"
-                    ? { kind: "human", name: "Human" }
-                    : { kind: "agent", harness: "codex", model: "" }
-                )
-              }
-              size="sm"
-              type="button"
-              variant="outline"
+    <Card
+      className={cn("gap-0 border-l-4 py-0", seatBorderClasses[seatId])}
+      size="sm"
+    >
+      <CardContent className="px-4 py-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "grid size-8 place-items-center rounded-lg border font-heading text-sm font-semibold tabular-nums",
+                seatColorClasses[seatId]
+              )}
             >
-              {seat.kind === "agent" ? <UserRound /> : <Bot />}
-              {seat.kind === "agent" ? "Use human" : "Use agent"}
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-4">
-        {seat.kind === "human" ? (
-          <div className="space-y-1.5">
-            <Label htmlFor={`${label}-human-name`}>Player name</Label>
-            <Input
-              id={`${label}-human-name`}
-              maxLength={64}
-              onChange={(event) =>
-                onChange({ kind: "human", name: event.target.value })
-              }
-              value={seat.name}
-            />
-          </div>
-        ) : (
-          <>
-            <div
-              className="grid grid-cols-2 gap-2"
-              role="radiogroup"
-              aria-label={`${label} agent`}
-            >
-              {catalog.map((agent) => {
-                const ready = agent.available && agent.compatible
-                const selected = seat.harness === agent.id
-                return (
-                  <label
-                    className={`relative flex min-h-20 items-center gap-3 rounded-xl border p-3 text-left transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${selected ? "border-primary bg-accent" : "bg-card hover:bg-accent/60"} ${ready ? "" : "cursor-not-allowed opacity-45"}`}
-                    key={agent.id}
-                  >
-                    <input
-                      checked={selected}
-                      className="absolute inset-0 z-10 cursor-pointer opacity-0 disabled:cursor-not-allowed"
-                      disabled={disabled || !ready}
-                      name={`${label}-agent`}
-                      onChange={() => onChange({ ...seat, harness: agent.id })}
-                      type="radio"
-                      value={agent.id}
-                    />
-                    <AgentLogo agent={agent.id} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">
-                        {agent.displayName}
-                      </span>
-                      <span
-                        className={`block truncate text-xs ${selected ? "text-foreground" : "text-muted-foreground"}`}
-                      >
-                        {agent.version ? `v${agent.version}` : agent.diagnostic}
-                      </span>
-                    </span>
-                  </label>
-                )
-              })}
+              {seatIndex + 1}
+            </span>
+            <div>
+              <CardTitle>{label}</CardTitle>
+              <CardDescription>
+                {seat.kind === "agent"
+                  ? "Autonomous MCP player"
+                  : "Local human player"}
+              </CardDescription>
             </div>
+          </div>
+          {onRemove ? (
+            <Button
+              aria-label={`Remove ${label}`}
+              disabled={disabled}
+              onClick={onRemove}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Minus />
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[minmax(13rem,1.25fr)_minmax(11rem,1fr)_auto] md:items-end">
+          {seat.kind === "human" ? (
             <div className="space-y-1.5">
-              <Label htmlFor={`${label}-model`}>Model override</Label>
+              <Label htmlFor={`${label}-human-name`}>Player name</Label>
               <Input
-                id={`${label}-model`}
-                maxLength={128}
+                id={`${label}-human-name`}
+                maxLength={64}
                 onChange={(event) =>
-                  onChange({ ...seat, model: event.target.value })
+                  onChange({ kind: "human", name: event.target.value })
                 }
-                placeholder="Use agent default"
-                value={seat.model}
+                value={seat.name}
               />
             </div>
-          </>
-        )}
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor={`${label}-agent`}>Agent</Label>
+              <Select
+                disabled={disabled}
+                onValueChange={(value) =>
+                  onChange({ ...seat, harness: value as AgentHarnessId })
+                }
+                value={seat.harness}
+              >
+                <SelectTrigger
+                  aria-label={`${label} agent`}
+                  className="h-12 w-full px-2.5"
+                  id={`${label}-agent`}
+                >
+                  <AgentLogo
+                    agent={seat.harness}
+                    className="size-8 rounded-lg [&_svg]:size-4"
+                  />
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate font-medium">
+                      {currentAgent?.displayName ??
+                        participantHarnessLabel(seat.harness)}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {currentAgent?.version
+                        ? `v${currentAgent.version}`
+                        : (currentAgent?.diagnostic ??
+                          "Checking installation…")}
+                    </span>
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  {catalog.map((agent) => {
+                    const ready = agent.available && agent.compatible
+                    return (
+                      <SelectItem
+                        disabled={!ready}
+                        key={agent.id}
+                        value={agent.id}
+                      >
+                        <AgentLogo
+                          agent={agent.id}
+                          className="size-7 rounded-md [&_svg]:size-3.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate">
+                            {agent.displayName}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {agent.version
+                              ? `v${agent.version}`
+                              : agent.diagnostic}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor={`${label}-model`}>Model</Label>
+            <Input
+              disabled={disabled || seat.kind === "human"}
+              id={`${label}-model`}
+              maxLength={128}
+              onChange={(event) => {
+                if (seat.kind === "agent") {
+                  onChange({ ...seat, model: event.target.value })
+                }
+              }}
+              placeholder={
+                seat.kind === "agent" ? "Use agent default" : "Human player"
+              }
+              value={seat.kind === "agent" ? seat.model : ""}
+            />
+          </div>
+
+          <div className="flex min-h-8 items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2 md:min-w-32 md:flex-col md:items-start md:justify-center md:gap-2">
+            <Label htmlFor={`${label}-human`}>Use human</Label>
+            <Switch
+              aria-label={`Use human for ${label}`}
+              checked={seat.kind === "human"}
+              disabled={disabled || (seat.kind === "agent" && !humanAllowed)}
+              id={`${label}-human`}
+              onCheckedChange={(checked) =>
+                onChange(
+                  checked
+                    ? { kind: "human", name: "Human" }
+                    : {
+                        kind: "agent",
+                        harness: fallbackHarness,
+                        model: "",
+                      }
+                )
+              }
+            />
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
+}
+
+function participantHarnessLabel(harness: AgentHarnessId) {
+  if (harness === "claude_code") return "Claude Code"
+  if (harness === "codex") return "Codex"
+  if (harness === "cline") return "Cline"
+  return "Pi"
 }
 
 function ReplayRoute() {

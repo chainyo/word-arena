@@ -27,15 +27,19 @@ test("operator selects agents and starts directly into the spectator view", asyn
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("Start a match", { exact: true })).toBeVisible()
-  await expect(page.getByRole("radio", { name: /Codex/ })).toHaveCount(2)
-  await expect(page.getByRole("radio", { name: /Claude Code/ })).toHaveCount(2)
+  await expect(
+    page.getByText("Build your lineup", { exact: true })
+  ).toBeVisible()
+  await expect(
+    page.getByRole("combobox", { name: "Player 1 agent" })
+  ).toBeVisible()
+  await expect(
+    page.getByRole("combobox", { name: "Player 2 agent" })
+  ).toBeVisible()
   await expectNoAxeViolations(page)
 
-  await page
-    .getByRole("radio", { name: /Claude Code/ })
-    .last()
-    .check()
+  await page.getByRole("combobox", { name: "Player 2 agent" }).click()
+  await page.getByRole("option", { name: /Claude Code/ }).click()
   await page.getByRole("button", { name: "Start match" }).click()
   await expect(page).toHaveURL(/\/games\/created-game\/spectator$/)
   await expect(page.getByText("Codex", { exact: true }).first()).toBeVisible()
@@ -71,14 +75,14 @@ test("operator can expand a match from two to four players", async ({
 }) => {
   await page.goto("/")
   await expect(page.getByText("🇬🇧 English", { exact: true })).toBeVisible()
-  await expect(page.getByText("Seat 1", { exact: true })).toBeVisible()
-  await expect(page.getByText("Seat 2", { exact: true })).toBeVisible()
+  await expect(page.getByText("Player 1", { exact: true })).toBeVisible()
+  await expect(page.getByText("Player 2", { exact: true })).toBeVisible()
 
-  await page.getByRole("button", { name: "Add player" }).click()
-  await page.getByRole("button", { name: "Add player" }).click()
-  await expect(page.getByText("Seat 3", { exact: true })).toBeVisible()
-  await expect(page.getByText("Seat 4", { exact: true })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Add player" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Add player 3" }).click()
+  await page.getByRole("button", { name: "Add player 4" }).click()
+  await expect(page.getByText("Player 3", { exact: true })).toBeVisible()
+  await expect(page.getByText("Player 4", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: /Add player/ })).toHaveCount(0)
 
   await page.getByRole("button", { name: "Start match" }).click()
   await expect(page).toHaveURL(/\/games\/created-game\/spectator$/)
@@ -95,10 +99,12 @@ test("local match tables reopen live and completed games after refresh", async (
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "Live" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: /Live/ })).toBeVisible()
   await expect(page.getByText("spectator-live", { exact: true })).toBeVisible()
-  await expect(page.getByRole("heading", { name: "History" })).toBeVisible()
+  await page.getByRole("tab", { name: /Finished/ }).click()
   await expect(page.getByText("replay-game", { exact: true })).toBeVisible()
+
+  await page.getByRole("tab", { name: /Live/ }).click()
 
   await page.getByRole("button", { name: "Open spectator-live" }).click()
   await expect(page).toHaveURL(/\/games\/spectator-live\/spectator$/)
@@ -108,6 +114,7 @@ test("local match tables reopen live and completed games after refresh", async (
   await expect(page.getByLabel("Capability")).toHaveCount(0)
 
   await page.goto("/")
+  await page.getByRole("tab", { name: /Finished/ }).click()
   await page.getByRole("button", { name: "Open replay-game" }).click()
   await expect(page).toHaveURL(/\/games\/replay-game\/replay$/)
   await expect(page.getByText("Exact replay inputs")).toBeVisible()
@@ -121,9 +128,11 @@ test("operator can replace either agent seat with an optional human", async ({
   page,
 }) => {
   await page.goto("/")
-  await page.getByRole("button", { name: "Use human" }).first().click()
+  await page.getByRole("switch", { name: "Use human for Player 1" }).click()
   await page.getByRole("textbox", { name: "Player name" }).fill("Reviewer")
-  await expect(page.getByRole("button", { name: "Use human" })).toBeDisabled()
+  await expect(
+    page.getByRole("switch", { name: "Use human for Player 2" })
+  ).toBeDisabled()
 
   await page.getByRole("button", { name: "Start match" }).click()
   await expect(page).toHaveURL(/\/games\/created-game\/player$/)
@@ -208,7 +217,9 @@ test("finished spectator game opens its immutable replay with exact inputs", asy
   page,
 }) => {
   await page.goto("/games/terminal-game/spectator")
-  await expect(page.getByText("Finished", { exact: true })).toBeVisible()
+  await expect(
+    page.getByLabel("Live board").getByText("Finished", { exact: true })
+  ).toBeVisible()
   await page.getByRole("button", { name: "Open recorded replay" }).click()
   await expect(page).toHaveURL(/\/games\/terminal-game\/replay$/)
   await expect(page.getByText("Exact replay inputs")).toBeVisible()
