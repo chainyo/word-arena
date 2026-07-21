@@ -736,7 +736,7 @@ impl AgentMatchManager {
             let before = public.state.version;
             let request = TurnRequest {
                 turn_id: format!("{}-{before}", seat_number(seat)),
-                visible_input: turn_prompt(&game_id, seat, before),
+                visible_input: turn_prompt(&game_id, seat, before, initial.language),
             };
             let turn_id = request.turn_id.clone();
             let started_at = unix_millis();
@@ -1235,7 +1235,7 @@ fn build_manifest(
             source: model_source,
         },
         prompt: PromptIdentity {
-            format_version: 1,
+            format_version: 2,
             sha256: hex_digest(turn_prompt_template()),
         },
         tool_policy: ToolPolicy {
@@ -1275,13 +1275,25 @@ fn build_manifest(
 }
 
 fn turn_prompt_template() -> &'static str {
-    "You are playing one Word Arena turn. Use only the word_arena MCP server. Observe the game and your private rack, inspect the rules when useful, then submit exactly one legal action. Keep trying legal actions until one is accepted. Never ask for human input and never stop before the referee accepts a move."
+    "You are playing one Word Arena turn. Use only the word_arena MCP server. Follow the explicit game-language guidance below. Observe the game and your private rack, inspect the rules when useful, then submit exactly one legal action. Keep trying legal actions until one is accepted. Never ask for human input and never stop before the referee accepts a move."
 }
 
-fn turn_prompt(game_id: &GameId, seat: Seat, version: u64) -> String {
+fn language_turn_guidance(language: Language) -> &'static str {
+    match language {
+        Language::English => "English: play only legal English words.",
+        Language::French => {
+            "French: play only legal French words. Board and rack tiles use physical unaccented A-Z letters; the offline French lexicon performs the game's documented normalization."
+        }
+        Language::German => "German: play only legal German words.",
+        Language::Spanish => "Spanish: play only legal Spanish words.",
+    }
+}
+
+fn turn_prompt(game_id: &GameId, seat: Seat, version: u64, language: Language) -> String {
     format!(
-        "{}\n\nGame: {game_id}\nSeat: {}\nAuthoritative version: {version}",
+        "{}\n\n{}\nGame: {game_id}\nSeat: {}\nAuthoritative version: {version}",
         turn_prompt_template(),
+        language_turn_guidance(language),
         seat_number(seat)
     )
 }
@@ -1486,11 +1498,27 @@ fn initial_seat_status(selection: &AgentSeatSelection) -> AgentSeatStatusKind {
 mod tests {
     use word_arena_agent_runtime::WorkspaceOutcome;
     use word_arena_application::GameId;
+    use word_arena_engine::{Language, Seat};
 
     use super::{
         AgentActivityKind, AgentMatchManager, AgentMatchManagerConfig, AgentSeatStatusKind,
-        MAX_ACTIVITY_EVENTS, parse_version, workspace_outcome,
+        MAX_ACTIVITY_EVENTS, parse_version, turn_prompt, workspace_outcome,
     };
+
+    #[test]
+    fn french_turn_prompt_names_the_language_and_physical_tile_rules() {
+        let prompt = turn_prompt(
+            &GameId::new("game-french-prompt").unwrap(),
+            Seat::One,
+            0,
+            Language::French,
+        );
+
+        assert!(prompt.contains("French: play only legal French words"));
+        assert!(prompt.contains("physical unaccented A-Z letters"));
+        assert!(prompt.contains("Game: game-french-prompt"));
+        assert!(prompt.contains("Seat: 1"));
+    }
 
     #[test]
     fn retains_failed_agent_workspaces_for_postmortem() {
