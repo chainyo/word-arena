@@ -74,7 +74,7 @@ test("operator can expand a match from two to four players", async ({
   page,
 }) => {
   await page.goto("/")
-  await expect(page.getByText("🇬🇧 English", { exact: true })).toBeVisible()
+  await expect(page.getByRole("combobox", { name: "Language" })).toBeVisible()
   await expect(page.getByText("Player 1", { exact: true })).toBeVisible()
   await expect(page.getByText("Player 2", { exact: true })).toBeVisible()
 
