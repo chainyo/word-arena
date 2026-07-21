@@ -1033,8 +1033,14 @@ function AgentSeatPicker({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor={`${label}-model`}>Model</Label>
+            <Label htmlFor={`${label}-model`}>
+              Model ID{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional)
+              </span>
+            </Label>
             <Input
+              autoCapitalize="none"
               className="min-h-12"
               disabled={disabled || seat.kind === "human"}
               id={`${label}-model`}
@@ -1045,8 +1051,11 @@ function AgentSeatPicker({
                 }
               }}
               placeholder={
-                seat.kind === "agent" ? "Use agent default" : "Human player"
+                seat.kind === "agent"
+                  ? "Provider model ID, not a player name"
+                  : "Human player"
               }
+              spellCheck={false}
               value={seat.kind === "agent" ? seat.model : ""}
             />
           </div>
@@ -1790,7 +1799,7 @@ function participantSubtitle(
   rackCount: number
 ) {
   if (status?.participant.kind === "agent" && status.participant.model) {
-    return `${status.participant.model} · ${rackCount} tiles`
+    return `Model: ${status.participant.model} · ${rackCount} tiles`
   }
   return `${rackCount} tiles`
 }

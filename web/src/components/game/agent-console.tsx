@@ -133,22 +133,21 @@ export function AgentConsole({
       </CardHeader>
       <CardContent className="px-0 pt-0 font-mono text-xs">
         <Tabs defaultValue={activeSeat}>
-          <TabsList
-            className="mx-3 mt-3 grid h-auto w-[calc(100%-1.5rem)]"
-            style={{
-              gridTemplateColumns: `repeat(${seatNames.length + 1}, minmax(0, 1fr))`,
-            }}
-          >
-            {SEATS.slice(0, seatNames.length).map((seat, index) => (
-              <TabsTrigger
-                className={cn(
-                  "min-w-0 flex-col gap-0 py-1.5 leading-tight text-foreground/80 dark:text-foreground/80",
-                  activeTabClasses[seat]
-                )}
-                key={seat}
-                value={seat}
-              >
-                <span className="flex max-w-full items-center gap-1.5">
+          <div className="mx-3 mt-3 overflow-x-auto pb-1 [scrollbar-width:thin]">
+            <TabsList
+              aria-label="Agent activity views"
+              className="flex h-10 min-w-full w-max justify-start"
+            >
+              {SEATS.slice(0, seatNames.length).map((seat, index) => (
+                <TabsTrigger
+                  aria-label={`Seat ${index + 1} ${seatNames[index]}`}
+                  className={cn(
+                    "min-w-20 gap-1.5 text-foreground dark:text-foreground",
+                    activeTabClasses[seat]
+                  )}
+                  key={seat}
+                  value={seat}
+                >
                   <span
                     aria-hidden="true"
                     className={cn(
@@ -157,14 +156,16 @@ export function AgentConsole({
                     )}
                   />
                   <span>Seat {index + 1}</span>
-                </span>
-                <span className="max-w-full truncate text-[10px] font-normal text-muted-foreground">
-                  {seatNames[index]}
-                </span>
+                </TabsTrigger>
+              ))}
+              <TabsTrigger
+                className="min-w-16 text-foreground dark:text-foreground"
+                value="match"
+              >
+                Match
               </TabsTrigger>
-            ))}
-            <TabsTrigger value="match">Match</TabsTrigger>
-          </TabsList>
+            </TabsList>
+          </div>
           <div className="mt-3 max-h-96 overflow-y-auto border-t">
             {SEATS.slice(0, seatNames.length).map((seat) => (
               <TabsContent key={seat} value={seat}>
